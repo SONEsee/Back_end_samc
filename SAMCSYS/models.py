@@ -114,3 +114,21 @@ class MTTB_Role_Detail(models.Model):
     Auth_Detail = models.IntegerField(default=0)
     class Meta:
         verbose_name_plural='Role_Detail'
+        
+class MTTB_Ccy_DEFN(models.Model):
+    Ccy_Code = models.CharField(max_length=20 , unique=True)
+    Ccy_NameL = models.CharField(max_length=250, null=True,blank=True)
+    Ccy_NameL = models.CharField(max_length=250, null=True,blank=True)
+    Country = models.CharField(max_length=20,null=True,blank=True) 
+    Ccy_Decimals = models.IntegerField(default=0)
+    ALT_Ccy_Code = models.CharField(max_length=2,null=True, blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Ccy_DEFN')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Ccy_DEFN')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural='Currency_DEFN_Info'
+
