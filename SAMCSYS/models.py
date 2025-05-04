@@ -132,3 +132,41 @@ class MTTB_Ccy_DEFN(models.Model):
     class Meta:
         verbose_name_plural='Currency_DEFN_Info'
 
+class MTTB_EXC_Rate(models.Model):
+    CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN, null=True,blank =True , on_delete=models.CASCADE)
+    Buy_Rate = models.IntegerField(default=0)
+    Sale_Rate = models.IntegerField(default=0)
+    INT_Auth_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Exc_Rate')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Exc_Rate')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    class Meta:
+        verbose_name_plural='ExchangeRate'
+
+class MTTB_EXC_Rate_History(models.Model):
+    CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN, null=True,blank =True , on_delete=models.CASCADE)
+    Buy_Rate = models.IntegerField(default=0)
+    Sale_Rate = models.IntegerField(default=0)
+    INT_Auth_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Exc_RateHistory')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Exc_Rate_History')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    class Meta:
+        verbose_name_plural='ExchangeRate_History'
+        
+class MTTB_TRN_Code(models.Model):
+    Trn_code = models.CharField(max_length=20,unique=True)
+    Trn_Desc = models.CharField(max_length=150,null=True, blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Trn_Code')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Trn_Code')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural ='TrnCode'
