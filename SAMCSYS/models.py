@@ -220,4 +220,44 @@ class MTTB_GLSub(models.Model):
     Once_Auth = models.CharField(max_length=1,null=True,blank=True)
     class Meta:
         verbose_name_plural='GLSub'
+
+class MTTB_Fin_Cycle(models.Model):
+    Fin_cycle = models.CharField(max_length=10,unique=True)
+    cycle_Desc = models.CharField(max_length=250,null=True,blank=True)
+    StartDate = models.DateTimeField(auto_now=False, null=True, blank=True)
+    EndDate = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Fin_Cycle')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Fin_Cycle')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural ='FinCycle'
+        
+class MTTB_Per_Code(models.Model):
+    period_code = models.CharField(max_length=20,unique=True)
+    PC_StartDate  = models.DateTimeField(auto_now=False,null=True,blank=True)
+    PC_EndDate = models.DateTimeField(auto_now=False,null=True , blank=True)  
+    Fin_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True ,blank=True,on_delete=models.CASCADE)
+    class Meta:
+        verbose_name_plural ='PerCode'
+        
+class MTTB_DATA_Entry(models.Model):
+    JRN_REKEY_REQUIRED = models.CharField(max_length=1,null=True,blank=True)
+    JRN_REKEY_VALUE_DATE = models.CharField(max_length=1,null=True,blank=True)
+    JRN_REKEY_AMOUNT = models.CharField(max_length=1,null=True,blank=True)
+    JRN_REKEY_TXN_CODE = models.CharField(max_length=1,null=True,blank=True)
+    BACK_VALUE = models.IntegerField(default=0)
+    MOD_NO = models.IntegerField(default=0)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_DATA_Entry')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_DATA_Entry')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural = 'DATA_Entry'
         
