@@ -185,4 +185,39 @@ class MTTB_LCL_Holiday(models.Model):
     Once_Auth = models.CharField(max_length=1,null=True,blank=True)
     class Meta:
         verbose_name_plural ='LCL_Holiday'
+class MTTB_GLMaster(models.Model):
+    glid  = models.AutoField(primary_key=True)
+    gl_code  = models.CharField(max_length=10,null=True, blank=True)
+    gl_Desc = modles.CharField(max_length=250,null=True,blank=True)
+    glTpe = models.CharField(max_length=1,null=True ,blank=True)
+    category = models.CharField(max_length=1 ,null=True,blank=True)
+    retal = models.CharField(max_length=1,null=True,blank=True)
+    ccy_Res = models.CharField(max_length=1,null=True,blank=True)
+    Res_ccy = models.CharField(max_length=1 , null =True,blank=True)
+    Allow_BackPeriodEntry = models.CharFiled(max_length=1,null=True,blank=True)
+    pl_Split_ReqD = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_GLMaster')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_GLMaster')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural ='GLMaster'
+        
+class MTTB_GLSub(models.Model):
+    glid = models.autoField(primary_key=True)
+    glsub = models.CharField(max_length=20,null=True ,blank=True)
+    glsub_Desc = models.CharField(max_length=250,null=True,blank=True)
+    gl_code = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+     Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_GLMaster')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_GLMaster')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural='GLSub'
         
