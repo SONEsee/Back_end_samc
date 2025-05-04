@@ -170,3 +170,19 @@ class MTTB_TRN_Code(models.Model):
     Once_Auth = models.CharField(max_length=1,null=True,blank=True)
     class Meta:
         verbose_name_plural ='TrnCode'
+        
+class MTTB_LCL_Holiday(models.Model):
+    HYear = models.CharField(max_length=4,null=True,blank=True)
+    HMonth = models.CharField(max_length=10,null=True,blank=True)
+    HDate = models.DateTimeField(auto_now=True,null=True,blank=True)
+    Holiday_List = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='created_TLCL_Holiday')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_User, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_TLCL_Holiday')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural ='LCL_Holiday'
+        
