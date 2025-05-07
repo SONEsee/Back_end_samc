@@ -31,7 +31,14 @@ ALLOWED_HOSTS = ['*']
 
 
 # Application definition
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
 
+}
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -40,11 +47,21 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
-    # "corsheaders",
+    "corsheaders",
     # "SAMCSYS.apps.SamcsysConfig"
-    "SAMCSYS"
+    "SAMCSYS",
+  
 ]
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://192.168.45.54:3000",
+]
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000','http://192.168.45.54:3000']
 
+CORS_ALLOWED_ORIGINS = [
+    "http://192.168.1.11:35729",
+    # origins ອື່ນໆທີ່ມີຢູ່ແລ້ວ...
+]
 CORS_ORIGIN_ALLOW_ALL = True
 
 MIDDLEWARE = [
