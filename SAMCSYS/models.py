@@ -62,6 +62,28 @@ class MTTB_User(models.Model):
         verbose_name_plural='UsersRgith'
     def __str__(self):
         return self.User_Name
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    def get_full_name(self):
+        return self.User_Name or self.User_Id
+
+    def get_short_name(self):
+        return self.User_Name or self.User_Id
+
+    def has_perm(self, perm, obj=None):
+        return True
+
+    def has_module_perms(self, app_label):
+        return True
+
+    def __str__(self):
+        return self.User_Id
 
 class MTTB_Divisions(models.Model):
     Div_Id = models.CharField(max_length=20, unique=True)
@@ -79,7 +101,7 @@ class MTTB_Divisions(models.Model):
         verbose_name_plural='DivisionInfo'
     def __str__(self):
         return self.Div_Id  # Fixed from Div_ID to Div_Id
-
+    
 class STTB_Current_Users(models.Model):
     User_Id = models.ForeignKey(MTTB_User,null=True,blank=True, on_delete=models.CASCADE)
     Host_UserLogin = models.CharField(max_length=255)
