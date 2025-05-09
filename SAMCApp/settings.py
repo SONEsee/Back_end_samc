@@ -122,12 +122,12 @@ DATABASES = {
     #     "PORT": "5432"
     # }
     'default': {
-        'ENGINE': 'mssql',                      # use the mssql-django backend
-        'NAME': 'SAMC',             # e.g. 'corebanking'
-        'USER': 'sa',             # e.g. 'sa' or another SQL login
+        'ENGINE': 'mssql',                
+        'NAME': 'SAMC',          
+        'USER': 'sa',            
         'PASSWORD': 'mess!Q@083@@',
-        'HOST': '192.168.10.35',   # e.g. 'localhost' or '192.168.1.100'
-        'PORT': '1433',                         # default SQL Server port
+        'HOST': '192.168.10.35',  
+        'PORT': '1433',                       
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
             # optional:
