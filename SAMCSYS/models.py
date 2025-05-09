@@ -283,5 +283,46 @@ class MTTB_DATA_Entry(models.Model):
     class Meta:
         verbose_name_plural = 'DATA_Entry'
 
+class STTB_GL_BAL(models.Model):
+    gl_code = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN, null=True,blank =True , on_delete=models.CASCADE)
+    fin_year = models.CharField(max_length=9, null=True,blank =True) #no foreign table 
+    period_code = models.ForeignKey(MTTB_Per_Code, null=True,blank =True , on_delete=models.CASCADE)
+    category = models.CharField(max_length=1, null=True, blank=True)
+    dr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
 
+    class Meta:
+        verbose_name_plural = 'GL_BAL'
+
+class STTB_GL_SUB_BAL(models.Model):
+    gl_code = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN, null=True,blank =True , on_delete=models.CASCADE)
+    fin_year = models.CharField(max_length=9, null=True,blank =True) #no foreign table 
+    period_code = models.ForeignKey(MTTB_Per_Code, null=True,blank =True , on_delete=models.CASCADE)
+    dr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'GL_SUB_BAL'
 
