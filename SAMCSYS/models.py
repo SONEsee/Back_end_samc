@@ -282,4 +282,6 @@ class MTTB_DATA_Entry(models.Model):
     Once_Auth = models.CharField(max_length=1,null=True,blank=True)
     class Meta:
         verbose_name_plural = 'DATA_Entry'
-        
+
+
+

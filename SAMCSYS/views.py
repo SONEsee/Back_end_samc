@@ -43,15 +43,15 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
-    uid = request.data.get("User_Id")
+    uid = request.data.get("User_Name")
     pwd = request.data.get("User_Password")
     if not uid or not pwd:
-        return Response({"error": "User_Id and User_Password required"},
+        return Response({"error": "User_Name and User_Password required"},
                         status=status.HTTP_400_BAD_REQUEST)
 
     hashed = _hash(pwd)
     try:
-        user = MTTB_User.objects.get(User_Id=uid, User_Password=hashed)
+        user = MTTB_User.objects.get(User_Name=uid, User_Password=hashed)
     except MTTB_User.DoesNotExist:
         return Response({"error": "Invalid credentials"},
                         status=status.HTTP_401_UNAUTHORIZED)
@@ -111,6 +111,40 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         # Stamp the checker on updates
+        serializer.save(
+            Checker_DT_Stamp=timezone.now()
+        )
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.utils import timezone
+from .models import MTTB_Role_Master
+from .serializers import MTTBRoleSerializer
+
+class MTTBRoleViewSet(viewsets.ModelViewSet):
+    """
+    Provides CRUD for Role_Master.
+    """
+    queryset = MTTB_Role_Master.objects.all().order_by('Role_Id')
+    serializer_class = MTTBRoleSerializer
+
+    def get_permissions(self):
+        # Allow open creation, require auth for all other actions
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        # Stamp maker and timestamp
+        maker = self.request.user if self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now(),
+            Auth_Status='P'
+        )
+
+    def perform_update(self, serializer):
+        # Stamp checker and timestamp
         serializer.save(
             Checker_DT_Stamp=timezone.now()
         )
