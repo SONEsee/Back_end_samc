@@ -100,15 +100,19 @@ WSGI_APPLICATION = "SAMCApp.wsgi.application"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        # "ENGINE": "django.db.backends.sqlite3",
-        #  "NAME": BASE_DIR / "db.sqlite3",
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "SAMCDB",
-        "USER": "postgres",
-        "PASSWORD": "admin",
-        "HOST": "192.168.10.35",
-        "PORT": "5432"
+   'default': {
+        'ENGINE': 'mssql',                
+        'NAME': 'SAMC',          
+        'USER': 'sa',            
+        'PASSWORD': 'mess!Q@083@@',
+        'HOST': '192.168.10.35',  
+        'PORT': '1433',                       
+        'OPTIONS': {
+            'driver': 'ODBC Driver 17 for SQL Server',
+            # optional:
+            # 'encrypt': True,    # if your server requires encryption
+            # 'TrustServerCertificate': 'yes',
+        },
     }
 }
 
