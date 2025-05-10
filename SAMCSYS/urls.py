@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework import routers
-from .views import MTTBUserViewSet, login_view,MTTBDivisionViewSet,MTTBRoleViewSet
+from .views import MTTBUserViewSet, login_view,MTTBDivisionViewSet,MTTBRoleViewSet,MTTBRoleDetailViewSet
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -8,8 +8,9 @@ from rest_framework_simplejwt.views import (
 
 router = routers.DefaultRouter()
 router.register(r"users", MTTBUserViewSet, basename="user"),
-router.register(r'divisions', MTTBDivisionViewSet, basename='division')
-router.register(r'roles', MTTBRoleViewSet, basename='role')
+router.register(r'divisions', MTTBDivisionViewSet, basename='division'),
+router.register(r'roles', MTTBRoleViewSet, basename='role'),
+router.register(r'role-details', MTTBRoleDetailViewSet, basename='role-detail')
 
 urlpatterns = [
     #TOKEN

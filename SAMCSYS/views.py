@@ -148,3 +148,24 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
         serializer.save(
             Checker_DT_Stamp=timezone.now()
         )
+
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .models import MTTB_Role_Detail
+from .serializers import RoleDetailSerializer
+
+class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Role_Detail records.
+    """
+    queryset = MTTB_Role_Detail.objects.select_related(
+        'Role_Id', 'Function_Id'
+    ).all()
+    serializer_class = RoleDetailSerializer
+
+    def get_permissions(self):
+        # Allow open creation; require auth for all others
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]

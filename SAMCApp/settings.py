@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 
 from pathlib import Path
+from datetime import timedelta
+
 import logging
 logging.basicConfig(level=logging.DEBUG)
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -47,6 +49,19 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+}
+
+SIMPLE_JWT = {
+    # Access tokens will expire after 1 day
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+
+    # If you’re using refresh tokens and want them to also last 1 day:
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+
+    # (Optional) adjust other settings as needed:
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
+    # ... any other SIMPLE_JWT settings ...
 }
 
 INSTALLED_APPS = [

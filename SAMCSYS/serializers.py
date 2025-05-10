@@ -62,3 +62,55 @@ class MTTBRoleSerializer(serializers.ModelSerializer):
             'Maker_DT_Stamp',
             'Checker_DT_Stamp',
         )
+
+        
+from .models import (
+    MTTB_Role_Detail,
+    MTTB_Function_Description,
+    STTB_MDdulesInfo,
+)
+
+class STTBModuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = STTB_MDdulesInfo
+        fields = ['M_Id', 'M_NameL', 'M_NameE']
+
+
+class FunctionDescriptionSerializer(serializers.ModelSerializer):
+    M_Id = STTBModuleSerializer(read_only=True)
+
+    class Meta:
+        model = MTTB_Function_Description
+        fields = [
+            'Function_Id',
+            'Function_Desc',
+            'Main_Menu',
+            'Sub_Menu',
+            'All_Link',
+            'M_Id',
+            'Function_Status',
+        ]
+
+
+
+class RoleDetailSerializer(serializers.ModelSerializer):
+    # Writable fields for foreign keys
+    Role_Id = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Role_Master.objects.all()
+    )
+    Function_Id = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Function_Description.objects.all()
+    )
+
+    class Meta:
+        model = MTTB_Role_Detail
+        fields = [
+            'id',
+            'Role_Id',
+            'Function_Id',
+            'New_Detail',
+            'Del_Detail',
+            'Edit_Detail',
+            'Auth_Detail',
+        ]
+
