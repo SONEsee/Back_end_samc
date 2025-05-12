@@ -1,8 +1,31 @@
 import hashlib
 from rest_framework import serializers
 from .models import MTTB_User
+from .models import MTTB_User, MTTB_Divisions, MTTB_Role_Master
+
+class DivisionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Divisions
+        fields = ['Div_Id', 'Div_NameL', 'Div_NameE', 'Record_Status']
+
+class RoleMasterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Role_Master
+        fields = ['Role_Id', 'Role_NameL', 'Role_NameE', 'Record_Status']
 
 class MTTBUserSerializer(serializers.ModelSerializer):
+    # read-only nested
+    division = DivisionSerializer(source='Div_Id', read_only=True)
+    role     = RoleMasterSerializer(source='Role_ID', read_only=True)
+
+    # write-only PK fields
+    Div_Id   = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Divisions.objects.all(), write_only=True, required=False
+    )
+    Role_ID  = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Role_Master.objects.all(), write_only=True, required=False
+    )
+
     class Meta:
         model = MTTB_User
         fields = [
@@ -12,7 +35,8 @@ class MTTBUserSerializer(serializers.ModelSerializer):
             "User_Password",
             "User_Email",
             "User_Mobile",
-            "Div_Id",
+            "Div_Id",    # show the raw PK if you want, or omit
+            "division",  # nested details
             "User_Status",
             "Maker_Id",
             "Maker_DT_Stamp",
@@ -20,7 +44,8 @@ class MTTBUserSerializer(serializers.ModelSerializer):
             "Checker_DT_Stamp",
             "Auth_Status",
             "Once_Auth",
-            "Role_ID",
+            "Role_ID",   # raw PK
+            "role",      # nested details
             "InsertDate",
             "UpdateDate",
         ]

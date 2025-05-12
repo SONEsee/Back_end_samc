@@ -30,14 +30,17 @@ from .serializers import MTTBUserSerializer
 def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
 
+
 class MTTBUserViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_User.objects.all()
+    queryset = MTTB_User.objects.select_related('Div_Id', 'Role_ID').all()
     serializer_class = MTTBUserSerializer
 
     def get_permissions(self):
+        # Open signup
         if self.request.method == "POST":
             return [AllowAny()]
-        return super().get_permissions()
+        # Everything else requires authentication
+        return [IsAuthenticated()]
 
 
 @api_view(["POST"])
@@ -51,26 +54,48 @@ def login_view(request):
 
     hashed = _hash(pwd)
     try:
-        user = MTTB_User.objects.get(User_Name=uid, User_Password=hashed)
+        user = MTTB_User.objects.select_related('Div_Id', 'Role_ID').get(
+            User_Name=uid, User_Password=hashed
+        )
     except MTTB_User.DoesNotExist:
         return Response({"error": "Invalid credentials"},
                         status=status.HTTP_401_UNAUTHORIZED)
 
     # 1) Create tokens
     refresh = RefreshToken.for_user(user)
-    access = refresh.access_token
+    access  = refresh.access_token
 
     # 2) Serialize your user data
     data = MTTBUserSerializer(user).data
 
-    # 3) Return tokens + user info
+    # 3) Manually add full division & role info
+    if user.Div_Id:
+        data['division'] = {
+            'Div_Id': user.Div_Id.Div_Id,
+            'Div_NameL': user.Div_Id.Div_NameL,
+            'Div_NameE': user.Div_Id.Div_NameE,
+            'Record_Status': user.Div_Id.Record_Status,
+        }
+    else:
+        data['division'] = None
+
+    if user.Role_ID:
+        data['role'] = {
+            'Role_Id': user.Role_ID.Role_Id,
+            'Role_NameL': user.Role_ID.Role_NameL,
+            'Role_NameE': user.Role_ID.Role_NameE,
+            'Record_Status': user.Role_ID.Record_Status,
+        }
+    else:
+        data['role'] = None
+
+    # 4) Return tokens + full payload
     return Response({
         "message": "Login successful",
         "refresh": str(refresh),
         "access": str(access),
         "user": data
     })
-
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
