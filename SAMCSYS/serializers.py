@@ -1,25 +1,24 @@
 import hashlib
 from rest_framework import serializers
-from .models import MTTB_User
-from .models import MTTB_User, MTTB_Divisions, MTTB_Role_Master
-
+from .models import MTTB_Users
+from .models import MTTB_Users, MTTB_Divisions, MTTB_Role_Master
 class DivisionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Divisions
-        fields = ['Div_Id', 'Div_NameL', 'Div_NameE', 'Record_Status']
+        fields = ['div_id', 'division_name_la', 'division_name_en', 'record_Status']
 
 class RoleMasterSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Role_Master
-        fields = ['Role_Id', 'Role_NameL', 'Role_NameE', 'Record_Status']
+        fields = ['role_id', 'role_name_la', 'role_name_en', 'record_Status']
 
 class MTTBUserSerializer(serializers.ModelSerializer):
-    # read-only nested
-    division = DivisionSerializer(source='Div_Id', read_only=True)
+    # Nested read-only representations
+    division = DivisionSerializer(source='div_id', read_only=True)
     role     = RoleMasterSerializer(source='Role_ID', read_only=True)
 
-    # write-only PK fields
-    Div_Id   = serializers.PrimaryKeyRelatedField(
+    # Writable PK fields
+    div_id   = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Divisions.objects.all(), write_only=True, required=False
     )
     Role_ID  = serializers.PrimaryKeyRelatedField(
@@ -27,44 +26,45 @@ class MTTBUserSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-        model = MTTB_User
+        model = MTTB_Users
         fields = [
-            "id",
-            "User_Id",
-            "User_Name",
-            "User_Password",
-            "User_Email",
-            "User_Mobile",
-            "Div_Id",    # show the raw PK if you want, or omit
-            "division",  # nested details
-            "User_Status",
-            "Maker_Id",
-            "Maker_DT_Stamp",
-            "Checker_Id",
-            "Checker_DT_Stamp",
-            "Auth_Status",
-            "Once_Auth",
-            "Role_ID",   # raw PK
-            "role",      # nested details
-            "InsertDate",
-            "UpdateDate",
+            'user_id',
+            'user_name',
+            'user_password',
+            'user_email',
+            'user_mobile',
+            'User_Status',
+            'pwd_changed_on',
+            'div_id',
+            'division',
+            'Role_ID',
+            'role',
+            'InsertDate',
+            'UpdateDate',
+            'Maker_Id',
+            'Maker_DT_Stamp',
+            'Checker_Id',
+            'Checker_DT_Stamp',
+            'Auth_Status',
+            'Once_Auth',
         ]
         extra_kwargs = {
-            "User_Password": {"write_only": True}
+            'user_password': {'write_only': True}
         }
 
     def _hash(self, raw_password):
-        return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
+        return hashlib.md5(raw_password.encode('utf-8')).hexdigest()
 
     def create(self, validated_data):
-        raw = validated_data.pop("User_Password")
-        validated_data["User_Password"] = self._hash(raw)
+        raw_pwd = validated_data.pop('user_password')
+        validated_data['user_password'] = self._hash(raw_pwd)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        if "User_Password" in validated_data:
-            raw = validated_data.pop("User_Password")
-            validated_data["User_Password"] = self._hash(raw)
+        # If password is being updated, hash it
+        raw = validated_data.get('user_password')
+        if raw:
+            validated_data['user_password'] = self._hash(raw)
         return super().update(instance, validated_data)
 
 from .models import MTTB_Divisions
@@ -91,13 +91,13 @@ class MTTBRoleSerializer(serializers.ModelSerializer):
         
 from .models import (
     MTTB_Role_Detail,
-    MTTB_Function_Description,
-    STTB_MDdulesInfo,
+    MTTB_Function_Desc,
+    STTB_ModulesInfo,
 )
 
 class STTBModuleSerializer(serializers.ModelSerializer):
     class Meta:
-        model = STTB_MDdulesInfo
+        model = STTB_ModulesInfo
         fields = ['M_Id', 'M_NameL', 'M_NameE']
 
 
@@ -105,7 +105,7 @@ class FunctionDescriptionSerializer(serializers.ModelSerializer):
     M_Id = STTBModuleSerializer(read_only=True)
 
     class Meta:
-        model = MTTB_Function_Description
+        model = MTTB_Function_Desc
         fields = [
             'Function_Id',
             'Function_Desc',
@@ -124,7 +124,7 @@ class RoleDetailSerializer(serializers.ModelSerializer):
         queryset=MTTB_Role_Master.objects.all()
     )
     Function_Id = serializers.PrimaryKeyRelatedField(
-        queryset=MTTB_Function_Description.objects.all()
+        queryset=MTTB_Function_Desc.objects.all()
     )
 
     class Meta:

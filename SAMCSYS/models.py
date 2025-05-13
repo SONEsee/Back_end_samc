@@ -67,27 +67,65 @@ class MTTB_Function_Desc(models.Model):
         return self.function_id
 
 class MTTB_Users(models.Model):
-    user_id = models.CharField(primary_key=True,max_length=20)
+    STATUS_CHOICES = [
+        ('E', 'Enabled'),
+        ('D', 'Disabled'),
+    ]
+
+    user_id = models.CharField(primary_key=True, max_length=20)
     div_id = models.ForeignKey('MTTB_Divisions', null=True, blank=True, on_delete=models.CASCADE)
     Role_ID = models.ForeignKey('MTTB_Role_Master', null=True, blank=True, on_delete=models.CASCADE)
     user_name = models.CharField(max_length=250)
     user_password = models.CharField(max_length=250)
-    user_email = models.CharField(max_length=250,null=True,blank=True)
-    user_mobile = models.CharField(max_length=15,null=True,blank=True)  
-    User_Status = models.BooleanField(default=True)
-    pwd_changed_on = models.DateField(auto_now=False,null=True,blank=True)
+    user_email = models.CharField(max_length=250, null=True, blank=True)
+    user_mobile = models.CharField(max_length=15, null=True, blank=True)
+
+    # Changed from BooleanField to CharField with choices
+    User_Status = models.CharField(
+        max_length=1,
+        choices=STATUS_CHOICES,
+        default='E',
+    )
+
+    pwd_changed_on = models.DateField(null=True, blank=True)
     InsertDate = models.DateTimeField(auto_now_add=True)
     UpdateDate = models.DateTimeField(auto_now=True)
-    Maker_Id = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='created_userss')
-    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='checked_userss')
-    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1,null=True,blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Maker_Id = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.CASCADE, related_name='created_userss'
+    )
+    Maker_DT_Stamp = models.DateTimeField(null=True, blank=True)
+    Checker_Id = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.CASCADE, related_name='checked_userss'
+    )
+    Checker_DT_Stamp = models.DateTimeField(null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1, null=True, blank=True)
+
     class Meta:
-        verbose_name_plural='UsersRgith'
+        verbose_name_plural = 'UsersRgith'
+
     def __str__(self):
-        return self.User_Name
+        return self.user_name
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    def get_full_name(self):
+        return self.user_name or self.user_id
+
+    def get_short_name(self):
+        return self.user_name or self.user_id
+
+    def has_perm(self, perm, obj=None):
+        return True
+
+    def has_module_perms(self, app_label):
+        return True
+    # ────────────────────────────────────────────
     
 class STTB_Dates(models.Model):
     date_id = models.AutoField(primary_key=True)

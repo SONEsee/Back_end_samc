@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from .models import MTTB_User
+from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
 
 # class MTTBUserViewSet(viewsets.ModelViewSet):
@@ -17,7 +17,7 @@ from .serializers import MTTBUserSerializer
 #     PATCH  /api/users/{pk}/    → partial update
 #     DELETE /api/users/{pk}/    → destroy
 #     """
-#     queryset = MTTB_User.objects.all()
+#     queryset = MTTB_Users.objects.all()
 #     serializer_class = MTTBUserSerializer
 
 #     # allow unauthenticated user to create an account
@@ -30,34 +30,37 @@ from .serializers import MTTBUserSerializer
 def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
 
+from rest_framework import viewsets
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from .models import MTTB_Users
+from .serializers import MTTBUserSerializer
 
 class MTTBUserViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_User.objects.select_related('Div_Id', 'Role_ID').all()
+    queryset = MTTB_Users.objects.select_related('div_id', 'Role_ID').all()
     serializer_class = MTTBUserSerializer
 
     def get_permissions(self):
-        # Open signup
-        if self.request.method == "POST":
+        if self.request.method == 'POST':
             return [AllowAny()]
-        # Everything else requires authentication
         return [IsAuthenticated()]
+
 
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
-    uid = request.data.get("User_Name")
-    pwd = request.data.get("User_Password")
+    uid = request.data.get("user_name")
+    pwd = request.data.get("user_password")
     if not uid or not pwd:
         return Response({"error": "User_Name and User_Password required"},
                         status=status.HTTP_400_BAD_REQUEST)
 
     hashed = _hash(pwd)
     try:
-        user = MTTB_User.objects.select_related('Div_Id', 'Role_ID').get(
-            User_Name=uid, User_Password=hashed
+        user = MTTB_Users.objects.select_related('div_id', 'Role_ID').get(
+            user_name=uid, user_password=hashed
         )
-    except MTTB_User.DoesNotExist:
+    except MTTB_Users.DoesNotExist:
         return Response({"error": "Invalid credentials"},
                         status=status.HTTP_401_UNAUTHORIZED)
 
@@ -69,9 +72,9 @@ def login_view(request):
     data = MTTBUserSerializer(user).data
 
     # 3) Manually add full division & role info
-    if user.Div_Id:
+    if user.div_id:
         data['division'] = {
-            'Div_Id': user.Div_Id.Div_Id,
+            'div_id': user.Div_Id.Div_Id,
             'Div_NameL': user.Div_Id.Div_NameL,
             'Div_NameE': user.Div_Id.Div_NameE,
             'Record_Status': user.Div_Id.Record_Status,
@@ -81,10 +84,10 @@ def login_view(request):
 
     if user.Role_ID:
         data['role'] = {
-            'Role_Id': user.Role_ID.Role_Id,
-            'Role_NameL': user.Role_ID.Role_NameL,
-            'Role_NameE': user.Role_ID.Role_NameE,
-            'Record_Status': user.Role_ID.Record_Status,
+            'role_id': user.Role_ID.role_id,
+            'role_name_la': user.Role_ID.role_name_la,
+            'role_name_en': user.Role_ID.role_name_en,
+            'record_Status': user.Role_ID.record_Status,
         }
     else:
         data['role'] = None
@@ -110,7 +113,7 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
     """
     Provides list, create, retrieve, update and destroy for Divisions.
     """
-    queryset = MTTB_Divisions.objects.all().order_by('Div_Id')
+    queryset = MTTB_Divisions.objects.all().order_by('div_id')
     serializer_class = MTTBDivisionSerializer
 
     def get_permissions(self):
@@ -150,7 +153,7 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
     """
     Provides CRUD for Role_Master.
     """
-    queryset = MTTB_Role_Master.objects.all().order_by('Role_Id')
+    queryset = MTTB_Role_Master.objects.all().order_by('role_id')
     serializer_class = MTTBRoleSerializer
 
     def get_permissions(self):

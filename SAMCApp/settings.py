@@ -52,6 +52,8 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
+    'USER_ID_FIELD': 'user_id',
+    'USER_ID_CLAIM': 'user_id',
     # Access tokens will expire after 1 day
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
 
@@ -138,7 +140,7 @@ DATABASES = {
     # }
     'default': {
         'ENGINE': 'mssql',                
-        'NAME': 'SAMC',          
+        'NAME': 'SAMCDB',          
         'USER': 'sa',            
         'PASSWORD': 'mess!Q@083@@',
         'HOST': '192.168.10.35',  

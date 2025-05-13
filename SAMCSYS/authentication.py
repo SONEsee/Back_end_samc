@@ -1,6 +1,6 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
-from .models import MTTB_User
+from .models import MTTB_Users
 
 class MTTBJWTAuthentication(JWTAuthentication):
     """
@@ -17,6 +17,6 @@ class MTTBJWTAuthentication(JWTAuthentication):
             raise AuthenticationFailed('Token contained no recognizable user identification', 'token_no_user_id')
 
         try:
-            return MTTB_User.objects.get(pk=user_id)
-        except MTTB_User.DoesNotExist:
+            return MTTB_Users.objects.get(pk=user_id)
+        except MTTB_Users.DoesNotExist:
             raise AuthenticationFailed('User not found', 'user_not_found')
