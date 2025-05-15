@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework import routers
-from .views import MTTBUserViewSet, login_view,MTTBDivisionViewSet,MTTBRoleViewSet,MTTBRoleDetailViewSet
+from .views import MTTBUserViewSet, login_view,MTTBDivisionViewSet,MTTBRoleViewSet,MTTBRoleDetailViewSet,sidebar_for_user
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -18,4 +18,5 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path("api/", include(router.urls)),
     path("api/login/", login_view, name="login"),
+    path('api/users/<str:user_id>/sidebar/', sidebar_for_user, name='user-sidebar'),
 ]

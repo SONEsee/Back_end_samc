@@ -197,3 +197,130 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
+
+
+# Function Loop Sidebar Menu
+
+from collections import OrderedDict
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+
+from .models import (
+    MTTB_Users,
+    MTTB_Role_Detail,
+    MTTB_Function_Desc,
+    MTTB_SUB_MENU,
+    MTTB_MAIN_MENU,
+    STTB_ModulesInfo,
+)
+from .serializers import ModuleSerializer  # if you added them
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sidebar_for_user(request, user_id):
+    """
+    GET /api/users/{user_id}/sidebar/
+    Returns modules → main menus → sub menus → functions with permissions.
+    """
+    # 1) Load user & role
+    user = get_object_or_404(MTTB_Users, user_id=user_id)
+    role = user.Role_ID
+    print("User:", user.user_id, "Role:", user.Role_ID)
+
+    if not role:
+        return Response([])  # no role, no sidebar
+
+    # 2) Fetch all role_detail for this role, with joins down to module
+    details = (
+        MTTB_Role_Detail.objects
+          .filter(role_id=role)
+          .select_related(
+              'function_id',
+              'function_id__sub_menu_id',
+              'function_id__sub_menu_id__menu_id',
+              'function_id__sub_menu_id__menu_id__module_Id'
+          )
+    )
+
+    # 3) Build nested dict: module → main_menu → sub_menu → [functions]
+    modules = OrderedDict()
+    for det in details:
+        func  = det.function_id
+        sub   = func.sub_menu_id
+        main  = sub.menu_id if sub else None
+        mod   = main.module_Id if main else None
+        if not (sub and main and mod):
+            continue
+
+        # Module level
+        mod_key = mod.module_Id
+        if mod_key not in modules:
+            modules[mod_key] = {
+                'module_Id':      mod.module_Id,
+                'module_name_la': mod.module_name_la,
+                'module_name_en': mod.module_name_en,
+                'module_icon':    mod.module_icon,
+                'module_order':   mod.module_order,
+                'is_active':      mod.is_active,
+                'main_menus':     OrderedDict()
+            }
+
+        # Main menu level
+        mm_key = main.menu_id
+        mm_group = modules[mod_key]['main_menus']
+        if mm_key not in mm_group:
+            mm_group[mm_key] = {
+                'menu_id':      main.menu_id,
+                'menu_name_la': main.menu_name_la,
+                'menu_name_en': main.menu_name_en,
+                'menu_icon':    main.menu_icon,
+                'menu_order':   main.menu_order,
+                'is_active':    main.is_active,
+                'sub_menus':    OrderedDict()
+            }
+
+        # Sub menu level
+        sm_key = sub.sub_menu_id
+        sm_group = mm_group[mm_key]['sub_menus']
+        if sm_key not in sm_group:
+            sm_group[sm_key] = {
+                'sub_menu_id':    sub.sub_menu_id,
+                'sub_menu_name_la': sub.sub_menu_name_la,
+                'sub_menu_name_en': sub.sub_menu_name_en,
+                'sub_menu_icon':   sub.sub_menu_icon,
+                'sub_menu_order':  sub.sub_menu_order,
+                'is_active':       sub.is_active,
+                'functions':       []
+            }
+
+        # Finally, append the function + its permission flags
+        sm_group[sm_key]['functions'].append({
+            'function_id':    func.function_id,
+            'description_la': func.description_la,
+            'description_en': func.description_en,
+            'permissions': {
+                'new':    det.New_Detail,
+                'delete': det.Del_Detail,
+                'edit':   det.Edit_Detail,
+                'auth':   det.Auth_Detail,
+            }  
+        })
+
+    # 4) Convert sub-dicts to lists
+    result = []
+    for mod in modules.values():
+        mm_list = []
+        for mm in mod['main_menus'].values():
+            sm_list = list(mm['sub_menus'].values())
+            mm['sub_menus'] = sm_list
+            mm_list.append(mm)
+        mod['main_menus'] = mm_list
+        result.append(mod)
+
+    # 5) (Optional) validate with serializer
+    # serialized = ModuleSerializer(result, many=True)
+    # return Response(serialized.data)
+
+    return Response(result)

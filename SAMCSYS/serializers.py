@@ -139,3 +139,37 @@ class RoleDetailSerializer(serializers.ModelSerializer):
             'Auth_Detail',
         ]
 
+
+class FunctionPermSerializer(serializers.Serializer):
+    function_id    = serializers.CharField()
+    description_la = serializers.CharField()
+    description_en = serializers.CharField()
+    permissions    = serializers.DictField()
+
+class SubMenuSerializer(serializers.Serializer):
+    sub_menu_id    = serializers.CharField()
+    sub_menu_name_la = serializers.CharField()
+    sub_menu_name_en = serializers.CharField()
+    sub_menu_icon  = serializers.CharField(allow_null=True)
+    sub_menu_order = serializers.CharField()
+    is_active      = serializers.BooleanField()
+    functions      = FunctionPermSerializer(many=True)
+
+class MainMenuSerializer(serializers.Serializer):
+    menu_id        = serializers.CharField()
+    menu_name_la   = serializers.CharField()
+    menu_name_en   = serializers.CharField()
+    menu_icon      = serializers.CharField(allow_null=True)
+    menu_order     = serializers.CharField()
+    is_active      = serializers.BooleanField()
+    sub_menus      = SubMenuSerializer(many=True)
+
+class ModuleSerializer(serializers.Serializer):
+    module_Id      = serializers.CharField()
+    module_name_la = serializers.CharField()
+    module_name_en = serializers.CharField()
+    module_icon    = serializers.CharField(allow_null=True)
+    module_order   = serializers.CharField()
+    is_active      = serializers.CharField()
+    main_menus     = MainMenuSerializer(many=True)
+
