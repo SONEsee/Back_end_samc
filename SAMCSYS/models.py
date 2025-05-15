@@ -126,6 +126,65 @@ class MTTB_Users(models.Model):
     def has_module_perms(self, app_label):
         return True
     # ────────────────────────────────────────────
+
+class MTTB_USER_ACCESS_LOG(models.Model):
+    log_id = models.AutoField(primary_key=True)  
+    user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE)   
+    login_datetime = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    logout_datetime = models.DateTimeField(auto_now_add=True,null=True, blank=True)
+    session_id = models.CharField(max_length=100, null=True, blank=True)
+    ip_address = models.CharField(max_length=45,null=True, blank=True)
+    user_agent = models.CharField(max_length=255, null=True, blank=True)
+    login_status = models.CharField(max_length=1)
+    logout_type = models.CharField(max_length=1, null=True, blank=True)
+    remarks = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural='USER_ACCESS_LOG'
+
+class MTTB_USER_ACTIVITY_LOG(models.Model):
+    activity_id = models.AutoField(primary_key=True) 
+    user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE) 
+    session_id = models.CharField(max_length=100)
+    activity_datetime = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    module_id = models.CharField(max_length=10)
+    function_id = models.CharField(max_length=20)
+    action_type = models.CharField(max_length=20)
+    record_id = models.CharField(max_length=100, null=True, blank=True)
+    old_values = models.TextField(null=True, blank=True) 
+    new_values = models.TextField(null=True, blank=True) 
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+class Meta:
+        verbose_name_plural='USER_ACTIVITY_LOG'
+
+class MTTB_EMPLOYEE(models.Model):
+    employee_id = models.CharField(max_length=20, primary_key=True)
+    user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE) 
+    employee_name_la = models.CharField(max_length=250)
+    employee_name_en = models.CharField(max_length=250, null=True, blank=True)
+    gender = models.CharField(max_length=1, choices=[('F', 'Female'), ('M', 'Male')], null=True, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    national_id = models.CharField(max_length=20, null=True, blank=True)
+    address_la = models.CharField(max_length=255, null=True, blank=True)
+    address_en = models.CharField(max_length=255, null=True, blank=True)
+    phone_number = models.CharField(max_length=15, null=True, blank=True)
+    email = models.CharField(max_length=100, null=True, blank=True)
+    position_code = models.CharField(max_length=10, null=True, blank=True)
+    division_id = models.CharField(max_length=20)
+    employee_photo = models.CharField(max_length=100, null=True, blank=True)
+    employee_signature = models.CharField(max_length=100,null=True, blank=True)
+    hire_date = models.DateField(max_length=10,null=True, blank=True)
+    employment_status = models.CharField(max_length=1, default='A')
+    record_stat = models.CharField(max_length=1)
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_employee')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_employee')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    class Meta:
+        verbose_name_plural='EMPLOYEE'
     
 class STTB_Dates(models.Model):
     date_id = models.AutoField(primary_key=True)
@@ -346,3 +405,218 @@ class MTTB_DATA_Entry(models.Model):
     class Meta:
         verbose_name_plural = 'DaTa_Entry'
         
+class DETB_JRNL_LOG(models.Model):
+    Reference_No = models.AutoField(primary_key=True)
+    Ccy_cd = models.CharField(max_length=3)
+    Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    Dr_cr = models.CharField(max_length=1)
+    Account = models.CharField(max_length=20)
+    Txn_code = models.CharField(max_length=3, null=True, blank=True)
+    Value_date = models.DateTimeField(auto_now=False,null=True , blank=True)
+    Exch_rate = models.DecimalField(max_digits=24, decimal_places=12, null=True, blank=True)
+    fin_cycle = models.CharField(max_length=9, null=True, blank=True)
+    Period_code = models.CharField(max_length=3, null=True, blank=True)
+    Addl_text = models.CharField(max_length=255, null=True, blank=True)
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_JRNL_LOG')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_JRNL_LOG')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    class Meta:
+        verbose_name_plural = 'JRNL_LOG'
+
+class DETB_JRNL_LOG_HIST(models.Model):
+    Reference_No = models.AutoField(primary_key=True)
+    Ccy_cd = models.CharField(max_length=3)
+    Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    Dr_cr = models.CharField(max_length=1)
+    Account = models.CharField(max_length=20)
+    Txn_code = models.CharField(max_length=3, null=True, blank=True)
+    Value_date = models.DateTimeField(auto_now=False,null=True , blank=True)
+    Exch_rate = models.DecimalField(max_digits=24, decimal_places=12, null=True, blank=True)
+    fin_cycle = models.CharField(max_length=9, null=True, blank=True)
+    Period_code = models.CharField(max_length=3, null=True, blank=True)
+    Addl_text = models.CharField(max_length=255, null=True, blank=True)
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_JRNL_LOG_HIST')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_JRNL_LOG_HIST')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    class Meta:
+        verbose_name_plural = 'JRNL_LOG_HIST'
+
+class ACTB_DAIRY_LOG(models.Model):
+    ac_entry_sr_no = models.AutoField(primary_key=True)
+    module = models.CharField(max_length=2)
+    trn_ref_no = models.CharField(max_length=16)
+    event_sr_no = models.IntegerField(default=0)
+    event = models.CharField(max_length=4, null=True, blank=True)
+    ac_no = models.CharField(max_length=20)
+    ac_ccy = models.CharField(max_length=3)
+    drcr_ind = models.CharField(max_length=1)
+    trn_code = models.CharField(max_length=3)
+    fcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    exch_rate = models.DecimalField(max_digits=24, decimal_places=1, null=True, blank=True)
+    lcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    external_ref_no = models.CharField(max_length=16, null=True, blank=True)
+    addl_text = models.CharField(max_length=255, null=True, blank=True)
+    trn_dt = models.DateField(null=True, blank=True)
+    type = models.CharField(max_length=1, null=True, blank=True)
+    category = models.CharField(max_length=1, null=True, blank=True)
+    value_dt = models.DateField(null=True, blank=True)
+    financial_cycle = models.CharField(max_length=9, null=True, blank=True)
+    period_code = models.CharField(max_length=3, null=True, blank=True)
+    user_id = models.CharField(max_length=12, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    auth_id = models.CharField(max_length=12, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    product = models.CharField(max_length=4, null=True, blank=True)
+    entry_seq_no = models.IntegerField(null=True, blank=True)
+    delete_stat = models.CharField(max_length=1, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'DAILY_LOG'
+
+class ACTB_DAIRY_log_HISTORY(models.Model):
+    ac_entry_sr_no = models.AutoField(primary_key=True)
+    module = models.CharField(max_length=2)
+    trn_ref_no = models.CharField(max_length=16)
+    event_sr_no = models.IntegerField(default=0)
+    event = models.CharField(max_length=4, null=True, blank=True)
+    ac_no = models.CharField(max_length=20)
+    ac_ccy = models.CharField(max_length=3)
+    drcr_ind = models.CharField(max_length=1)
+    trn_code = models.CharField(max_length=3)
+    fcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    exch_rate = models.DecimalField(max_digits=24, decimal_places=1, null=True, blank=True)
+    lcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    external_ref_no = models.CharField(max_length=16, null=True, blank=True)
+    addl_text = models.CharField(max_length=255, null=True, blank=True)
+    trn_dt = models.DateField(null=True, blank=True)
+    type = models.CharField(max_length=1, null=True, blank=True)
+    category = models.CharField(max_length=1, null=True, blank=True)
+    value_dt = models.DateField(null=True, blank=True)
+    financial_cycle = models.CharField(max_length=9, null=True, blank=True)
+    period_code = models.CharField(max_length=3, null=True, blank=True)
+    user_id = models.CharField(max_length=12, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    auth_id = models.CharField(max_length=12, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    product = models.CharField(max_length=4, null=True, blank=True)
+    entry_seq_no = models.IntegerField(null=True, blank=True)
+    delete_stat = models.CharField(max_length=1, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'DAIRY_log_HISTORY'
+
+class MTTB_EOC_MAINTAIN(models.Model):
+    eoc_id = models.AutoField(primary_key=True)
+    module_id = models.CharField(max_length=2)         
+    function_id = models.CharField(max_length=8)      
+    eoc_seq_no = models.IntegerField(default=0)                
+    eoc_type = models.CharField(max_length=3)          
+    record_stat = models.CharField(max_length=1)  
+    mod_no = models.IntegerField(null=True, blank=True)    
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_EOC_MAINTAIN')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_EOC_MAINTAIN')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True)      
+
+    class Meta:
+        verbose_name_plural = 'EOC_MAINTAIN'
+
+class STTB_EOC_STATUS(models.Model):
+    eoc_stt_id = models.AutoField(primary_key=True)
+    eoc_seq_no = models.IntegerField(null=True, blank=True)        
+    module_id = models.CharField(max_length=2)                   
+    function_id = models.CharField(max_length=8)                   
+    eoc_type = models.CharField(max_length=3)                     
+    eod_date = models.DateTimeField(auto_now=False, null=True, blank=True)         
+    eoc_status = models.CharField(max_length=1)                   
+    error = models.CharField(max_length=550, null=True, blank=True)       
+
+    class Meta:
+        verbose_name_plural = 'EOC_STATUS'
+
+class STTB_EOC_DAILY_LOG(models.Model):
+    ac_entry_sr_no = models.AutoField(primary_key=True)
+    module = models.CharField(max_length=2)
+    trn_ref_no = models.CharField(max_length=15)
+    event_sr_no = models.IntegerField(null=True, blank=True)
+    event = models.CharField(max_length=4, null=True, blank=True)
+    ac_no = models.CharField(max_length=20)
+    ac_ccy = models.CharField(max_length=3)
+    drcr_ind = models.CharField(max_length=1)
+    trn_code = models.CharField(max_length=3)
+    fcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    exch_rate = models.DecimalField(max_digits=24, decimal_places=1, null=True, blank=True)
+    lcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    external_ref_no = models.CharField(max_length=16, null=True, blank=True)
+    addl_text = models.CharField(max_length=255, null=True, blank=True)
+    trn_dt = models.DateField(null=True, blank=True)
+    type = models.CharField(max_length=1, null=True, blank=True)
+    category = models.CharField(max_length=1, null=True, blank=True)
+    value_dt = models.DateField(null=True, blank=True)
+    financial_cycle = models.CharField(max_length=9)
+    period_code = models.CharField(max_length=3)
+    user_id = models.CharField(max_length=12, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    auth_id = models.CharField(max_length=12, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    product = models.CharField(max_length=4, null=True, blank=True)
+    entry_seq_no = models.IntegerField(null=True, blank=True)       
+
+    class Meta:
+        verbose_name_plural = 'EOC_DAILY_LOG'
+
+class STTB_GL_BAL(models.Model):
+    gl_bal_id = models.AutoField(primary_key=True)
+    gl_code = models.CharField(max_length=20, null=True, blank=True)
+    CCy_Code = models.CharField(max_length=20, null=True, blank=True)
+    fin_year = models.CharField(max_length=9, null=True, blank=True)
+    period_code = models.CharField(max_length=25, null=True, blank=True)
+    category = models.CharField(max_length=1, null=True, blank=True)
+    dr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'GL_BAL'
+
+class STTB_GL_SUB_BAL(models.Model):
+    gl_sub_bal_id = models.AutoField(primary_key=True)
+    gl_code = models.CharField(max_length=20, null=True, blank=True)
+    CCy_Code = models.CharField(max_length=20, null=True, blank=True)
+    fin_year = models.CharField(max_length=9, null=True, blank=True)
+    period_code = models.CharField(max_length=25, null=True, blank=True)
+    dr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_dr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    open_cr_bal_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'GL_SUB_BAL'
