@@ -1,7 +1,7 @@
 import hashlib
 from rest_framework import serializers
 from .models import MTTB_Users
-from .models import MTTB_Users, MTTB_Divisions, MTTB_Role_Master
+from .models import MTTB_Users, MTTB_Divisions, MTTB_Role_Master,STTB_ModulesInfo,MTTB_MAIN_MENU,MTTB_SUB_MENU,MTTB_Function_Desc
 class DivisionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Divisions
@@ -94,13 +94,13 @@ from .models import (
     MTTB_Function_Desc,
     STTB_ModulesInfo,
 )
-
+from .models import STTB_ModulesInfo
 class STTBModuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = STTB_ModulesInfo
         fields = ['M_Id', 'M_NameL', 'M_NameE']
 
-
+from .models import MTTB_Function_Desc
 class FunctionDescriptionSerializer(serializers.ModelSerializer):
     M_Id = STTBModuleSerializer(read_only=True)
 
@@ -139,7 +139,6 @@ class RoleDetailSerializer(serializers.ModelSerializer):
             'Auth_Detail',
         ]
 
-
 class FunctionPermSerializer(serializers.Serializer):
     function_id    = serializers.CharField()
     description_la = serializers.CharField()
@@ -173,3 +172,23 @@ class ModuleSerializer(serializers.Serializer):
     is_active      = serializers.CharField()
     main_menus     = MainMenuSerializer(many=True)
 
+from .models import STTB_ModulesInfo
+class ModulesInfoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = STTB_ModulesInfo
+        fields = '__all__'
+
+class MainMenuSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_MAIN_MENU
+        fields = '__all__'
+
+class SubMenuSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_SUB_MENU
+        fields = '__all__'
+
+class FunctionDescSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Function_Desc
+        fields = '__all__'

@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework import routers
-from .views import MTTBUserViewSet, login_view,MTTBDivisionViewSet,MTTBRoleViewSet,MTTBRoleDetailViewSet,sidebar_for_user
+from .views import MTTBUserViewSet, login_view,MTTBDivisionViewSet,MTTBRoleViewSet,MTTBRoleDetailViewSet,sidebar_for_user,role_sidebar,ModulesInfoViewSet,MainMenuViewSet,SubMenuViewSet,FunctionDescViewSet
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -11,6 +11,10 @@ router.register(r"users", MTTBUserViewSet, basename="user"),
 router.register(r'divisions', MTTBDivisionViewSet, basename='division'),
 router.register(r'roles', MTTBRoleViewSet, basename='role'),
 router.register(r'role-details', MTTBRoleDetailViewSet, basename='role-detail')
+router.register(r'modules', ModulesInfoViewSet, basename='modules')
+router.register(r'main-menus', MainMenuViewSet, basename='main-menu')
+router.register(r'sub-menus', SubMenuViewSet, basename='sub-menu')
+router.register(r'functions', FunctionDescViewSet, basename='function-desc')
 
 urlpatterns = [
     #TOKEN
@@ -19,4 +23,6 @@ urlpatterns = [
     path("api/", include(router.urls)),
     path("api/login/", login_view, name="login"),
     path('api/users/<str:user_id>/sidebar/', sidebar_for_user, name='user-sidebar'),
+    path('api/role/<str:role_id>/sidebar/', role_sidebar, name='role-sidebar'),
+
 ]
