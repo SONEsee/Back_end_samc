@@ -167,7 +167,6 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
         serializer.save(
             Maker_Id=maker,
             Maker_DT_Stamp=timezone.now(),
-            Auth_Status='P'
         )
 
     def perform_update(self, serializer):
