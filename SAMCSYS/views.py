@@ -291,6 +291,7 @@ def sidebar_for_user(request, user_id):
                 'sub_menu_name_en': sub.sub_menu_name_en,
                 'sub_menu_icon':   sub.sub_menu_icon,
                 'sub_menu_order':  sub.sub_menu_order,
+                'sub_menu_urls':   sub.sub_menu_urls,
                 'is_active':       sub.is_active,
                 'functions':       []
             }
