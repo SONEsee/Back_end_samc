@@ -289,7 +289,7 @@ def sidebar_for_user(request, user_id):
                 'sub_menu_name_en': sub.sub_menu_name_en,
                 'sub_menu_icon':   sub.sub_menu_icon,
                 'sub_menu_order':  sub.sub_menu_order,
-                # 'sub_menu_urls':   sub.sub_menu_urls,
+                'sub_menu_urls':   sub.sub_menu_urls,
                 'is_active':       sub.is_active,
                 'functions':       []
             }
@@ -297,7 +297,6 @@ def sidebar_for_user(request, user_id):
         # Finally, append the function + its permission flags
         sm_group[sm_key]['functions'].append({
             'function_id':    func.function_id,
-            'all_link':       func.all_link,
             'description_la': func.description_la,
             'description_en': func.description_en,
             'permissions': {
