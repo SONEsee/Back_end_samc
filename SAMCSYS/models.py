@@ -39,7 +39,7 @@ class MTTB_SUB_MENU(models.Model):
     sub_menu_name_en = models.CharField(max_length=250)
     sub_menu_icon = models.CharField(max_length=250, null=True, blank=True)
     sub_menu_order = models.CharField(max_length=3,null=True,blank=True)
-    sub_menu_urls = models.CharField(max_length=100, null=True, blank=True)
+    # sub_menu_urls = models.CharField(max_length=100, null=True, blank=True)
     is_active = models.BooleanField(default=False)
     created_by = models.CharField(max_length=20, null=True, blank=True)
     created_date = models.DateTimeField(auto_now_add=True)
