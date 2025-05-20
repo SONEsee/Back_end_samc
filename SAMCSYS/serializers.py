@@ -161,7 +161,7 @@ class MainMenuSerializer(serializers.Serializer):
     menu_icon      = serializers.CharField(allow_null=True)
     menu_order     = serializers.CharField()
     is_active      = serializers.BooleanField()
-    sub_menus      = SubMenuSerializer(many=True)
+    SubMenuSerializer = SubMenuSerializer(many=True)
 
 class ModuleSerializer(serializers.Serializer):
     module_Id      = serializers.CharField()
@@ -192,3 +192,35 @@ class FunctionDescSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Function_Desc
         fields = '__all__'
+
+from .models import MTTB_Ccy_DEFN
+
+class CcyDefnSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Ccy_DEFN
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+from .models import MTTB_EXC_Rate, MTTB_EXC_Rate_History
+
+class ExcRateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_EXC_Rate
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+class ExcRateHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_EXC_Rate_History
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+
+from rest_framework import serializers
+from .models import MTTB_GLMaster
+
+class GLMasterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_GLMaster
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')

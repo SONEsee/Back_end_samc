@@ -479,3 +479,155 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
     queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
     serializer_class = FunctionDescSerializer
     permission_classes = [IsAuthenticated]
+
+from rest_framework import viewsets, status
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+from django.utils import timezone
+from .models import MTTB_Ccy_DEFN
+from .serializers import CcyDefnSerializer
+
+class CcyDefnViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for currency definitions.
+    """
+    queryset = MTTB_Ccy_DEFN.objects.all().order_by('ccy_code')
+    serializer_class = CcyDefnSerializer
+
+    def get_permissions(self):
+        # Allow unauthenticated creation
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        # Stamp maker and date
+        maker = None
+        if self.request.user and self.request.user.is_authenticated:
+            maker = self.request.user
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now(),
+        )
+
+    def perform_update(self, serializer):
+        # Stamp checker and date
+        serializer.save(
+            Checker_DT_Stamp=timezone.now()
+        )
+
+from rest_framework import viewsets, status
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+from django.utils import timezone
+from .models import MTTB_EXC_Rate, MTTB_EXC_Rate_History
+from .serializers import ExcRateSerializer, ExcRateHistorySerializer
+
+class ExcRateViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Exchange Rates.
+    """
+    queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('ccy_code__ccy_code')
+    serializer_class = ExcRateSerializer
+
+    def get_permissions(self):
+        # Allow unauthenticated create
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        maker = None
+        if self.request.user and self.request.user.is_authenticated:
+            maker = self.request.user
+        exc_rate = serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+        # Also record initial history entry
+        MTTB_EXC_Rate_History.objects.create(
+            ccy_code=exc_rate.ccy_code,
+            Buy_Rate=exc_rate.Buy_Rate,
+            Sale_Rate=exc_rate.Sale_Rate,
+            INT_Auth_Status=exc_rate.INT_Auth_Status,
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now(),
+            Auth_Status=exc_rate.Auth_Status
+        )
+
+    def perform_update(self, serializer):
+        checker = None
+        if self.request.user and self.request.user.is_authenticated:
+            checker = self.request.user
+        exc_rate = serializer.save(
+            Checker_DT_Stamp=timezone.now()
+        )
+        # Record history on each update
+        MTTB_EXC_Rate_History.objects.create(
+            ccy_code=exc_rate.ccy_code,
+            Buy_Rate=exc_rate.Buy_Rate,
+            Sale_Rate=exc_rate.Sale_Rate,
+            INT_Auth_Status=exc_rate.INT_Auth_Status,
+            Maker_Id=checker,
+            Maker_DT_Stamp=timezone.now(),
+            Auth_Status=exc_rate.Auth_Status
+        )
+
+class ExcRateHistoryViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Exchange Rate History.
+    """
+    queryset = MTTB_EXC_Rate_History.objects.select_related('ccy_code').all().order_by('-Maker_DT_Stamp')
+    serializer_class = ExcRateHistorySerializer
+
+    def get_permissions(self):
+        # Read operations require authentication; creation only via ExcRateViewSet
+        if self.request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]
+    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def exchange_rate_history_for_ccy(request, ccy_code):
+    """
+    GET /api/exchange-rate-history/<ccy_code>/
+    Returns all history entries for the given currency code.
+    """
+    histories = MTTB_EXC_Rate_History.objects.filter(ccy_code__ccy_code=ccy_code).order_by('-Maker_DT_Stamp')
+    serializer = ExcRateHistorySerializer(histories, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.utils import timezone
+from .models import MTTB_GLMaster
+from .serializers import GLMasterSerializer
+
+class GLMasterViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for General Ledger Master records.
+    """
+    queryset = MTTB_GLMaster.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('gl_code')
+    serializer_class = GLMasterSerializer
+
+    def get_permissions(self):
+        # Allow unauthenticated creation (e.g. bootstrap), require auth otherwise
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        gl = serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+        return gl
+
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        gl = serializer.save(
+            Checker_DT_Stamp=timezone.now()
+        )
+        return gl
