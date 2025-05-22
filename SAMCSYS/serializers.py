@@ -192,3 +192,14 @@ class FunctionDescSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Function_Desc
         fields = '__all__'
+
+from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
+class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_EMPLOYEE
+        fields = '__all__'
+
+class MTTB_LCL_HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_LCL_Holiday
+        fields = '__all__'

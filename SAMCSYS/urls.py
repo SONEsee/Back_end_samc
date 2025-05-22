@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework import routers
 from .views import MTTBUserViewSet, login_view,MTTBDivisionViewSet,MTTBRoleViewSet,MTTBRoleDetailViewSet,sidebar_for_user,role_sidebar,ModulesInfoViewSet,MainMenuViewSet,SubMenuViewSet,FunctionDescViewSet
+from .views import MTTB_EMPLOYEEViewSet,MTTB_LCL_HolidayViewSet
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -15,6 +16,8 @@ router.register(r'modules', ModulesInfoViewSet, basename='modules')
 router.register(r'main-menus', MainMenuViewSet, basename='main-menu')
 router.register(r'sub-menus', SubMenuViewSet, basename='sub-menu')
 router.register(r'functions', FunctionDescViewSet, basename='function-desc')
+router.register(r'employees', MTTB_EMPLOYEEViewSet, basename='employee')
+router.register(r'lcl_holiday', MTTB_LCL_HolidayViewSet, basename='holiday')
 
 urlpatterns = [
     #TOKEN

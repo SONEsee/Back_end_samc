@@ -621,3 +621,47 @@ class STTB_GL_SUB_BAL(models.Model):
 
     class Meta:
         verbose_name_plural = 'GL_SUB_BAL'
+
+class Balancesheet_acc(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'balancesheet_acc'
+
+class Balancesheet_mfi(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'balancesheet_mfi'
+
+class Incomestatement_acc(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'incomestatement_acc'
+
+class Incomestatement_mfi(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'incomestatement_mfi'

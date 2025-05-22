@@ -479,3 +479,19 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
     queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
     serializer_class = FunctionDescSerializer
     permission_classes = [IsAuthenticated]
+
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
+from .serializers import MTTB_EMPLOYEESerializer,MTTB_LCL_HolidaySerializer
+
+class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
+    serializer_class = MTTB_EMPLOYEESerializer
+    permission_classes = [IsAuthenticated]
+
+class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_LCL_Holiday.objects.all().order_by('lcl_holiday_id')
+    serializer_class = MTTB_LCL_HolidaySerializer
+    permission_classes = [IsAuthenticated]
