@@ -26,12 +26,11 @@ from .serializers import MTTBUserSerializer
 #             return [AllowAny()]
 #         return super().get_permissions()
 
-
 def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
-
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
 
@@ -44,7 +43,22 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
 
+    def perform_create(self, serializer):
+        # request.user is your MTTB_Users instance via JWTAuthentication
+        maker = self.request.user if self.request.user.is_authenticated else None
+        # pass Maker_Id and Maker_DT_Stamp into serializer.save()
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
 
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user.is_authenticated else None
+        # set Checker_Id and Checker_DT_Stamp
+        serializer.save(
+            Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -137,8 +151,10 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        # Stamp the checker on updates
+        checker = self.request.user if self.request.user.is_authenticated else None
+        # set Checker_Id and Checker_DT_Stamp
         serializer.save(
+            Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
 
@@ -170,8 +186,10 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        # Stamp checker and timestamp
+        checker = self.request.user if self.request.user.is_authenticated else None
+        # set Checker_Id and Checker_DT_Stamp
         serializer.save(
+            Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
 
@@ -511,8 +529,10 @@ class CcyDefnViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        # Stamp checker and date
+        checker = self.request.user if self.request.user.is_authenticated else None
+
         serializer.save(
+            Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
 
@@ -628,6 +648,7 @@ class GLMasterViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
         gl = serializer.save(
+            Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
         return gl
@@ -661,8 +682,22 @@ class GLSubViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
         serializer.save(
+            Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
 
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
+from .serializers import MTTB_EMPLOYEESerializer,MTTB_LCL_HolidaySerializer
 
+class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
+    serializer_class = MTTB_EMPLOYEESerializer
+    permission_classes = [IsAuthenticated]
+
+class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_LCL_Holiday.objects.all().order_by('lcl_holiday_id')
+    serializer_class = MTTB_LCL_HolidaySerializer
+    permission_classes = [IsAuthenticated]
 

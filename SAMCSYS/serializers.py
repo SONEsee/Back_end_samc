@@ -119,11 +119,11 @@ class FunctionDescriptionSerializer(serializers.ModelSerializer):
 
 
 class RoleDetailSerializer(serializers.ModelSerializer):
-    # Writable fields for foreign keys
-    Role_Id = serializers.PrimaryKeyRelatedField(
+    # Rename writable fields to match model field names
+    role_id = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Role_Master.objects.all()
     )
-    Function_Id = serializers.PrimaryKeyRelatedField(
+    function_id = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Function_Desc.objects.all()
     )
 
@@ -232,3 +232,13 @@ class GLSubSerializer(serializers.ModelSerializer):
         model = MTTB_GLSub
         fields = '__all__'
         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
+class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_EMPLOYEE
+        fields = '__all__'
+
+class MTTB_LCL_HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_LCL_Holiday
+        fields = '__all__'

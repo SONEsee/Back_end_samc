@@ -94,7 +94,7 @@ class MTTB_Users(models.Model):
     Maker_Id = models.ForeignKey(
         'self', null=True, blank=True, on_delete=models.CASCADE, related_name='created_userss'
     )
-    Maker_DT_Stamp = models.DateTimeField(null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now_add=True,null=True, blank=True)
     Checker_Id = models.ForeignKey(
         'self', null=True, blank=True, on_delete=models.CASCADE, related_name='checked_userss'
     )
@@ -621,3 +621,47 @@ class STTB_GL_SUB_BAL(models.Model):
 
     class Meta:
         verbose_name_plural = 'GL_SUB_BAL'
+
+class Balancesheet_acc(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'balancesheet_acc'
+
+class Balancesheet_mfi(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'balancesheet_mfi'
+
+class Incomestatement_acc(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'incomestatement_acc'
+
+class Incomestatement_mfi(models.Model):
+    no = models.AutoField(primary_key=True)
+    report_number = models.CharField(max_length=50, null=True, blank=True)
+    description = models.CharField(max_length=2500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)
+    Mvalue = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'incomestatement_mfi'
