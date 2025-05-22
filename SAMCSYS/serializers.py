@@ -107,7 +107,7 @@ class FunctionDescriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Function_Desc
         fields = [
-            'Function_Id',
+            'function_id',
             'Function_Desc',
             'Main_Menu',
             'Sub_Menu',
@@ -130,9 +130,8 @@ class RoleDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Role_Detail
         fields = [
-            'id',
-            'Role_Id',
-            'Function_Id',
+            'role_id',
+            'function_id',
             'New_Detail',
             'Del_Detail',
             'Edit_Detail',

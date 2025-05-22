@@ -186,7 +186,7 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     CRUD for Role_Detail records.
     """
     queryset = MTTB_Role_Detail.objects.select_related(
-        'Role_Id', 'Function_Id'
+        'role_id', 'function_id'
     ).all()
     serializer_class = RoleDetailSerializer
 
@@ -663,4 +663,6 @@ class GLSubViewSet(viewsets.ModelViewSet):
         serializer.save(
             Checker_DT_Stamp=timezone.now()
         )
+
+
 
