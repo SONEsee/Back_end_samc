@@ -608,7 +608,7 @@ class GLMasterViewSet(viewsets.ModelViewSet):
     """
     CRUD for General Ledger Master records.
     """
-    queryset = MTTB_GLMaster.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('gl_code')
+    queryset = MTTB_GLMaster.objects.select_related('Maker_Id', 'Checker_Id').filter(glType='5').all().order_by('gl_code')
     serializer_class = GLMasterSerializer
 
     def get_permissions(self):
@@ -631,3 +631,36 @@ class GLMasterViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
         return gl
+    
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.utils import timezone
+from .models import MTTB_GLSub
+from .serializers import GLSubSerializer
+
+class GLSubViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for General Ledger Sub-account (GLSub) records.
+    """
+    queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
+    serializer_class = GLSubSerializer
+
+    def get_permissions(self):
+        # Allow unauthenticated create if needed
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Checker_DT_Stamp=timezone.now()
+        )
+
