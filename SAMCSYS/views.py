@@ -33,11 +33,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
+from rest_framework.parsers import MultiPartParser, FormParser
 
 class MTTBUserViewSet(viewsets.ModelViewSet):
     queryset = MTTB_Users.objects.select_related('div_id', 'Role_ID').all()
     serializer_class = MTTBUserSerializer
-
+    parser_classes = [MultiPartParser, FormParser]
     def get_permissions(self):
         if self.request.method == 'POST':
             return [AllowAny()]
@@ -194,25 +195,61 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
         )
 
 
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, AllowAny
+# from rest_framework import viewsets
+# from rest_framework.permissions import IsAuthenticated, AllowAny
+# from .models import MTTB_Role_Detail
+# from .serializers import RoleDetailSerializer
+
+# class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
+#     """
+#     CRUD for Role_Detail records.
+#     """
+#     queryset = MTTB_Role_Detail.objects.select_related(
+#         'role_id', 'function_id'
+#     ).all()
+#     serializer_class = RoleDetailSerializer
+
+#     def get_permissions(self):
+#         # Allow open creation; require auth for all others
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status, viewsets
 from .models import MTTB_Role_Detail
 from .serializers import RoleDetailSerializer
 
 class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for Role_Detail records.
-    """
-    queryset = MTTB_Role_Detail.objects.select_related(
-        'role_id', 'function_id'
-    ).all()
+    queryset = MTTB_Role_Detail.objects.select_related('role_id', 'function_id').all()
     serializer_class = RoleDetailSerializer
 
-    def get_permissions(self):
-        # Allow open creation; require auth for all others
-        if self.request.method == 'POST':
-            return [AllowAny()]
-        return [IsAuthenticated()]
+    @action(detail=False, methods=['get'], url_path='single')
+    def get_single(self, request):
+        role_id = request.query_params.get('role_id')
+        function_id = request.query_params.get('function_id')
+
+        try:
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+            serializer = self.get_serializer(obj)
+            return Response(serializer.data)
+        except MTTB_Role_Detail.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['put'], url_path='single')
+    def update_single(self, request):
+        role_id = request.query_params.get('role_id')
+        function_id = request.query_params.get('function_id')
+
+        try:
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+        except MTTB_Role_Detail.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 # Function Loop Sidebar Menu
@@ -618,6 +655,42 @@ def exchange_rate_history_for_ccy(request, ccy_code):
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+# from rest_framework import viewsets
+# from rest_framework.permissions import IsAuthenticated, AllowAny
+# from django.utils import timezone
+# from .models import MTTB_GLMaster
+# from .serializers import GLMasterSerializer
+
+# class GLMasterViewSet(viewsets.ModelViewSet):
+#     """
+#     CRUD for General Ledger Master records.
+#     """
+#     queryset = MTTB_GLMaster.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('gl_code')
+#     serializer_class = GLMasterSerializer
+
+#     def get_permissions(self):
+#         # Allow unauthenticated creation (e.g. bootstrap), require auth otherwise
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+
+#     def perform_create(self, serializer):
+#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         gl = serializer.save(
+#             Maker_Id=maker,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+#         return gl
+
+#     def perform_update(self, serializer):
+#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         gl = serializer.save(
+#             Checker_Id=checker,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+#         return gl
+
+
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
@@ -626,32 +699,59 @@ from .serializers import GLMasterSerializer
 
 class GLMasterViewSet(viewsets.ModelViewSet):
     """
-    CRUD for General Ledger Master records.
+    CRUD for General Ledger Master records,
+    with optional filtering on ?glType=X&category=Y
+    and search via ?gl_code=substring
     """
-    queryset = MTTB_GLMaster.objects.select_related('Maker_Id', 'Checker_Id').filter(glType='5').all().order_by('gl_code')
     serializer_class = GLMasterSerializer
 
     def get_permissions(self):
-        # Allow unauthenticated creation (e.g. bootstrap), require auth otherwise
+        # Allow unauthenticated POST, require auth otherwise
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
+    def get_queryset(self):
+        # Base queryset (with your related joins/order)
+        qs = (
+            MTTB_GLMaster.objects
+            .select_related('Maker_Id', 'Checker_Id')
+            .all()
+            .order_by('gl_code')
+        )
+
+        params = self.request.query_params
+
+        # Filter by glType if provided
+        gltype = params.get('glType')
+        if gltype:
+            qs = qs.filter(glType=gltype)
+
+        # Filter by category if provided
+        category = params.get('category')
+        if category:
+            qs = qs.filter(category=category)
+
+        # Search gl_code substring if provided
+        code = params.get('gl_code')
+        if code:
+            qs = qs.filter(gl_code__icontains=code)
+
+        return qs
+
     def perform_create(self, serializer):
-        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-        gl = serializer.save(
+        maker = self.request.user if self.request.user.is_authenticated else None
+        serializer.save(
             Maker_Id=maker,
             Maker_DT_Stamp=timezone.now()
         )
-        return gl
 
     def perform_update(self, serializer):
-        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-        gl = serializer.save(
+        checker = self.request.user if self.request.user.is_authenticated else None
+        serializer.save(
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
-        return gl
     
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -696,8 +796,79 @@ class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
     serializer_class = MTTB_EMPLOYEESerializer
     permission_classes = [IsAuthenticated]
 
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )
+
 class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
     queryset = MTTB_LCL_Holiday.objects.all().order_by('lcl_holiday_id')
     serializer_class = MTTB_LCL_HolidaySerializer
     permission_classes = [IsAuthenticated]
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from .models import MTTB_Role_Detail
+from .serializers import RoleDetailSerializer
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_role_detail(request):
+    role_id = request.query_params.get('role_id')
+    function_id = request.query_params.get('function_id')
+
+    try:
+        obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+    except MTTB_Role_Detail.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = RoleDetailSerializer(obj, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.utils import timezone
+from .models import MTTB_Fin_Cycle
+from .serializers import FinCycleSerializer
+
+class FinCycleViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Financial Cycles.
+    """
+    queryset = MTTB_Fin_Cycle.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('fin_cycle')
+    serializer_class = FinCycleSerializer
+
+    def get_permissions(self):
+        # Allow anyone to create a new cycle, require auth elsewhere
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+             Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )

@@ -10,7 +10,14 @@ from .views import (
     ModulesInfoViewSet,
     MainMenuViewSet,
     SubMenuViewSet,
+    CcyDefnViewSet,
+    ExcRateViewSet,
     FunctionDescViewSet,
+    ExcRateHistoryViewSet,
+    GLMasterViewSet,
+    GLSubViewSet,
+    FinCycleViewSet,
+    update_role_detail,
     exchange_rate_history_for_ccy
 )
 from .views import MTTB_EMPLOYEEViewSet,MTTB_LCL_HolidayViewSet
@@ -27,9 +34,15 @@ router.register(r'role-details', MTTBRoleDetailViewSet, basename='role-detail')
 router.register(r'modules', ModulesInfoViewSet, basename='modules')
 router.register(r'main-menus', MainMenuViewSet, basename='main-menu')
 router.register(r'sub-menus', SubMenuViewSet, basename='sub-menu')
+router.register(r'currencies', CcyDefnViewSet, basename='currency')
+router.register(r'exc-rate', ExcRateViewSet, basename='exc-rate')
+router.register(r'exc-rate-history', ExcRateHistoryViewSet, basename='exc-rate-history')
+router.register(r'gl-master', GLMasterViewSet, basename='gl-master')
+router.register(r'gl-sub', GLSubViewSet, basename='gl-sub')
 router.register(r'functions', FunctionDescViewSet, basename='function-desc')
 router.register(r'employees', MTTB_EMPLOYEEViewSet, basename='employee')
 router.register(r'lcl_holiday', MTTB_LCL_HolidayViewSet, basename='holiday')
+router.register(r'fin-cycles', FinCycleViewSet, basename='fin-cycle')
 
 urlpatterns = [
     #TOKEN
@@ -39,6 +52,7 @@ urlpatterns = [
     path('api/login/', login_view, name="login"),
     path('api/users/<str:user_id>/sidebar/', sidebar_for_user, name='user-sidebar'),
     path('api/role/<str:role_id>/sidebar/', role_sidebar, name='role-sidebar'),
-    path('api/exchange-rate-history-for-ccy /<str:ccy_code>/',exchange_rate_history_for_ccy,name='exchange-rate-history-for-ccy'),
+    path('api/exchange-rate-history-for-ccy/<str:ccy_code>/',exchange_rate_history_for_ccy,name='exchange-rate-history-for-ccy'),
+    path('api/v1/role-details/update/', update_role_detail, name='update-role-detail'),
     
 ]

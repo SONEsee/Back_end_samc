@@ -39,6 +39,7 @@ class MTTBUserSerializer(serializers.ModelSerializer):
             'division',
             'Role_ID',
             'role',
+            'profile_picture',
             'InsertDate',
             'UpdateDate',
             'Maker_Id',
@@ -49,7 +50,8 @@ class MTTBUserSerializer(serializers.ModelSerializer):
             'Once_Auth',
         ]
         extra_kwargs = {
-            'user_password': {'write_only': True}
+            'user_password': {'write_only': True},
+             'profile_picture': {'required': False, 'allow_null': True},
         }
 
     def _hash(self, raw_password):
@@ -242,3 +244,13 @@ class MTTB_LCL_HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_LCL_Holiday
         fields = '__all__'
+
+
+from rest_framework import serializers
+from .models import MTTB_Fin_Cycle
+
+class FinCycleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Fin_Cycle
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
