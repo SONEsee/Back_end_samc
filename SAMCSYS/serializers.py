@@ -254,3 +254,18 @@ class FinCycleSerializer(serializers.ModelSerializer):
         model = MTTB_Fin_Cycle
         fields = '__all__'
         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+from rest_framework import serializers
+from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
+
+class UserAccessLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_USER_ACCESS_LOG
+        fields = '__all__'
+        read_only_fields = ('login_datetime', 'logout_datetime')
+
+class UserActivityLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_USER_ACTIVITY_LOG
+        fields = '__all__'
+        read_only_fields = ('activity_datetime',)

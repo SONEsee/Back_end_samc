@@ -61,59 +61,198 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from .models import MTTB_USER_ACCESS_LOG
+from rest_framework_simplejwt.settings import api_settings
+from django.utils import timezone
+
+def get_client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
     uid = request.data.get("user_name")
     pwd = request.data.get("user_password")
     if not uid or not pwd:
-        return Response({"error": "User_Name and User_Password required"},
-                        status=status.HTTP_400_BAD_REQUEST)
+        # log failure
+        MTTB_USER_ACCESS_LOG.objects.create(
+            user_id=None,
+            session_id=None,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT'),
+            login_status='F',        # F = failed
+            remarks='Missing credentials'
+        )
+        return Response(
+            {"error": "User_Name and User_Password required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     hashed = _hash(pwd)
     try:
-        user = MTTB_Users.objects.select_related('div_id', 'Role_ID').get(
+        user = MTTB_Users.objects.get(
             user_name=uid, user_password=hashed
         )
     except MTTB_Users.DoesNotExist:
-        return Response({"error": "Invalid credentials"},
-                        status=status.HTTP_401_UNAUTHORIZED)
+        # log failure
+        MTTB_USER_ACCESS_LOG.objects.create(
+            user_id=None,
+            session_id=None,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT'),
+            login_status='F',
+            remarks='Invalid credentials'
+        )
+        return Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
     # 1) Create tokens
     refresh = RefreshToken.for_user(user)
     access  = refresh.access_token
 
-    # 2) Serialize your user data
+    # 2) Log the successful login
+    # Grab the JTI (unique token ID) for session tracking
+    jti = refresh.get(api_settings.JTI_CLAIM)
+    MTTB_USER_ACCESS_LOG.objects.create(
+        user_id=user,
+        session_id=jti,
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT'),
+        login_status='S'   # S = success
+    )
+
+    # 3) Serialize your user data
     data = MTTBUserSerializer(user).data
 
-    # 3) Manually add full division & role info
-    if user.div_id:
-        data['division'] = {
-            'div_id': user.Div_Id.Div_Id,
-            'Div_NameL': user.Div_Id.Div_NameL,
-            'Div_NameE': user.Div_Id.Div_NameE,
-            'Record_Status': user.Div_Id.Record_Status,
-        }
-    else:
-        data['division'] = None
-
-    if user.Role_ID:
-        data['role'] = {
-            'role_id': user.Role_ID.role_id,
-            'role_name_la': user.Role_ID.role_name_la,
-            'role_name_en': user.Role_ID.role_name_en,
-            'record_Status': user.Role_ID.record_Status,
-        }
-    else:
-        data['role'] = None
-
-    # 4) Return tokens + full payload
+    # 4) Return tokens + user info
     return Response({
         "message": "Login successful",
         "refresh": str(refresh),
         "access": str(access),
         "user": data
     })
+
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    """
+    POST /api/logout/
+    Body: { "refresh": "<refresh_token>" }
+    """
+    refresh_token = request.data.get("refresh")
+    if not refresh_token:
+        return Response(
+            {"error": "Refresh token required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        token = RefreshToken(refresh_token)
+        jti = token.get(api_settings.JTI_CLAIM)
+        # Blacklist if you’re using the blacklist app
+        token.blacklist()
+    except TokenError:
+        return Response(
+            {"error": "Invalid refresh token"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Update the matching access log entry
+    try:
+        log = MTTB_USER_ACCESS_LOG.objects.get(
+            session_id=jti, logout_datetime__isnull=True
+        )
+        log.logout_datetime = timezone.now()
+        log.logout_type     = 'U'  # U = user-triggered logout
+        log.save()
+    except MTTB_USER_ACCESS_LOG.DoesNotExist:
+        # No open session found; ignore or log a warning
+        pass
+
+    return Response({"message": "Logged out"}, status=status.HTTP_200_OK)
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
+from .serializers import UserAccessLogSerializer, UserActivityLogSerializer
+
+class UserAccessLogViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for user access logs (login/logout events).
+    """
+    queryset = MTTB_USER_ACCESS_LOG.objects.select_related('user_id').all().order_by('-login_datetime')
+    serializer_class = UserAccessLogSerializer
+    permission_classes = [IsAuthenticated]
+
+class UserActivityLogViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for user activity logs (detailed actions).
+    """
+    queryset = MTTB_USER_ACTIVITY_LOG.objects.select_related('user_id').all().order_by('-activity_datetime')
+    serializer_class = UserActivityLogSerializer
+    permission_classes = [IsAuthenticated]
+# @api_view(["POST"])
+# @permission_classes([AllowAny])
+# def login_view(request):
+#     uid = request.data.get("user_name")
+#     pwd = request.data.get("user_password")
+#     if not uid or not pwd:
+#         return Response({"error": "User_Name and User_Password required"},
+#                         status=status.HTTP_400_BAD_REQUEST)
+
+#     hashed = _hash(pwd)
+#     try:
+#         user = MTTB_Users.objects.select_related('div_id', 'Role_ID').get(
+#             user_name=uid, user_password=hashed
+#         )
+#     except MTTB_Users.DoesNotExist:
+#         return Response({"error": "Invalid credentials"},
+#                         status=status.HTTP_401_UNAUTHORIZED)
+
+#     # 1) Create tokens
+#     refresh = RefreshToken.for_user(user)
+#     access  = refresh.access_token
+
+#     # 2) Serialize your user data
+#     data = MTTBUserSerializer(user).data
+
+#     # 3) Manually add full division & role info
+#     if user.div_id:
+#         data['division'] = {
+#             'div_id': user.Div_Id.Div_Id,
+#             'Div_NameL': user.Div_Id.Div_NameL,
+#             'Div_NameE': user.Div_Id.Div_NameE,
+#             'Record_Status': user.Div_Id.Record_Status,
+#         }
+#     else:
+#         data['division'] = None
+
+#     if user.Role_ID:
+#         data['role'] = {
+#             'role_id': user.Role_ID.role_id,
+#             'role_name_la': user.Role_ID.role_name_la,
+#             'role_name_en': user.Role_ID.role_name_en,
+#             'record_Status': user.Role_ID.record_Status,
+#         }
+#     else:
+#         data['role'] = None
+
+#     # 4) Return tokens + full payload
+#     return Response({
+#         "message": "Login successful",
+#         "refresh": str(refresh),
+#         "access": str(access),
+#         "user": data
+#     })
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny

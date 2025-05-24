@@ -17,6 +17,9 @@ from .views import (
     GLMasterViewSet,
     GLSubViewSet,
     FinCycleViewSet,
+    logout_view,
+    UserAccessLogViewSet,
+    UserActivityLogViewSet,
     update_role_detail,
     exchange_rate_history_for_ccy
 )
@@ -43,6 +46,8 @@ router.register(r'functions', FunctionDescViewSet, basename='function-desc')
 router.register(r'employees', MTTB_EMPLOYEEViewSet, basename='employee')
 router.register(r'lcl_holiday', MTTB_LCL_HolidayViewSet, basename='holiday')
 router.register(r'fin-cycles', FinCycleViewSet, basename='fin-cycle')
+router.register(r'user-access-logs',    UserAccessLogViewSet,     basename='user-access-log')
+router.register(r'user-activity-logs',  UserActivityLogViewSet,   basename='user-activity-log')
 
 urlpatterns = [
     #TOKEN
@@ -50,6 +55,7 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path("api/", include(router.urls)),
     path('api/login/', login_view, name="login"),
+    path('api/logout/', logout_view, name='logout'),
     path('api/users/<str:user_id>/sidebar/', sidebar_for_user, name='user-sidebar'),
     path('api/role/<str:role_id>/sidebar/', role_sidebar, name='role-sidebar'),
     path('api/exchange-rate-history-for-ccy/<str:ccy_code>/',exchange_rate_history_for_ccy,name='exchange-rate-history-for-ccy'),

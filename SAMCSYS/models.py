@@ -207,7 +207,7 @@ class MTTB_USER_ACCESS_LOG(models.Model):
     log_id = models.AutoField(primary_key=True)  
     user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE)   
     login_datetime = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    logout_datetime = models.DateTimeField(auto_now_add=True,null=True, blank=True)
+    logout_datetime = models.DateTimeField(null=True, blank=True)
     session_id = models.CharField(max_length=100, null=True, blank=True)
     ip_address = models.CharField(max_length=45,null=True, blank=True)
     user_agent = models.CharField(max_length=255, null=True, blank=True)
