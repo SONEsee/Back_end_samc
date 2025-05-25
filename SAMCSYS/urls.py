@@ -21,6 +21,8 @@ from .views import (
     UserAccessLogViewSet,
     UserActivityLogViewSet,
     update_role_detail,
+    gl_hierarchy,
+    gl_tree,
     exchange_rate_history_for_ccy
 )
 from .views import MTTB_EMPLOYEEViewSet,MTTB_LCL_HolidayViewSet
@@ -60,5 +62,7 @@ urlpatterns = [
     path('api/role/<str:role_id>/sidebar/', role_sidebar, name='role-sidebar'),
     path('api/exchange-rate-history-for-ccy/<str:ccy_code>/',exchange_rate_history_for_ccy,name='exchange-rate-history-for-ccy'),
     path('api/v1/role-details/update/', update_role_detail, name='update-role-detail'),
+    path('api/gl-hierarchy/', gl_hierarchy, name='gl-hierarchy'),
+    path('api/gl-tree/', gl_tree, name='gl-tree'),
     
 ]

@@ -30,24 +30,45 @@ def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
-from rest_framework.parsers import MultiPartParser, FormParser
-
 class MTTBUserViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_Users.objects.select_related('div_id', 'Role_ID').all()
+    """
+    CRUD for users, supporting:
+      - file uploads via multipart/form-data
+      - filtering by ?div_id=... and ?Role_ID=...
+    """
     serializer_class = MTTBUserSerializer
     parser_classes = [MultiPartParser, FormParser]
+
     def get_permissions(self):
+        # Allow open signup
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
+    def get_queryset(self):
+        # start from all users
+        qs = MTTB_Users.objects.select_related('div_id', 'Role_ID').all()
+
+        params = self.request.query_params
+
+        # filter by division if provided
+        div = params.get('div_id')
+        if div:
+            qs = qs.filter(div_id__div_id=div)
+
+        # filter by role if provided
+        role = params.get('Role_ID')
+        if role:
+            qs = qs.filter(Role_ID__role_id=role)
+
+        return qs.order_by('user_id')
+
     def perform_create(self, serializer):
-        # request.user is your MTTB_Users instance via JWTAuthentication
         maker = self.request.user if self.request.user.is_authenticated else None
-        # pass Maker_Id and Maker_DT_Stamp into serializer.save()
         serializer.save(
             Maker_Id=maker,
             Maker_DT_Stamp=timezone.now()
@@ -55,12 +76,10 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         checker = self.request.user if self.request.user.is_authenticated else None
-        # set Checker_Id and Checker_DT_Stamp
         serializer.save(
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
-
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import MTTB_USER_ACCESS_LOG
@@ -139,7 +158,13 @@ def login_view(request):
         "user": data
     })
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from django.utils import timezone
+from .models import MTTB_USER_ACCESS_LOG
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -157,28 +182,29 @@ def logout_view(request):
 
     try:
         token = RefreshToken(refresh_token)
-        jti = token.get(api_settings.JTI_CLAIM)
-        # Blacklist if you’re using the blacklist app
-        token.blacklist()
+        # No blacklist() call
     except TokenError:
         return Response(
             {"error": "Invalid refresh token"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Update the matching access log entry
+    # Close out the access log entry
+    jti = token.get(token.token_type_claim)  # usually 'jti'
     try:
         log = MTTB_USER_ACCESS_LOG.objects.get(
-            session_id=jti, logout_datetime__isnull=True
+            session_id=jti,
+            logout_datetime__isnull=True
         )
         log.logout_datetime = timezone.now()
-        log.logout_type     = 'U'  # U = user-triggered logout
+        log.logout_type     = 'U'  # U = user-initiated
         log.save()
     except MTTB_USER_ACCESS_LOG.DoesNotExist:
-        # No open session found; ignore or log a warning
+        # No open session found; ignore silently
         pass
 
     return Response({"message": "Logged out"}, status=status.HTTP_200_OK)
+
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -353,42 +379,62 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
 #         if self.request.method == 'POST':
 #             return [AllowAny()]
 #         return [IsAuthenticated()]
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework import status, viewsets
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import MTTB_Role_Detail
 from .serializers import RoleDetailSerializer
 
 class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_Role_Detail.objects.select_related('role_id', 'function_id').all()
+    """
+    CRUD for Role_Detail records, with optional filtering by role_id and/or function_id via query params.
+    """
     serializer_class = RoleDetailSerializer
 
-    @action(detail=False, methods=['get'], url_path='single')
-    def get_single(self, request):
-        role_id = request.query_params.get('role_id')
-        function_id = request.query_params.get('function_id')
+    def get_permissions(self):
+        # Allow open creation; require auth for read/update/delete
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
-        try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
-            serializer = self.get_serializer(obj)
-            return Response(serializer.data)
-        except MTTB_Role_Detail.DoesNotExist:
-            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    def get_queryset(self):
+        qs = MTTB_Role_Detail.objects.select_related('role_id', 'function_id').all()
+        params = self.request.query_params
+        role = params.get('role_id')
+        func = params.get('function_id')
+        if role and func:
+            qs = qs.filter(role_id__role_id=role, function_id__function_id=func)
+        elif role:
+            qs = qs.filter(role_id__role_id=role)
+        elif func:
+            qs = qs.filter(function_id__function_id=func)
+        return qs
 
-    @action(detail=False, methods=['put'], url_path='single')
-    def update_single(self, request):
-        role_id = request.query_params.get('role_id')
-        function_id = request.query_params.get('function_id')
+    # @action(detail=False, methods=['get'], url_path='single')
+    # def get_single(self, request):
+    #     role_id = request.query_params.get('role_id')
+    #     function_id = request.query_params.get('function_id')
 
-        try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
-        except MTTB_Role_Detail.DoesNotExist:
-            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    #     try:
+    #         obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+    #         serializer = self.get_serializer(obj)
+    #         return Response(serializer.data)
+    #     except MTTB_Role_Detail.DoesNotExist:
+    #         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = self.get_serializer(obj, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+    # @action(detail=False, methods=['put'], url_path='single')
+    # def update_single(self, request):
+    #     role_id = request.query_params.get('role_id')
+    #     function_id = request.query_params.get('function_id')
+
+    #     try:
+    #         obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+    #     except MTTB_Role_Detail.DoesNotExist:
+    #         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    #     serializer = self.get_serializer(obj, data=request.data, partial=True)
+    #     serializer.is_valid(raise_exception=True)
+    #     serializer.save()
+    #     return Response(serializer.data)
 
 
 # Function Loop Sidebar Menu
@@ -1011,3 +1057,108 @@ class FinCycleViewSet(viewsets.ModelViewSet):
              Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+
+
+
+from collections import OrderedDict
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .models import MTTB_GLMaster
+from .serializers import GLMasterSerializer
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def gl_hierarchy(request):
+
+    qs = MTTB_GLMaster.objects.all().order_by('glType', 'category', 'gl_code')
+
+    # 2) group
+    hierarchy = OrderedDict()
+    for gl in qs:
+        # group by type
+        by_cat = hierarchy.setdefault(gl.glType or 'None', OrderedDict())
+        # then by category
+        lst = by_cat.setdefault(gl.category or 'None', [])
+        # append serialized record
+        lst.append(GLMasterSerializer(gl).data)
+
+    # 3) build JSON‐friendly list
+    result = []
+    for gltype, cats in hierarchy.items():
+        type_obj = {'glType': gltype, 'categories': []}
+        for cat, items in cats.items():
+            type_obj['categories'].append({
+                'category': cat,
+                'items': items
+            })
+        result.append(type_obj)
+
+    return Response(result)
+
+# views.py
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .models import MTTB_GLMaster
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def gl_tree(request):
+    """
+    GET /api/gl-tree/
+    Returns all GL codes nested by prefix:
+    [
+      {
+        "gl_code": "110",
+        "gl_Desc_la": "...",
+        "gl_Desc_en": "...",
+        "children": [
+          {
+            "gl_code": "1101",
+            "gl_Desc_la": "...",
+            "gl_Desc_en": "...",
+            "children": [
+              {
+                "gl_code": "11011",
+                "children": [
+                  { "gl_code": "110111", "children": [] },
+                  { "gl_code": "110112", "children": [] }
+                ]
+              },
+              { "gl_code": "11012", "children": [] }
+            ]
+          }
+        ]
+      }
+    ]
+    """
+    # 1) load and order all
+    q = MTTB_GLMaster.objects.all().order_by('gl_code')
+    # 2) build a lookup of code -> node dict
+    nodes = {}
+    for gl in q:
+        nodes[gl.gl_code] = {
+            'gl_code': gl.gl_code,
+            'gl_Desc_la': gl.gl_Desc_la,
+            'gl_Desc_en': gl.gl_Desc_en,
+            'children': []
+        }
+
+    roots = []
+    # 3) attach each node to its parent (longest prefix)
+    for code, node in nodes.items():
+        # find the longest other code that's a strict prefix
+        parent_code = None
+        for candidate in nodes:
+            if candidate != code and code.startswith(candidate):
+                if parent_code is None or len(candidate) > len(parent_code):
+                    parent_code = candidate
+        if parent_code:
+            nodes[parent_code]['children'].append(node)
+        else:
+            roots.append(node)
+
+    return Response(roots)

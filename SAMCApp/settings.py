@@ -61,7 +61,7 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 
     # (Optional) adjust other settings as needed:
-    'ROTATE_REFRESH_TOKENS': False,
+    'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     # ... any other SIMPLE_JWT settings ...
 }
@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "rest_framework_simplejwt",
+    # 'rest_framework_simplejwt.token_blacklist',
     # "SAMCSYS.apps.SamcsysConfig"
     "SAMCSYS",
   
