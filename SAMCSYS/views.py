@@ -490,8 +490,66 @@ class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
     queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
     serializer_class = MTTB_EMPLOYEESerializer
     permission_classes = [IsAuthenticated]
+    lookup_field = 'employee_id'
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return Response({
+                "status": "success",
+                "message": "Employee created successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                "status": "error",
+                "message": "Failed to create employee.",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "status": "success",
+                "message": "Employee deleted successfully."
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": "error",
+                "message": f"Failed to delete employee: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
     queryset = MTTB_LCL_Holiday.objects.all().order_by('lcl_holiday_id')
     serializer_class = MTTB_LCL_HolidaySerializer
     permission_classes = [IsAuthenticated]
+    lookup_field = 'lcl_holiday_id'
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return Response({
+                "message": "Holiday created successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                "message": "Failed to create Holiday.",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "message": "Holiday deleted successfully."
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "message": f"Failed to delete Holiday: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
