@@ -654,10 +654,10 @@ class STTB_EOC_DAILY_LOG(models.Model):
 
 class STTB_GL_BAL(models.Model):
     gl_bal_id = models.AutoField(primary_key=True)
-    gl_code = models.CharField(max_length=20, null=True, blank=True)
-    CCy_Code = models.CharField(max_length=20, null=True, blank=True)
-    fin_year = models.CharField(max_length=9, null=True, blank=True)
-    period_code = models.CharField(max_length=25, null=True, blank=True)
+    gl_code = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
+    fin_year = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
+    period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
     category = models.CharField(max_length=1, null=True, blank=True)
     dr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
     cr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
@@ -677,10 +677,10 @@ class STTB_GL_BAL(models.Model):
 
 class STTB_GL_SUB_BAL(models.Model):
     gl_sub_bal_id = models.AutoField(primary_key=True)
-    gl_code = models.CharField(max_length=20, null=True, blank=True)
-    CCy_Code = models.CharField(max_length=20, null=True, blank=True)
-    fin_year = models.CharField(max_length=9, null=True, blank=True)
-    period_code = models.CharField(max_length=25, null=True, blank=True)
+    gl_sub = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
+    CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
+    fin_year = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
+    period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
     dr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
     cr_mov = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
     dr_mov_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
@@ -740,3 +740,31 @@ class Incomestatement_mfi(models.Model):
 
     class Meta:
         verbose_name_plural = 'incomestatement_mfi'
+
+class MonthlyReport(models.Model): 
+    ID = models.AutoField(primary_key=True)
+    gl_code = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    Desc = models.TextField(null=True, blank=True)
+    CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
+    fin_year = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
+    period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
+    category = models.CharField(max_length=1, null=True, blank=True)
+    OP_DR = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    OP_CR = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Mo_DR = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Mo_CR = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Cl_DR = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Cl_CR = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    OP_DR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    OP_CR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Mo_DR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Mo_CR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Cl_DR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    Cl_CR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
+    InsertDate = models.DateTimeField(auto_now_add=True,null=True, blank=True)
+    UpdateDate = models.DateTimeField(auto_now_add=True,null=True, blank=True)
+    UserID = models.IntegerField(null=True, blank=True)
+    MSegment = models.CharField(max_length=50, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'MonthlyReport' 
