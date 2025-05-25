@@ -165,6 +165,14 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.utils import timezone
 from .models import MTTB_USER_ACCESS_LOG
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils import timezone
+from .models import MTTB_USER_ACCESS_LOG
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -182,30 +190,29 @@ def logout_view(request):
 
     try:
         token = RefreshToken(refresh_token)
-        # No blacklist() call
     except TokenError:
         return Response(
             {"error": "Invalid refresh token"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Close out the access log entry
-    jti = token.get(token.token_type_claim)  # usually 'jti'
+    # Extract the JTI claim
+    jti = token[api_settings.JTI_CLAIM]
+
+    # Mark the logout in the access log
     try:
         log = MTTB_USER_ACCESS_LOG.objects.get(
             session_id=jti,
             logout_datetime__isnull=True
         )
         log.logout_datetime = timezone.now()
-        log.logout_type     = 'U'  # U = user-initiated
+        log.logout_type     = 'U'  # U = user-initiated logout
         log.save()
     except MTTB_USER_ACCESS_LOG.DoesNotExist:
-        # No open session found; ignore silently
+        # No open session found; ignore
         pass
 
     return Response({"message": "Logged out"}, status=status.HTTP_200_OK)
-
-
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG

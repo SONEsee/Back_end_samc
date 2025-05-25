@@ -258,7 +258,12 @@ class FinCycleSerializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
 
+
+from .models import MTTB_Users
 class UserAccessLogSerializer(serializers.ModelSerializer):
+    user = MTTBUserSerializer(source='user_id', read_only=True)
+    division = DivisionSerializer(source='div_id', read_only=True)
+
     class Meta:
         model = MTTB_USER_ACCESS_LOG
         fields = '__all__'
