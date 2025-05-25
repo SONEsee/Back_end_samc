@@ -39,6 +39,7 @@ class MTTBUserSerializer(serializers.ModelSerializer):
             'division',
             'Role_ID',
             'role',
+            'profile_picture',
             'InsertDate',
             'UpdateDate',
             'Maker_Id',
@@ -49,7 +50,8 @@ class MTTBUserSerializer(serializers.ModelSerializer):
             'Once_Auth',
         ]
         extra_kwargs = {
-            'user_password': {'write_only': True}
+            'user_password': {'write_only': True},
+             'profile_picture': {'required': False, 'allow_null': True},
         }
 
     def _hash(self, raw_password):
@@ -107,7 +109,7 @@ class FunctionDescriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Function_Desc
         fields = [
-            'Function_Id',
+            'function_id',
             'Function_Desc',
             'Main_Menu',
             'Sub_Menu',
@@ -119,20 +121,19 @@ class FunctionDescriptionSerializer(serializers.ModelSerializer):
 
 
 class RoleDetailSerializer(serializers.ModelSerializer):
-    # Writable fields for foreign keys
-    Role_Id = serializers.PrimaryKeyRelatedField(
+    # Rename writable fields to match model field names
+    role_id = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Role_Master.objects.all()
     )
-    Function_Id = serializers.PrimaryKeyRelatedField(
+    function_id = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Function_Desc.objects.all()
     )
 
     class Meta:
         model = MTTB_Role_Detail
         fields = [
-            'id',
-            'Role_Id',
-            'Function_Id',
+            'role_id',
+            'function_id',
             'New_Detail',
             'Del_Detail',
             'Edit_Detail',
@@ -161,7 +162,7 @@ class MainMenuSerializer(serializers.Serializer):
     menu_icon      = serializers.CharField(allow_null=True)
     menu_order     = serializers.CharField()
     is_active      = serializers.BooleanField()
-    sub_menus      = SubMenuSerializer(many=True)
+    SubMenuSerializer = SubMenuSerializer(many=True)
 
 class ModuleSerializer(serializers.Serializer):
     module_Id      = serializers.CharField()
@@ -193,6 +194,46 @@ class FunctionDescSerializer(serializers.ModelSerializer):
         model = MTTB_Function_Desc
         fields = '__all__'
 
+from .models import MTTB_Ccy_DEFN
+
+class CcyDefnSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Ccy_DEFN
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+from .models import MTTB_EXC_Rate, MTTB_EXC_Rate_History
+
+class ExcRateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_EXC_Rate
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+class ExcRateHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_EXC_Rate_History
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+
+from rest_framework import serializers
+from .models import MTTB_GLMaster
+
+class GLMasterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_GLMaster
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+from rest_framework import serializers
+from .models import MTTB_GLSub
+
+class GLSubSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_GLSub
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
 class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
     class Meta:
@@ -203,3 +244,28 @@ class MTTB_LCL_HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_LCL_Holiday
         fields = '__all__'
+
+
+from rest_framework import serializers
+from .models import MTTB_Fin_Cycle
+
+class FinCycleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Fin_Cycle
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+from rest_framework import serializers
+from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
+
+class UserAccessLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_USER_ACCESS_LOG
+        fields = '__all__'
+        read_only_fields = ('login_datetime', 'logout_datetime')
+
+class UserActivityLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_USER_ACTIVITY_LOG
+        fields = '__all__'
+        read_only_fields = ('activity_datetime',)
