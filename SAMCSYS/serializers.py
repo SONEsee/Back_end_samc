@@ -260,7 +260,7 @@ class UserSerial(serializers.ModelSerializer):
 
 class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
     user_id = UserSerial(read_only=True)
-    division_id = serializers.SerializerMethodField()  # override field นี้ให้ส่ง object
+    division_id = serializers.SerializerMethodField()  
 
     class Meta:
         model = MTTB_EMPLOYEE
