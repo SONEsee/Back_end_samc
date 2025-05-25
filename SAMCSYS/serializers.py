@@ -173,18 +173,33 @@ class ModuleSerializer(serializers.Serializer):
     is_active      = serializers.CharField()
     main_menus     = MainMenuSerializer(many=True)
 
+
+from .models import MTTB_MAIN_MENU
+class MainMenu_detail(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_MAIN_MENU
+        fields = ['menu_id', 'menu_name_la', 'menu_name_en']
+
 from .models import STTB_ModulesInfo
 class ModulesInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = STTB_ModulesInfo
         fields = '__all__'
 
+from .models import STTB_ModulesInfo
+class STTBModuleSerializers(serializers.ModelSerializer):
+    class Meta:
+        model = STTB_ModulesInfo
+        fields = ['module_Id', 'module_name_la', 'module_name_en']
+
 class MainMenuSerializer(serializers.ModelSerializer):
+    module_Id = STTBModuleSerializers(read_only=True)
     class Meta:
         model = MTTB_MAIN_MENU
         fields = '__all__'
 
 class SubMenuSerializer(serializers.ModelSerializer):
+    menu_id = MainMenu_detail(read_only=True)
     class Meta:
         model = MTTB_SUB_MENU
         fields = '__all__'
@@ -234,11 +249,31 @@ class GLSubSerializer(serializers.ModelSerializer):
         model = MTTB_GLSub
         fields = '__all__'
         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
-from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
+
+from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday,MTTB_Divisions,MTTB_Users
+from SAMCSYS.serializers import DivisionSerializer
+
+class UserSerial(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Users
+        fields = ['user_id', 'user_name']
+
 class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
+    user_id = UserSerial(read_only=True)
+    division_id = serializers.SerializerMethodField()  # override field นี้ให้ส่ง object
+
     class Meta:
         model = MTTB_EMPLOYEE
         fields = '__all__'
+
+    def get_division_id(self, obj):
+        from SAMCSYS.serializers import DivisionSerializer
+        from SAMCSYS.models import MTTB_Divisions
+        try:
+            division = MTTB_Divisions.objects.get(div_id=obj.division_id)
+            return DivisionSerializer(division).data
+        except MTTB_Divisions.DoesNotExist:
+            return None
 
 class MTTB_LCL_HolidaySerializer(serializers.ModelSerializer):
     class Meta:

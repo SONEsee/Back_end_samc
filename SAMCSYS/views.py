@@ -706,14 +706,27 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 class MainMenuViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_MAIN_MENU.objects.select_related('module_Id').all().order_by('menu_order')
     serializer_class = MainMenuSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        queryset = MTTB_MAIN_MENU.objects.select_related('module_Id').all().order_by('menu_order')
+        module_id = self.request.query_params.get('module_Id')
+        if module_id:
+            queryset = queryset.filter(module_Id=module_id) 
+        return queryset
+    
+
 class SubMenuViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_SUB_MENU.objects.select_related('menu_id').all().order_by('sub_menu_order')
     serializer_class = SubMenuSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = MTTB_SUB_MENU.objects.select_related('menu_id').all().order_by('sub_menu_order')
+        menu_id = self.request.query_params.get('menu_id')
+        if menu_id:
+            queryset = queryset.filter(menu_id=menu_id) 
+        return queryset
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
     queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
@@ -977,10 +990,16 @@ from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
 from .serializers import MTTB_EMPLOYEESerializer,MTTB_LCL_HolidaySerializer
 
 class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
     serializer_class = MTTB_EMPLOYEESerializer
     permission_classes = [IsAuthenticated]
     lookup_field = 'employee_id'
+
+    def get_queryset(self):
+        queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
+        div_id = self.request.query_params.get('div_id')
+        if div_id:
+            queryset = queryset.filter(division_id=div_id)
+        return queryset
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -1030,35 +1049,6 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
     queryset = MTTB_LCL_Holiday.objects.all().order_by('lcl_holiday_id')
     serializer_class = MTTB_LCL_HolidaySerializer
     permission_classes = [IsAuthenticated]
-<<<<<<< HEAD
-    lookup_field = 'lcl_holiday_id'
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            self.perform_create(serializer)
-            return Response({
-                "message": "Holiday created successfully.",
-                "data": serializer.data
-            }, status=status.HTTP_201_CREATED)
-        else:
-            return Response({
-                "message": "Failed to create Holiday.",
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-    def destroy(self, request, *args, **kwargs):
-        try:
-            instance = self.get_object()
-            self.perform_destroy(instance)
-            return Response({
-                "message": "Holiday deleted successfully."
-            }, status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            return Response({
-                "message": f"Failed to delete Holiday: {str(e)}"
-            }, status=status.HTTP_400_BAD_REQUEST)
-=======
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -1222,4 +1212,3 @@ def gl_tree(request):
             roots.append(node)
 
     return Response(roots)
->>>>>>> 86d699772898d72cf9ea1d4bd96cb6989ac247b8
