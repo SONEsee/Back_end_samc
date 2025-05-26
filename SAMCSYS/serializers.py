@@ -179,6 +179,12 @@ class MainMenu_detail(serializers.ModelSerializer):
     class Meta:
         model = MTTB_MAIN_MENU
         fields = ['menu_id', 'menu_name_la', 'menu_name_en']
+    
+from .models import MTTB_SUB_MENU
+class SubMenu_detail(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_SUB_MENU
+        fields = ['sub_menu_id', 'sub_menu_name_la', 'sub_menu_name_en']
 
 from .models import STTB_ModulesInfo
 class ModulesInfoSerializer(serializers.ModelSerializer):
@@ -205,6 +211,7 @@ class SubMenuSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FunctionDescSerializer(serializers.ModelSerializer):
+    sub_menu_id = SubMenu_detail(read_only=True)
     class Meta:
         model = MTTB_Function_Desc
         fields = '__all__'

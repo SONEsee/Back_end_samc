@@ -730,9 +730,15 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         return queryset
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
     serializer_class = FunctionDescSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
+        sub_menu_id = self.request.query_params.get('sub_menu_id')
+        if sub_menu_id:
+            queryset = queryset.filter(sub_menu_id=sub_menu_id) 
+        return queryset
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
