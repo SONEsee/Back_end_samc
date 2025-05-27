@@ -7,7 +7,7 @@ class STTB_ModulesInfo(models.Model):
     module_name_en = models.CharField(max_length=250)
     module_icon = models.CharField(max_length=255, null=True, blank=True)  
     module_order = models.CharField(max_length=3, null=True, blank=True)  
-    is_active = models.CharField(max_length=1)  
+    is_active = models.CharField(max_length=1, default='Y')  
     created_by = models.CharField(max_length=30, null=True, blank=True)
     created_date = models.DateTimeField(auto_now_add=True )
     modified_by = models.CharField(max_length=30, null=True, blank=True)
@@ -54,9 +54,9 @@ class MTTB_Function_Desc(models.Model):
     description_la = models.CharField(max_length=200)
     description_en = models.CharField(max_length=200, null=True, blank=True)
     # all_link = models.CharField(max_length=200, null=True, blank=True)
-    eod_function = models.CharField(max_length=1, null=True, blank=True)
+    eod_function = models.CharField(max_length=1, null=True, blank=True, default='N')
     function_order = models.IntegerField(null=True, blank=True)
-    is_active = models.CharField(max_length=1, null=True, blank=True)
+    is_active = models.CharField(max_length=1, null=True, blank=True, default='Y')
     created_by = models.CharField(max_length=30, null=True, blank=True)
     created_date = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     modified_by = models.CharField(max_length=30, null=True, blank=True)
@@ -173,8 +173,8 @@ class MTTB_Users(models.Model):
         related_name='checked_userss'
     )
     Checker_DT_Stamp = models.DateTimeField(null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1, null=True, blank=True, default='N')
 
     class Meta:
         verbose_name_plural = 'UsersRgith'
@@ -257,8 +257,8 @@ class MTTB_EMPLOYEE(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_employee')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='EMPLOYEE'
     
@@ -278,13 +278,13 @@ class MTTB_Divisions(models.Model):
     div_id = models.CharField(primary_key=True, max_length=20)
     division_name_la = models.CharField(max_length=250,null=True,blank=True)
     division_name_en = models.CharField(max_length=250,null=True,blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True)
+    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_division')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_division')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='DivisionsInfo'
     def __str__(self):
@@ -294,13 +294,13 @@ class MTTB_Role_Master(models.Model):
     role_id = models.CharField(primary_key=True,max_length=20)
     role_name_la = models.CharField(max_length=250, null=True,blank=True)
     role_name_en = models.CharField(max_length=250, null=True, blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True)
+    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_roles')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_roles')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='Role_MasterInfo'
     def __str__(self):
@@ -336,13 +336,13 @@ class MTTB_Ccy_DEFN(models.Model):
     Country = models.CharField(max_length=20,null=True,blank=True) 
     Ccy_Decimals = models.DecimalField(max_digits=12,decimal_places=2)
     ALT_Ccy_Code = models.CharField(max_length=2,null=True, blank=True)
-    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Ccy_DEFN')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Ccy_DEFN')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='Currency_DEFN_Info'
 
@@ -350,12 +350,12 @@ class MTTB_EXC_Rate(models.Model):
     ccy_code = models.ForeignKey(MTTB_Ccy_DEFN, null=True,blank =True , on_delete=models.CASCADE)
     Buy_Rate = models.DecimalField(max_digits=12,decimal_places=2)
     Sale_Rate = models.DecimalField(max_digits=12,decimal_places=2)
-    INT_Auth_Status = models.CharField(max_length=1,null=True,blank=True)
+    INT_Auth_Status = models.CharField(max_length=1,null=True,blank=True, default='U')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Exc_Rate')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Exc_Rate')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     class Meta:
         verbose_name_plural='ExchangeRate'
 
@@ -368,7 +368,7 @@ class MTTB_EXC_Rate_History(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Exc_Rate_History')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     class Meta:
         verbose_name_plural='ExchangeRate_History'
         
@@ -376,13 +376,13 @@ class MTTB_TRN_Code(models.Model):
     trn_code = models.CharField(primary_key=True,max_length=20)
     trn_Desc_la = models.CharField(max_length=250,null=True, blank=True)
     trn_Desc_en = models.CharField(max_length=250,null=True, blank=True)
-    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Trn_Code')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Trn_Code')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural ='TrnCode'
         
@@ -392,13 +392,13 @@ class MTTB_LCL_Holiday(models.Model):
     HMonth = models.CharField(max_length=10,null=True,blank=True)
     HDate = models.DateTimeField(auto_now=True,null=True,blank=True)
     Holiday_List = models.CharField(max_length=1,null=True,blank=True)
-    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_TLCL_Holiday')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_TLCL_Holiday')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural ='LCL_Holiday'
         
@@ -414,13 +414,13 @@ class MTTB_GLMaster(models.Model):
     Res_ccy = models.CharField(max_length=1 , null =True,blank=True)
     Allow_BackPeriodEntry = models.CharField(max_length=1,null=True,blank=True)
     pl_Split_ReqD = models.CharField(max_length=1,null=True,blank=True)
-    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_GLMaster')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_GLMaster')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural ='GLMaster'
         
@@ -430,13 +430,13 @@ class MTTB_GLSub(models.Model):
     glsub_code = models.CharField(max_length=20,null=True ,blank=True)
     glsub_Desc_la = models.CharField(max_length=250,null=True,blank=True)
     glsub_Desc_en = models.CharField(max_length=250,null=True,blank=True)
-    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_GL_sub')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_GL_sub')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='GLSub'
 
@@ -445,13 +445,13 @@ class MTTB_Fin_Cycle(models.Model):
     cycle_Desc = models.CharField(max_length=250,null=True,blank=True)
     StartDate = models.DateTimeField(auto_now=False, null=True, blank=True)
     EndDate = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_Fin_Cycle')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_Fin_Cycle')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural ='FinCycle'
         
@@ -471,13 +471,13 @@ class MTTB_DATA_Entry(models.Model):
     JRN_REKEY_TXN_CODE = models.CharField(max_length=1,null=True,blank=True)
     BACK_VALUE = models.IntegerField(default=0)
     MOD_NO = models.IntegerField(default=0)
-    Record_Status = models.CharField(max_length=1,null=True,blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_DATA_Entry')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_DATA_Entry')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural = 'DaTa_Entry'
         
@@ -498,7 +498,7 @@ class DETB_JRNL_LOG(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_JRNL_LOG')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     class Meta:
         verbose_name_plural = 'JRNL_LOG'
 
@@ -519,7 +519,7 @@ class DETB_JRNL_LOG_HIST(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_JRNL_LOG_HIST')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     class Meta:
         verbose_name_plural = 'JRNL_LOG_HIST'
 
@@ -548,7 +548,7 @@ class ACTB_DAIRY_LOG(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     auth_id = models.CharField(max_length=12, null=True, blank=True)
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     product = models.CharField(max_length=4, null=True, blank=True)
     entry_seq_no = models.IntegerField(null=True, blank=True)
     delete_stat = models.CharField(max_length=1, null=True, blank=True)
@@ -581,7 +581,7 @@ class ACTB_DAIRY_log_HISTORY(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     auth_id = models.CharField(max_length=12, null=True, blank=True)
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     product = models.CharField(max_length=4, null=True, blank=True)
     entry_seq_no = models.IntegerField(null=True, blank=True)
     delete_stat = models.CharField(max_length=1, null=True, blank=True)
@@ -595,14 +595,14 @@ class MTTB_EOC_MAINTAIN(models.Model):
     function_id = models.CharField(max_length=8)      
     eoc_seq_no = models.IntegerField(default=0)                
     eoc_type = models.CharField(max_length=3)          
-    record_stat = models.CharField(max_length=1)  
+    record_stat = models.CharField(max_length=1, default='C')  
     mod_no = models.IntegerField(null=True, blank=True)    
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_EOC_MAINTAIN')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_EOC_MAINTAIN')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True)      
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')      
 
     class Meta:
         verbose_name_plural = 'EOC_MAINTAIN'
@@ -645,7 +645,7 @@ class STTB_EOC_DAILY_LOG(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     auth_id = models.CharField(max_length=12, null=True, blank=True)
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     product = models.CharField(max_length=4, null=True, blank=True)
     entry_seq_no = models.IntegerField(null=True, blank=True)       
 

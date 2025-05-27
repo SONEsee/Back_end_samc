@@ -30,7 +30,7 @@ def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
@@ -41,7 +41,7 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
       - filtering by ?div_id=... and ?Role_ID=...
     """
     serializer_class = MTTBUserSerializer
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_permissions(self):
         # Allow open signup
@@ -61,7 +61,7 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             qs = qs.filter(div_id__div_id=div)
 
         # filter by role if provided
-        role = params.get('Role_ID')
+        role = params.get('role_id')
         if role:
             qs = qs.filter(Role_ID__role_id=role)
 
@@ -322,6 +322,7 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
             Maker_Id=maker,
             Maker_DT_Stamp=timezone.now(),
         )
+        
 
     def perform_update(self, serializer):
         checker = self.request.user if self.request.user.is_authenticated else None
@@ -791,9 +792,15 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         return queryset
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
     serializer_class = FunctionDescSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
+        sub_menu_id = self.request.query_params.get('sub_menu_id')
+        if sub_menu_id:
+            queryset = queryset.filter(sub_menu_id=sub_menu_id) 
+        return queryset
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
