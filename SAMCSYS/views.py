@@ -768,6 +768,22 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
     serializer_class = ModulesInfoSerializer
     permission_classes = [IsAuthenticated]
 
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
+        serializer.save(
+            created_by=user_id,
+            created_date=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            modified_by=user_id,
+            modified_date=timezone.now()
+        )
+
 class MainMenuViewSet(viewsets.ModelViewSet):
     serializer_class = MainMenuSerializer
     permission_classes = [IsAuthenticated]
@@ -778,6 +794,22 @@ class MainMenuViewSet(viewsets.ModelViewSet):
         if module_id:
             queryset = queryset.filter(module_Id=module_id) 
         return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
+        serializer.save(
+            created_by=user_id,
+            created_date=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            modified_by=user_id,
+            modified_date=timezone.now()
+        )
     
 
 class SubMenuViewSet(viewsets.ModelViewSet):
@@ -790,6 +822,22 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         if menu_id:
             queryset = queryset.filter(menu_id=menu_id) 
         return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
+        serializer.save(
+            created_by=user_id,
+            created_date=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            modified_by=user_id,
+            modified_date=timezone.now()
+        )
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
     serializer_class = FunctionDescSerializer
@@ -801,6 +849,22 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
         if sub_menu_id:
             queryset = queryset.filter(sub_menu_id=sub_menu_id) 
         return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
+        serializer.save(
+            created_by=user_id,
+            created_date=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            modified_by=user_id,
+            modified_date=timezone.now()
+        )
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny

@@ -171,6 +171,7 @@ class ModulesInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = STTB_ModulesInfo
         fields = '__all__'
+        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
 
 from .models import STTB_ModulesInfo
 class STTBModuleSerializers(serializers.ModelSerializer):
@@ -179,22 +180,25 @@ class STTBModuleSerializers(serializers.ModelSerializer):
         fields = ['module_Id', 'module_name_la', 'module_name_en']
 
 class MainMenuSerializer(serializers.ModelSerializer):
-    module_Id = STTBModuleSerializers(read_only=True)
+    module = STTBModuleSerializers(source='module_Id', read_only=True)
     class Meta:
         model = MTTB_MAIN_MENU
         fields = '__all__'
+        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
 
 class SubMenuSerializer(serializers.ModelSerializer):
-    menu_id = MainMenu_detail(read_only=True)
+    menu = MainMenu_detail(source='menu_id',read_only=True)
     class Meta:
         model = MTTB_SUB_MENU
         fields = '__all__'
+        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
 
 class FunctionDescSerializer(serializers.ModelSerializer):
-    sub_menu_id = SubMenu_detail(read_only=True)
+    sub_menu = SubMenu_detail(source='sub_menu_id', read_only=True)
     class Meta:
         model = MTTB_Function_Desc
         fields = '__all__'
+        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
 
 from .models import MTTB_Ccy_DEFN
 
@@ -246,7 +250,7 @@ class UserSerial(serializers.ModelSerializer):
         fields = ['user_id', 'user_name']
 
 class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
-    user_id = UserSerial(read_only=True)
+    user_id = UserSerial(source='user_id',read_only=True)
     division_id = serializers.SerializerMethodField()  
 
     class Meta:
