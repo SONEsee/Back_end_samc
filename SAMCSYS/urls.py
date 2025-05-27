@@ -64,5 +64,4 @@ urlpatterns = [
     path('api/v1/role-details/update/', update_role_detail, name='update-role-detail'),
     path('api/gl-hierarchy/', gl_hierarchy, name='gl-hierarchy'),
     path('api/gl-tree/', gl_tree, name='gl-tree'),
-    
 ]
