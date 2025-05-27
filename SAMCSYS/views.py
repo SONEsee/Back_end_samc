@@ -165,6 +165,14 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.utils import timezone
 from .models import MTTB_USER_ACCESS_LOG
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils import timezone
+from .models import MTTB_USER_ACCESS_LOG
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -182,30 +190,29 @@ def logout_view(request):
 
     try:
         token = RefreshToken(refresh_token)
-        # No blacklist() call
     except TokenError:
         return Response(
             {"error": "Invalid refresh token"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Close out the access log entry
-    jti = token.get(token.token_type_claim)  # usually 'jti'
+    # Extract the JTI claim
+    jti = token[api_settings.JTI_CLAIM]
+
+    # Mark the logout in the access log
     try:
         log = MTTB_USER_ACCESS_LOG.objects.get(
             session_id=jti,
             logout_datetime__isnull=True
         )
         log.logout_datetime = timezone.now()
-        log.logout_type     = 'U'  # U = user-initiated
+        log.logout_type     = 'U'  # U = user-initiated logout
         log.save()
     except MTTB_USER_ACCESS_LOG.DoesNotExist:
-        # No open session found; ignore silently
+        # No open session found; ignore
         pass
 
     return Response({"message": "Logged out"}, status=status.HTTP_200_OK)
-
-
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
@@ -368,19 +375,43 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
 
 # class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
 #     """
-#     CRUD for Role_Detail records.
+#     CRUD for Role_Detail records, with optional filtering by role_id and/or function_id via query params.
 #     """
-#     queryset = MTTB_Role_Detail.objects.select_related(
-#         'role_id', 'function_id'
-#     ).all()
 #     serializer_class = RoleDetailSerializer
 
+
+#     @action(detail=False, methods=['get'], url_path='single')
+#     def get_single(self, request):
+#         role_id = request.query_params.get('role_id')
+#         function_id = request.query_params.get('function_id')
+
+#         try:
+#             obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+#             serializer = self.get_serializer(obj)
+#             return Response(serializer.data)
+#         except MTTB_Role_Detail.DoesNotExist:
+#             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 #     def get_permissions(self):
-#         # Allow open creation; require auth for all others
+#         # Allow open creation; require auth for read/update/delete
 #         if self.request.method == 'POST':
 #             return [AllowAny()]
 #         return [IsAuthenticated()]
-from rest_framework import viewsets
+
+#     def get_queryset(self):
+#         qs = MTTB_Role_Detail.objects.select_related('role_id', 'function_id').all()
+#         params = self.request.query_params
+#         role = params.get('role_id')
+#         func = params.get('function_id')
+#         if role and func:
+#             qs = qs.filter(role_id__role_id=role, function_id__function_id=func)
+#         elif role:
+#             qs = qs.filter(role_id__role_id=role)
+#         elif func:
+#             qs = qs.filter(function_id__function_id=func)
+#         return qs
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import MTTB_Role_Detail
 from .serializers import RoleDetailSerializer
@@ -391,6 +422,32 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     """
     serializer_class = RoleDetailSerializer
 
+    @action(detail=False, methods=['get'], url_path='single')
+    def get_single(self, request):
+        role_id = request.query_params.get('role_id')
+        function_id = request.query_params.get('function_id')
+
+        if not role_id or not function_id:
+            return Response(
+                {'detail': 'Both role_id and function_id are required.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+            serializer = self.get_serializer(obj)
+            return Response(serializer.data)
+        except MTTB_Role_Detail.DoesNotExist:
+            return Response(
+                {'detail': 'Role detail not found.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'detail': f'Error retrieving role detail: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     def get_permissions(self):
         # Allow open creation; require auth for read/update/delete
         if self.request.method == 'POST':
@@ -398,45 +455,50 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        qs = MTTB_Role_Detail.objects.select_related('role_id', 'function_id').all()
+        qs = MTTB_Role_Detail.objects.all()
         params = self.request.query_params
         role = params.get('role_id')
         func = params.get('function_id')
+        
+        # If role_id and function_id are direct fields (not foreign keys)
         if role and func:
-            qs = qs.filter(role_id__role_id=role, function_id__function_id=func)
+            qs = qs.filter(role_id=role, function_id=func)
         elif role:
-            qs = qs.filter(role_id__role_id=role)
+            qs = qs.filter(role_id=role)
         elif func:
-            qs = qs.filter(function_id__function_id=func)
+            qs = qs.filter(function_id=func)
+            
         return qs
 
-    # @action(detail=False, methods=['get'], url_path='single')
-    # def get_single(self, request):
-    #     role_id = request.query_params.get('role_id')
-    #     function_id = request.query_params.get('function_id')
+    # Optional: Add custom update method for your frontend URL pattern
+    @action(detail=False, methods=['put'], url_path='update')
+    def update_role_detail(self, request):
+        role_id = request.query_params.get('role_id')
+        function_id = request.query_params.get('function_id')
 
-    #     try:
-    #         obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
-    #         serializer = self.get_serializer(obj)
-    #         return Response(serializer.data)
-    #     except MTTB_Role_Detail.DoesNotExist:
-    #         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not role_id or not function_id:
+            return Response(
+                {'detail': 'Both role_id and function_id are required.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    # @action(detail=False, methods=['put'], url_path='single')
-    # def update_single(self, request):
-    #     role_id = request.query_params.get('role_id')
-    #     function_id = request.query_params.get('function_id')
-
-    #     try:
-    #         obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
-    #     except MTTB_Role_Detail.DoesNotExist:
-    #         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    #     serializer = self.get_serializer(obj, data=request.data, partial=True)
-    #     serializer.is_valid(raise_exception=True)
-    #     serializer.save()
-    #     return Response(serializer.data)
-
+        try:
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+            serializer = self.get_serializer(obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except MTTB_Role_Detail.DoesNotExist:
+            return Response(
+                {'detail': 'Role detail not found.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'detail': f'Error updating role detail: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 # Function Loop Sidebar Menu
 

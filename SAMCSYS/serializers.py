@@ -120,26 +120,6 @@ class FunctionDescriptionSerializer(serializers.ModelSerializer):
 
 
 
-class RoleDetailSerializer(serializers.ModelSerializer):
-    # Rename writable fields to match model field names
-    role_id = serializers.PrimaryKeyRelatedField(
-        queryset=MTTB_Role_Master.objects.all()
-    )
-    function_id = serializers.PrimaryKeyRelatedField(
-        queryset=MTTB_Function_Desc.objects.all()
-    )
-
-    class Meta:
-        model = MTTB_Role_Detail
-        fields = [
-            'role_id',
-            'function_id',
-            'New_Detail',
-            'Del_Detail',
-            'Edit_Detail',
-            'Auth_Detail',
-        ]
-
 class FunctionPermSerializer(serializers.Serializer):
     function_id    = serializers.CharField()
     description_la = serializers.CharField()
@@ -304,7 +284,12 @@ class FinCycleSerializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
 
+
+from .models import MTTB_Users
 class UserAccessLogSerializer(serializers.ModelSerializer):
+    user = MTTBUserSerializer(source='user_id', read_only=True)
+    division = DivisionSerializer(source='div_id', read_only=True)
+
     class Meta:
         model = MTTB_USER_ACCESS_LOG
         fields = '__all__'
@@ -315,3 +300,20 @@ class UserActivityLogSerializer(serializers.ModelSerializer):
         model = MTTB_USER_ACTIVITY_LOG
         fields = '__all__'
         read_only_fields = ('activity_datetime',)
+
+
+
+class RoleDetailSerializer(serializers.ModelSerializer):
+    # Rename writable fields to match model field names
+    fuu_details = FunctionDescSerializer(source='function_id', read_only=True)
+    role_detail = RoleMasterSerializer(source='role_id', read_only=True)
+    role_id = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Role_Master.objects.all()
+    )
+    function_id = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Function_Desc.objects.all()
+    )
+
+    class Meta:
+        model = MTTB_Role_Detail
+        fields = '__all__'
