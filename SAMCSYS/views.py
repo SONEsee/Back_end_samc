@@ -425,16 +425,16 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='single')
     def get_single(self, request):
         role_id = request.query_params.get('role_id')
-        function_id = request.query_params.get('function_id')
+        sub_menu_id = request.query_params.get('sub_menu_id')
 
-        if not role_id or not function_id:
+        if not role_id or not sub_menu_id:
             return Response(
                 {'detail': 'Both role_id and function_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
             serializer = self.get_serializer(obj)
             return Response(serializer.data)
         except MTTB_Role_Detail.DoesNotExist:
@@ -458,15 +458,15 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
         qs = MTTB_Role_Detail.objects.all()
         params = self.request.query_params
         role = params.get('role_id')
-        func = params.get('function_id')
+        func = params.get('sub_menu_id')
         
         # If role_id and function_id are direct fields (not foreign keys)
         if role and func:
-            qs = qs.filter(role_id=role, function_id=func)
+            qs = qs.filter(role_id=role, sub_menu_id=func)
         elif role:
             qs = qs.filter(role_id=role)
         elif func:
-            qs = qs.filter(function_id=func)
+            qs = qs.filter(sub_menu_id=func)
             
         return qs
 
@@ -474,16 +474,16 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['put'], url_path='update')
     def update_role_detail(self, request):
         role_id = request.query_params.get('role_id')
-        function_id = request.query_params.get('function_id')
+        sub_menu_id = request.query_params.get('sub_menu_id')
 
-        if not role_id or not function_id:
+        if not role_id or not sub_menu_id:
             return Response(
                 {'detail': 'Both role_id and function_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
             serializer = self.get_serializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
