@@ -1066,7 +1066,7 @@ class GLMasterViewSet(viewsets.ModelViewSet):
         # Search gl_code substring if provided
         code = params.get('gl_code')
         if code:
-            qs = qs.filter(gl_code__icontains=code)
+            qs = qs.filter(gl_code=code)
 
         return qs
 
