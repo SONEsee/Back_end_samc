@@ -315,6 +315,7 @@ class MTTB_Role_Detail(models.Model):
     Del_Detail = models.IntegerField(default=0)
     Edit_Detail = models.IntegerField(default=0)
     Auth_Detail = models.IntegerField(default=0)
+    View_Detail = models.IntegerField(default=0)
     class Meta:
         verbose_name_plural='Role_Detail'
 
