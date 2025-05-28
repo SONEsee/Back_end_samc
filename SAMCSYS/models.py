@@ -310,6 +310,7 @@ class MTTB_Role_Master(models.Model):
 class MTTB_Role_Detail(models.Model):
     role_id = models.ForeignKey(MTTB_Role_Master, null=True,blank=True, on_delete=models.CASCADE)
     function_id = models.ForeignKey(MTTB_Function_Desc, null=True,blank=True, on_delete=models.CASCADE)
+    sub_menu_id = models.ForeignKey(MTTB_SUB_MENU, null=True,blank=True, on_delete=models.CASCADE)
     New_Detail = models.IntegerField(default=0)
     Del_Detail = models.IntegerField(default=0)
     Edit_Detail = models.IntegerField(default=0)
@@ -404,7 +405,7 @@ class MTTB_LCL_Holiday(models.Model):
         
 class MTTB_GLMaster(models.Model):
     glid  = models.AutoField(primary_key=True)
-    gl_code  = models.CharField(max_length=20,null=True, blank=True)
+    gl_code  = models.CharField(max_length=20,null=True, blank=True, unique=True)
     gl_Desc_la = models.CharField(max_length=250,null=True,blank=True)
     gl_Desc_en = models.CharField(max_length=250,null=True,blank=True)
     glType = models.CharField(max_length=1,null=True ,blank=True)
