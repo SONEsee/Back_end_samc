@@ -1,4 +1,6 @@
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework import routers
 from .views import (
     MTTBUserViewSet, 
@@ -20,12 +22,14 @@ from .views import (
     logout_view,
     UserAccessLogViewSet,
     UserActivityLogViewSet,
+    EmployeeViewSet,
+    HolidayViewSet,
     update_role_detail,
     gl_hierarchy,
     gl_tree,
-    exchange_rate_history_for_ccy
+    exchange_rate_history_for_ccy,
+    AllModule
 )
-from .views import MTTB_EMPLOYEEViewSet,MTTB_LCL_HolidayViewSet
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -45,8 +49,8 @@ router.register(r'exc-rate-history', ExcRateHistoryViewSet, basename='exc-rate-h
 router.register(r'gl-master', GLMasterViewSet, basename='gl-master')
 router.register(r'gl-sub', GLSubViewSet, basename='gl-sub')
 router.register(r'functions', FunctionDescViewSet, basename='function-desc')
-router.register(r'employees', MTTB_EMPLOYEEViewSet, basename='employee')
-router.register(r'lcl_holiday', MTTB_LCL_HolidayViewSet, basename='holiday')
+router.register(r'employees', EmployeeViewSet, basename='employee')
+router.register(r'lcl_holiday', HolidayViewSet, basename='holiday')
 router.register(r'fin-cycles', FinCycleViewSet, basename='fin-cycle')
 router.register(r'user-access-logs',    UserAccessLogViewSet,     basename='user-access-log')
 router.register(r'user-activity-logs',  UserActivityLogViewSet,   basename='user-activity-log')
@@ -60,8 +64,10 @@ urlpatterns = [
     path('api/logout/', logout_view, name='logout'),
     path('api/users/<str:user_id>/sidebar/', sidebar_for_user, name='user-sidebar'),
     path('api/role/<str:role_id>/sidebar/', role_sidebar, name='role-sidebar'),
+    path('api/role/sidebar/', role_sidebar, name='role-sidebar-all'),
+    path('api/module/all/',AllModule, name='module-all'),
     path('api/exchange-rate-history-for-ccy/<str:ccy_code>/',exchange_rate_history_for_ccy,name='exchange-rate-history-for-ccy'),
     path('api/v1/role-details/update/', update_role_detail, name='update-role-detail'),
     path('api/gl-hierarchy/', gl_hierarchy, name='gl-hierarchy'),
     path('api/gl-tree/', gl_tree, name='gl-tree'),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

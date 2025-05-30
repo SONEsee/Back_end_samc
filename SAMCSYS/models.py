@@ -6,7 +6,7 @@ class STTB_ModulesInfo(models.Model):
     module_name_la = models.CharField(max_length=250)
     module_name_en = models.CharField(max_length=250)
     module_icon = models.CharField(max_length=255, null=True, blank=True)  
-    module_order = models.CharField(max_length=3, null=True, blank=True)  
+    module_order = models.CharField(max_length=3, null=True, blank=True) 
     is_active = models.CharField(max_length=1, default='Y')  
     created_by = models.CharField(max_length=30, null=True, blank=True)
     created_date = models.DateTimeField(auto_now_add=True )
@@ -24,7 +24,7 @@ class MTTB_MAIN_MENU(models.Model):
     menu_name_en = models.CharField(max_length=250,null=True,blank=True)
     menu_icon = models.CharField(max_length=250, null=True, blank=True)
     menu_order = models.CharField(max_length=3,null=True,blank=True)
-    is_active = models.BooleanField(default=False)
+    is_active = models.CharField(max_length=1, default='Y') 
     created_by = models.CharField(max_length=20, null=True, blank=True)
     created_date = models.DateTimeField(auto_now_add=True)
     modified_by = models.CharField(max_length=20, null=True, blank=True)
@@ -40,7 +40,7 @@ class MTTB_SUB_MENU(models.Model):
     sub_menu_icon = models.CharField(max_length=250, null=True, blank=True)
     sub_menu_order = models.CharField(max_length=3,null=True,blank=True)
     sub_menu_urls = models.CharField(max_length=100, null=True, blank=True)
-    is_active = models.BooleanField(default=False)
+    is_active = models.CharField(max_length=1, default='Y') 
     created_by = models.CharField(max_length=20, null=True, blank=True)
     created_date = models.DateTimeField(auto_now_add=True)
     modified_by = models.CharField(max_length=20, null=True, blank=True)
@@ -234,33 +234,7 @@ class MTTB_USER_ACTIVITY_LOG(models.Model):
 class Meta:
         verbose_name_plural='USER_ACTIVITY_LOG'
 
-class MTTB_EMPLOYEE(models.Model):
-    employee_id = models.CharField(max_length=20, primary_key=True)
-    user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE) 
-    employee_name_la = models.CharField(max_length=250)
-    employee_name_en = models.CharField(max_length=250, null=True, blank=True)
-    gender = models.CharField(max_length=1, choices=[('F', 'Female'), ('M', 'Male')], null=True, blank=True)
-    date_of_birth = models.DateField(null=True, blank=True)
-    national_id = models.CharField(max_length=20, null=True, blank=True)
-    address_la = models.CharField(max_length=255, null=True, blank=True)
-    address_en = models.CharField(max_length=255, null=True, blank=True)
-    phone_number = models.CharField(max_length=15, null=True, blank=True)
-    email = models.CharField(max_length=100, null=True, blank=True)
-    position_code = models.CharField(max_length=10, null=True, blank=True)
-    division_id = models.CharField(max_length=20)
-    employee_photo = models.CharField(max_length=100, null=True, blank=True)
-    employee_signature = models.CharField(max_length=100,null=True, blank=True)
-    hire_date = models.DateField(max_length=10,null=True, blank=True)
-    employment_status = models.CharField(max_length=1, default='A')
-    record_stat = models.CharField(max_length=1)
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_employee')
-    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_employee')
-    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
-    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
-    class Meta:
-        verbose_name_plural='EMPLOYEE'
+
     
 class STTB_Dates(models.Model):
     date_id = models.AutoField(primary_key=True)
@@ -304,7 +278,7 @@ class MTTB_Role_Master(models.Model):
     class Meta:
         verbose_name_plural='Role_MasterInfo'
     def __str__(self):
-        return self.role_id  # Fixed from role_Id to Role_Id
+        return self.role_id  
 
 
 class MTTB_Role_Detail(models.Model):
@@ -319,7 +293,33 @@ class MTTB_Role_Detail(models.Model):
     class Meta:
         verbose_name_plural='Role_Detail'
 
-
+class MTTB_EMPLOYEE(models.Model):
+    employee_id = models.CharField(max_length=20, primary_key=True)
+    user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE) 
+    employee_name_la = models.CharField(max_length=250)
+    employee_name_en = models.CharField(max_length=250, null=True, blank=True)
+    gender = models.CharField(max_length=1, choices=[('F', 'Female'), ('M', 'Male')], null=True, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    national_id = models.CharField(max_length=20, null=True, blank=True)
+    address_la = models.CharField(max_length=255, null=True, blank=True)
+    address_en = models.CharField(max_length=255, null=True, blank=True)
+    phone_number = models.CharField(max_length=15, null=True, blank=True)
+    email = models.CharField(max_length=100, null=True, blank=True)
+    position_code = models.CharField(max_length=10, null=True, blank=True)
+    div_id = models.ForeignKey(MTTB_Divisions, null=True, blank=True, on_delete=models.CASCADE)
+    employee_photo = models.ImageField(upload_to='employee_photos/', null=True, blank=True)
+    employee_signature = models.ImageField(upload_to='employee_signatures/', null=True, blank=True)
+    hire_date = models.DateField(max_length=10,null=True, blank=True)
+    employment_status = models.CharField(max_length=1, default='A')
+    record_stat = models.CharField(max_length=1 ,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_employee')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_employee')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
+    class Meta:
+        verbose_name_plural='EMPLOYEE'
 
 class STTB_Current_Users(models.Model):
     user_id = models.ForeignKey(MTTB_Users,null=True,blank=True, on_delete=models.CASCADE)
