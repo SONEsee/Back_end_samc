@@ -283,7 +283,6 @@ class MTTB_Role_Master(models.Model):
 
 class MTTB_Role_Detail(models.Model):
     role_id = models.ForeignKey(MTTB_Role_Master, null=True,blank=True, on_delete=models.CASCADE)
-    function_id = models.ForeignKey(MTTB_Function_Desc, null=True,blank=True, on_delete=models.CASCADE)
     sub_menu_id = models.ForeignKey(MTTB_SUB_MENU, null=True,blank=True, on_delete=models.CASCADE)
     New_Detail = models.IntegerField(default=0)
     Del_Detail = models.IntegerField(default=0)

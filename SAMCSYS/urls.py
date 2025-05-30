@@ -28,7 +28,8 @@ from .views import (
     gl_hierarchy,
     gl_tree,
     exchange_rate_history_for_ccy,
-    AllModule
+    AllModule,
+    roledetaildelete
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -62,6 +63,7 @@ urlpatterns = [
     path("api/", include(router.urls)),
     path('api/login/', login_view, name="login"),
     path('api/logout/', logout_view, name='logout'),
+    path('api/roledetail-delete/', roledetaildelete, name='roles-delete'),
     path('api/users/<str:user_id>/sidebar/', sidebar_for_user, name='user-sidebar'),
     path('api/role/<str:role_id>/sidebar/', role_sidebar, name='role-sidebar'),
     path('api/role/sidebar/', role_sidebar, name='role-sidebar-all'),

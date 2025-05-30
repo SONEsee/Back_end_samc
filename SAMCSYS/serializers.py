@@ -333,13 +333,13 @@ class UserActivityLogSerializer(serializers.ModelSerializer):
 
 class RoleDetailSerializer(serializers.ModelSerializer):
     # Rename writable fields to match model field names
-    fuu_details = FunctionDescSerializer(source='function_id', read_only=True)
+    fuu_details = SubMenuSerializer(source='sub_menu_id', read_only=True)
     role_detail = RoleMasterSerializer(source='role_id', read_only=True)
     role_id = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Role_Master.objects.all()
     )
-    function_id = serializers.PrimaryKeyRelatedField(
-        queryset=MTTB_Function_Desc.objects.all()
+    sub_menu_id = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_SUB_MENU.objects.all()
     )
 
     class Meta:

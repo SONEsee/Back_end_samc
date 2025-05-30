@@ -405,6 +405,18 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
                 {'detail': f'Error updating role detail: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def roledetaildelete(request):
+    role_id = request.GET.get('role_id')
+    sub_menu_id = request.GET.get('sub_menu_id')
+    try:
+        obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
+        obj.delete()
+        return Response({"detail": "Deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+    except MTTB_Role_Detail.DoesNotExist:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
 # Function Loop Sidebar Menu
 
@@ -417,24 +429,21 @@ from django.shortcuts import get_object_or_404
 from .models import (
     MTTB_Users,
     MTTB_Role_Detail,
-    MTTB_Function_Desc,
     MTTB_SUB_MENU,
     MTTB_MAIN_MENU,
     STTB_ModulesInfo,
 )
-from .serializers import ModuleSerializer  # if you added them
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sidebar_for_user(request, user_id):
     """
     GET /api/users/{user_id}/sidebar/
-    Returns modules → main menus → sub menus → functions with permissions.
+    Returns modules → main menus → sub menus with permissions.
     """
     # 1) Load user & role
     user = get_object_or_404(MTTB_Users, user_id=user_id)
     role = user.Role_ID
-    # print("User:", user.user_id, "Role:", user.Role_ID)
 
     if not role:
         return Response([])  # no role, no sidebar
@@ -444,18 +453,16 @@ def sidebar_for_user(request, user_id):
         MTTB_Role_Detail.objects
           .filter(role_id=role)
           .select_related(
-              'function_id',
-              'function_id__sub_menu_id',
-              'function_id__sub_menu_id__menu_id',
-              'function_id__sub_menu_id__menu_id__module_Id'
+              'sub_menu_id',
+              'sub_menu_id__menu_id',
+              'sub_menu_id__menu_id__module_Id'
           )
     )
 
-    # 3) Build nested dict: module → main_menu → sub_menu → [functions]
+    # 3) Build nested dict: module → main_menu → sub_menu
     modules = OrderedDict()
     for det in details:
-        func  = det.function_id
-        sub   = func.sub_menu_id
+        sub   = det.sub_menu_id
         main  = sub.menu_id if sub else None
         mod   = main.module_Id if main else None
         if not (sub and main and mod):
@@ -493,28 +500,21 @@ def sidebar_for_user(request, user_id):
         sm_group = mm_group[mm_key]['sub_menus']
         if sm_key not in sm_group:
             sm_group[sm_key] = {
-                'sub_menu_id':    sub.sub_menu_id,
+                'sub_menu_id':      sub.sub_menu_id,
                 'sub_menu_name_la': sub.sub_menu_name_la,
                 'sub_menu_name_en': sub.sub_menu_name_en,
-                'sub_menu_icon':   sub.sub_menu_icon,
-                'sub_menu_order':  sub.sub_menu_order,
-                'sub_menu_urls':   sub.sub_menu_urls,
-                'is_active':       sub.is_active,
-                'functions':       []
+                'sub_menu_icon':    sub.sub_menu_icon,
+                'sub_menu_order':   sub.sub_menu_order,
+                'sub_menu_urls':    sub.sub_menu_urls,
+                'is_active':        sub.is_active,
+                'permissions': {
+                    'new':    det.New_Detail,
+                    'delete': det.Del_Detail,
+                    'edit':   det.Edit_Detail,
+                    'auth':   det.Auth_Detail,
+                    'view':   det.View_Detail,
+                }
             }
-
-        # Finally, append the function + its permission flags
-        sm_group[sm_key]['functions'].append({
-            'function_id':    func.function_id,
-            'description_la': func.description_la,
-            'description_en': func.description_en,
-            'permissions': {
-                'new':    det.New_Detail,
-                'delete': det.Del_Detail,
-                'edit':   det.Edit_Detail,
-                'auth':   det.Auth_Detail,
-            }  
-        })
 
     # 4) Convert sub-dicts to lists
     result = []
@@ -527,9 +527,7 @@ def sidebar_for_user(request, user_id):
         mod['main_menus'] = mm_list
         result.append(mod)
 
-
     return Response(result)
-
 
 from collections import OrderedDict
 from rest_framework.decorators import api_view, permission_classes
@@ -541,7 +539,6 @@ from django.shortcuts import get_object_or_404
 from .models import (
     MTTB_Role_Master,
     MTTB_Role_Detail,
-    MTTB_Function_Desc,
     MTTB_SUB_MENU,
     MTTB_MAIN_MENU,
     STTB_ModulesInfo,
@@ -552,56 +549,47 @@ from .models import (
 def role_sidebar(request, role_id=None):
     """
     GET /api/role/<role_id>/sidebar/
-    Returns modules → main menus → sub menus → functions with permissions.
-    If role_id is not provided, returns all available data.
+    Returns modules → main menus → sub menus with permissions.
     """
     # 1) Initialize query based on role_id
     if role_id:
-        # Load specific role if role_id is provided
         role = get_object_or_404(MTTB_Role_Master, role_id=role_id)
         details = (
             MTTB_Role_Detail.objects
             .filter(role_id=role)
             .select_related(
-                'function_id',
-                'function_id__sub_menu_id',
-                'function_id__sub_menu_id__menu_id',
-                'function_id__sub_menu_id__menu_id__module_Id'
+                'sub_menu_id',
+                'sub_menu_id__menu_id',
+                'sub_menu_id__menu_id__module_Id'
             )
             .order_by(
-                'function_id__sub_menu_id__menu_id__module_Id__module_order',
-                'function_id__sub_menu_id__menu_id__menu_order',
-                'function_id__sub_menu_id__sub_menu_order',
-                'function_id__function_order'
+                'sub_menu_id__menu_id__module_Id__module_order',
+                'sub_menu_id__menu_id__menu_order',
+                'sub_menu_id__sub_menu_order'
             )
         )
     else:
-        # Get all role details if no role_id is provided
         details = (
             MTTB_Role_Detail.objects
             .select_related(
-                'function_id',
-                'function_id__sub_menu_id',
-                'function_id__sub_menu_id__menu_id',
-                'function_id__sub_menu_id__menu_id__module_Id'
+                'sub_menu_id',
+                'sub_menu_id__menu_id',
+                'sub_menu_id__menu_id__module_Id'
             )
             .order_by(
-                'function_id__sub_menu_id__menu_id__module_Id__module_order',
-                'function_id__sub_menu_id__menu_id__menu_order',
-                'function_id__sub_menu_id__sub_menu_order',
-                'function_id__function_order'
+                'sub_menu_id__menu_id__module_Id__module_order',
+                'sub_menu_id__menu_id__menu_order',
+                'sub_menu_id__sub_menu_order'
             )
         )
 
     # 2) Group into nested dicts
     modules = OrderedDict()
     for det in details:
-        func = det.function_id
-        sub = func.sub_menu_id
+        sub = det.sub_menu_id
         main = sub.menu_id
         mod = main.module_Id
 
-        # Ensure all links exist
         if not (sub and main and mod):
             continue
 
@@ -639,23 +627,16 @@ def role_sidebar(request, role_id=None):
                 'sub_menu_name_en': sub.sub_menu_name_en,
                 'sub_menu_icon':    sub.sub_menu_icon,
                 'sub_menu_order':   sub.sub_menu_order,
+                'sub_menu_urls':    sub.sub_menu_urls,
                 'is_active':        sub.is_active,
-                'functions':        []
+                'permissions': {
+                    'new':    det.New_Detail,
+                    'delete': det.Del_Detail,
+                    'edit':   det.Edit_Detail,
+                    'auth':   det.Auth_Detail,
+                    'view':   det.View_Detail
+                }
             }
-
-        # Function level
-        sm_group[sub.sub_menu_id]['functions'].append({
-            'function_id':    func.function_id,
-            'description_la': func.description_la,
-            'description_en': func.description_en,
-            'permissions': {
-                'new':    det.New_Detail,
-                'delete': det.Del_Detail,
-                'edit':   det.Edit_Detail,
-                'auth':   det.Auth_Detail,
-                'view':   det.View_Detail
-            }
-        })
 
     # 3) Convert nested OrderedDicts to lists
     sidebar = []
@@ -668,6 +649,7 @@ def role_sidebar(request, role_id=None):
         sidebar.append(mod)
 
     return Response(sidebar, status=status.HTTP_200_OK)
+
 
 from collections import OrderedDict
 from rest_framework.decorators import api_view, permission_classes
