@@ -823,7 +823,6 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             modified_date=timezone.now()
         )
     
-
 class SubMenuViewSet(viewsets.ModelViewSet):
     serializer_class = SubMenuSerializer
     permission_classes = [IsAuthenticated]
@@ -1380,3 +1379,18 @@ def gl_tree(request):
             roots.append(node)
 
     return Response(roots)
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Count
+from .models import MTTB_MAIN_MENU
+@api_view(['GET'])
+def count_menus_by_module(request):
+    data = (
+        MTTB_MAIN_MENU.objects
+        .values('module_Id')   
+        .annotate(c_main=Count('menu_id'))
+    )
+    return Response(data)
+
+
