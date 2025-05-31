@@ -249,22 +249,50 @@ class UserSerial(serializers.ModelSerializer):
         model = MTTB_Users
         fields = ['user_id', 'user_name']
 
-class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
-    user_id = UserSerial(source='user_id',read_only=True)
-    division_id = serializers.SerializerMethodField()  
+# class MTTB_EMPLOYEESerializer(serializers.ModelSerializer):
+#     user_id = UserSerial(source='user_id',read_only=True)
+#     division_id = serializers.SerializerMethodField()  
 
+#     class Meta:
+#         model = MTTB_EMPLOYEE
+#         fields = '__all__'
+from rest_framework import serializers
+from .models import MTTB_EMPLOYEE, MTTB_Users, MTTB_Divisions
+
+class EmployeeSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user_id.user_name', read_only=True)
+    division_name_la = serializers.CharField(source='div_id.division_name_la', read_only=True)
+    employee_photo = serializers.ImageField(required=False, allow_null=True)
+    employee_signature = serializers.ImageField(required=False, allow_null=True)
+    
     class Meta:
         model = MTTB_EMPLOYEE
-        fields = '__all__'
+        fields = [
+            'employee_id', 'user_id', 'user_name', 'employee_name_la', 'employee_name_en',
+            'gender', 'date_of_birth', 'national_id', 'address_la', 'address_en',
+            'phone_number', 'email', 'position_code', 'div_id', 'division_name_la',
+            'employee_photo', 'employee_signature', 'hire_date', 'employment_status',
+            'record_stat', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
+            'Auth_Status', 'Once_Auth'
+        ]
+        read_only_fields = ['record_stat', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth']
 
-    def get_division_id(self, obj):
-        from SAMCSYS.serializers import DivisionSerializer
-        from SAMCSYS.models import MTTB_Divisions
-        try:
-            division = MTTB_Divisions.objects.get(div_id=obj.division_id)
-            return DivisionSerializer(division).data
-        except MTTB_Divisions.DoesNotExist:
-            return None
+    def validate_user_id(self, value):
+        if value and not MTTB_Users.objects.filter(user_id=value.user_id, User_Status='E').exists():
+            raise serializers.ValidationError("Invalid or inactive user_id")
+        return value
+
+    def validate_division_id(self, value):
+        if value and not MTTB_Divisions.objects.filter(div_id=value.div_id, record_Status='C').exists():
+            raise serializers.ValidationError("Invalid or inactive div_id")
+        return value
+
+    def validate(self, data):
+        if not data.get('employee_name_la'):
+            raise serializers.ValidationError({"employee_name_la": "This field is required"})
+        if not data.get('div_id'):
+            raise serializers.ValidationError({"div_id": "This field is required"})
+        return data
 
 class MTTB_LCL_HolidaySerializer(serializers.ModelSerializer):
     class Meta:
@@ -305,13 +333,13 @@ class UserActivityLogSerializer(serializers.ModelSerializer):
 
 class RoleDetailSerializer(serializers.ModelSerializer):
     # Rename writable fields to match model field names
-    fuu_details = FunctionDescSerializer(source='function_id', read_only=True)
+    fuu_details = SubMenuSerializer(source='sub_menu_id', read_only=True)
     role_detail = RoleMasterSerializer(source='role_id', read_only=True)
     role_id = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Role_Master.objects.all()
     )
-    function_id = serializers.PrimaryKeyRelatedField(
-        queryset=MTTB_Function_Desc.objects.all()
+    sub_menu_id = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_SUB_MENU.objects.all()
     )
 
     class Meta:

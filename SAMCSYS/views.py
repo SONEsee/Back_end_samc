@@ -233,59 +233,6 @@ class UserActivityLogViewSet(viewsets.ModelViewSet):
     queryset = MTTB_USER_ACTIVITY_LOG.objects.select_related('user_id').all().order_by('-activity_datetime')
     serializer_class = UserActivityLogSerializer
     permission_classes = [IsAuthenticated]
-# @api_view(["POST"])
-# @permission_classes([AllowAny])
-# def login_view(request):
-#     uid = request.data.get("user_name")
-#     pwd = request.data.get("user_password")
-#     if not uid or not pwd:
-#         return Response({"error": "User_Name and User_Password required"},
-#                         status=status.HTTP_400_BAD_REQUEST)
-
-#     hashed = _hash(pwd)
-#     try:
-#         user = MTTB_Users.objects.select_related('div_id', 'Role_ID').get(
-#             user_name=uid, user_password=hashed
-#         )
-#     except MTTB_Users.DoesNotExist:
-#         return Response({"error": "Invalid credentials"},
-#                         status=status.HTTP_401_UNAUTHORIZED)
-
-#     # 1) Create tokens
-#     refresh = RefreshToken.for_user(user)
-#     access  = refresh.access_token
-
-#     # 2) Serialize your user data
-#     data = MTTBUserSerializer(user).data
-
-#     # 3) Manually add full division & role info
-#     if user.div_id:
-#         data['division'] = {
-#             'div_id': user.Div_Id.Div_Id,
-#             'Div_NameL': user.Div_Id.Div_NameL,
-#             'Div_NameE': user.Div_Id.Div_NameE,
-#             'Record_Status': user.Div_Id.Record_Status,
-#         }
-#     else:
-#         data['division'] = None
-
-#     if user.Role_ID:
-#         data['role'] = {
-#             'role_id': user.Role_ID.role_id,
-#             'role_name_la': user.Role_ID.role_name_la,
-#             'role_name_en': user.Role_ID.role_name_en,
-#             'record_Status': user.Role_ID.record_Status,
-#         }
-#     else:
-#         data['role'] = None
-
-#     # 4) Return tokens + full payload
-#     return Response({
-#         "message": "Login successful",
-#         "refresh": str(refresh),
-#         "access": str(access),
-#         "user": data
-#     })
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -368,47 +315,6 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
         )
 
 
-# from rest_framework import viewsets
-# from rest_framework.permissions import IsAuthenticated, AllowAny
-# from .models import MTTB_Role_Detail
-# from .serializers import RoleDetailSerializer
-
-# class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
-#     """
-#     CRUD for Role_Detail records, with optional filtering by role_id and/or function_id via query params.
-#     """
-#     serializer_class = RoleDetailSerializer
-
-
-#     @action(detail=False, methods=['get'], url_path='single')
-#     def get_single(self, request):
-#         role_id = request.query_params.get('role_id')
-#         function_id = request.query_params.get('function_id')
-
-#         try:
-#             obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
-#             serializer = self.get_serializer(obj)
-#             return Response(serializer.data)
-#         except MTTB_Role_Detail.DoesNotExist:
-#             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-#     def get_permissions(self):
-#         # Allow open creation; require auth for read/update/delete
-#         if self.request.method == 'POST':
-#             return [AllowAny()]
-#         return [IsAuthenticated()]
-
-#     def get_queryset(self):
-#         qs = MTTB_Role_Detail.objects.select_related('role_id', 'function_id').all()
-#         params = self.request.query_params
-#         role = params.get('role_id')
-#         func = params.get('function_id')
-#         if role and func:
-#             qs = qs.filter(role_id__role_id=role, function_id__function_id=func)
-#         elif role:
-#             qs = qs.filter(role_id__role_id=role)
-#         elif func:
-#             qs = qs.filter(function_id__function_id=func)
-#         return qs
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -425,16 +331,16 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='single')
     def get_single(self, request):
         role_id = request.query_params.get('role_id')
-        function_id = request.query_params.get('function_id')
+        sub_menu_id = request.query_params.get('sub_menu_id')
 
-        if not role_id or not function_id:
+        if not role_id or not sub_menu_id:
             return Response(
                 {'detail': 'Both role_id and function_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
             serializer = self.get_serializer(obj)
             return Response(serializer.data)
         except MTTB_Role_Detail.DoesNotExist:
@@ -458,15 +364,15 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
         qs = MTTB_Role_Detail.objects.all()
         params = self.request.query_params
         role = params.get('role_id')
-        func = params.get('function_id')
+        func = params.get('sub_menu_id')
         
         # If role_id and function_id are direct fields (not foreign keys)
         if role and func:
-            qs = qs.filter(role_id=role, function_id=func)
+            qs = qs.filter(role_id=role, sub_menu_id=func)
         elif role:
             qs = qs.filter(role_id=role)
         elif func:
-            qs = qs.filter(function_id=func)
+            qs = qs.filter(sub_menu_id=func)
             
         return qs
 
@@ -474,16 +380,16 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['put'], url_path='update')
     def update_role_detail(self, request):
         role_id = request.query_params.get('role_id')
-        function_id = request.query_params.get('function_id')
+        sub_menu_id = request.query_params.get('sub_menu_id')
 
-        if not role_id or not function_id:
+        if not role_id or not sub_menu_id:
             return Response(
                 {'detail': 'Both role_id and function_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+            obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
             serializer = self.get_serializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -499,6 +405,18 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
                 {'detail': f'Error updating role detail: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def roledetaildelete(request):
+    role_id = request.GET.get('role_id')
+    sub_menu_id = request.GET.get('sub_menu_id')
+    try:
+        obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
+        obj.delete()
+        return Response({"detail": "Deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+    except MTTB_Role_Detail.DoesNotExist:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
 # Function Loop Sidebar Menu
 
@@ -511,24 +429,21 @@ from django.shortcuts import get_object_or_404
 from .models import (
     MTTB_Users,
     MTTB_Role_Detail,
-    MTTB_Function_Desc,
     MTTB_SUB_MENU,
     MTTB_MAIN_MENU,
     STTB_ModulesInfo,
 )
-from .serializers import ModuleSerializer  # if you added them
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sidebar_for_user(request, user_id):
     """
     GET /api/users/{user_id}/sidebar/
-    Returns modules → main menus → sub menus → functions with permissions.
+    Returns modules → main menus → sub menus with permissions.
     """
     # 1) Load user & role
     user = get_object_or_404(MTTB_Users, user_id=user_id)
     role = user.Role_ID
-    # print("User:", user.user_id, "Role:", user.Role_ID)
 
     if not role:
         return Response([])  # no role, no sidebar
@@ -538,18 +453,16 @@ def sidebar_for_user(request, user_id):
         MTTB_Role_Detail.objects
           .filter(role_id=role)
           .select_related(
-              'function_id',
-              'function_id__sub_menu_id',
-              'function_id__sub_menu_id__menu_id',
-              'function_id__sub_menu_id__menu_id__module_Id'
+              'sub_menu_id',
+              'sub_menu_id__menu_id',
+              'sub_menu_id__menu_id__module_Id'
           )
     )
 
-    # 3) Build nested dict: module → main_menu → sub_menu → [functions]
+    # 3) Build nested dict: module → main_menu → sub_menu
     modules = OrderedDict()
     for det in details:
-        func  = det.function_id
-        sub   = func.sub_menu_id
+        sub   = det.sub_menu_id
         main  = sub.menu_id if sub else None
         mod   = main.module_Id if main else None
         if not (sub and main and mod):
@@ -587,28 +500,21 @@ def sidebar_for_user(request, user_id):
         sm_group = mm_group[mm_key]['sub_menus']
         if sm_key not in sm_group:
             sm_group[sm_key] = {
-                'sub_menu_id':    sub.sub_menu_id,
+                'sub_menu_id':      sub.sub_menu_id,
                 'sub_menu_name_la': sub.sub_menu_name_la,
                 'sub_menu_name_en': sub.sub_menu_name_en,
-                'sub_menu_icon':   sub.sub_menu_icon,
-                'sub_menu_order':  sub.sub_menu_order,
-                'sub_menu_urls':   sub.sub_menu_urls,
-                'is_active':       sub.is_active,
-                'functions':       []
+                'sub_menu_icon':    sub.sub_menu_icon,
+                'sub_menu_order':   sub.sub_menu_order,
+                'sub_menu_urls':    sub.sub_menu_urls,
+                'is_active':        sub.is_active,
+                'permissions': {
+                    'new':    det.New_Detail,
+                    'delete': det.Del_Detail,
+                    'edit':   det.Edit_Detail,
+                    'auth':   det.Auth_Detail,
+                    'view':   det.View_Detail,
+                }
             }
-
-        # Finally, append the function + its permission flags
-        sm_group[sm_key]['functions'].append({
-            'function_id':    func.function_id,
-            'description_la': func.description_la,
-            'description_en': func.description_en,
-            'permissions': {
-                'new':    det.New_Detail,
-                'delete': det.Del_Detail,
-                'edit':   det.Edit_Detail,
-                'auth':   det.Auth_Detail,
-            }  
-        })
 
     # 4) Convert sub-dicts to lists
     result = []
@@ -621,12 +527,7 @@ def sidebar_for_user(request, user_id):
         mod['main_menus'] = mm_list
         result.append(mod)
 
-    # 5) (Optional) validate with serializer
-    # serialized = ModuleSerializer(result, many=True)
-    # return Response(serialized.data)
-
     return Response(result)
-
 
 from collections import OrderedDict
 from rest_framework.decorators import api_view, permission_classes
@@ -638,7 +539,6 @@ from django.shortcuts import get_object_or_404
 from .models import (
     MTTB_Role_Master,
     MTTB_Role_Detail,
-    MTTB_Function_Desc,
     MTTB_SUB_MENU,
     MTTB_MAIN_MENU,
     STTB_ModulesInfo,
@@ -646,41 +546,50 @@ from .models import (
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def role_sidebar(request, role_id):
+def role_sidebar(request, role_id=None):
     """
     GET /api/role/<role_id>/sidebar/
-    Returns modules → main menus → sub menus → functions with permissions.
+    Returns modules → main menus → sub menus with permissions.
     """
-    # 1) Load role
-    role = get_object_or_404(MTTB_Role_Master, role_id=role_id)
-
-    # 2) Pull in every detail → function → sub_menu → main_menu → module
-    details = (
-        MTTB_Role_Detail.objects
-        .filter(role_id=role)
-        .select_related(
-            'function_id',
-            'function_id__sub_menu_id',
-            'function_id__sub_menu_id__menu_id',
-            'function_id__sub_menu_id__menu_id__module_Id'
+    # 1) Initialize query based on role_id
+    if role_id:
+        role = get_object_or_404(MTTB_Role_Master, role_id=role_id)
+        details = (
+            MTTB_Role_Detail.objects
+            .filter(role_id=role)
+            .select_related(
+                'sub_menu_id',
+                'sub_menu_id__menu_id',
+                'sub_menu_id__menu_id__module_Id'
+            )
+            .order_by(
+                'sub_menu_id__menu_id__module_Id__module_order',
+                'sub_menu_id__menu_id__menu_order',
+                'sub_menu_id__sub_menu_order'
+            )
         )
-        .order_by(
-            'function_id__sub_menu_id__menu_id__module_Id__module_order',
-            'function_id__sub_menu_id__menu_id__menu_order',
-            'function_id__sub_menu_id__sub_menu_order',
-            'function_id__function_order'
+    else:
+        details = (
+            MTTB_Role_Detail.objects
+            .select_related(
+                'sub_menu_id',
+                'sub_menu_id__menu_id',
+                'sub_menu_id__menu_id__module_Id'
+            )
+            .order_by(
+                'sub_menu_id__menu_id__module_Id__module_order',
+                'sub_menu_id__menu_id__menu_order',
+                'sub_menu_id__sub_menu_order'
+            )
         )
-    )
 
-    # 3) Group into nested dicts
+    # 2) Group into nested dicts
     modules = OrderedDict()
     for det in details:
-        func = det.function_id
-        sub  = func.sub_menu_id
+        sub = det.sub_menu_id
         main = sub.menu_id
-        mod  = main.module_Id
+        mod = main.module_Id
 
-        # ensure all links exist
         if not (sub and main and mod):
             continue
 
@@ -718,24 +627,18 @@ def role_sidebar(request, role_id):
                 'sub_menu_name_en': sub.sub_menu_name_en,
                 'sub_menu_icon':    sub.sub_menu_icon,
                 'sub_menu_order':   sub.sub_menu_order,
+                'sub_menu_urls':    sub.sub_menu_urls,
                 'is_active':        sub.is_active,
-                'functions':        []
+                'permissions': {
+                    'new':    det.New_Detail,
+                    'delete': det.Del_Detail,
+                    'edit':   det.Edit_Detail,
+                    'auth':   det.Auth_Detail,
+                    'view':   det.View_Detail
+                }
             }
 
-        # Function level
-        sm_group[sub.sub_menu_id]['functions'].append({
-            'function_id':    func.function_id,
-            'description_la': func.description_la,
-            'description_en': func.description_en,
-            'permissions': {
-                'new':    det.New_Detail,
-                'delete': det.Del_Detail,
-                'edit':   det.Edit_Detail,
-                'auth':   det.Auth_Detail,
-            }
-        })
-
-    # 4) Convert nested OrderedDicts to lists
+    # 3) Convert nested OrderedDicts to lists
     sidebar = []
     for mod in modules.values():
         main_menus = []
@@ -746,6 +649,115 @@ def role_sidebar(request, role_id):
         sidebar.append(mod)
 
     return Response(sidebar, status=status.HTTP_200_OK)
+
+
+from collections import OrderedDict
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import (
+    STTB_ModulesInfo,
+    MTTB_MAIN_MENU,
+    MTTB_SUB_MENU,
+    MTTB_Function_Desc,
+)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def AllModule(request):
+    """
+    GET /api/modules/all/
+    Returns all modules -> main menus -> sub menus -> functions.
+    Only includes active records, ordered by their respective order fields.
+    """
+    # 1) Fetch all active modules
+    modules = (
+        STTB_ModulesInfo.objects
+        .filter(is_active='Y')
+        .order_by('module_order')
+    )
+
+    # 2) Initialize response structure
+    result = []
+
+    # 3) Loop through modules
+    for mod in modules:
+        module_data = {
+            'module_Id': mod.module_Id,
+            'module_name_la': mod.module_name_la,
+            'module_name_en': mod.module_name_en,
+            'module_icon': mod.module_icon,
+            'module_order': mod.module_order,
+            'is_active': mod.is_active,
+            'main_menus': []
+        }
+
+        # 4) Fetch active main menus for this module
+        main_menus = (
+            MTTB_MAIN_MENU.objects
+            .filter(module_Id=mod, is_active='Y')
+            .order_by('menu_order')
+        )
+
+        # 5) Loop through main menus
+        for main in main_menus:
+            main_menu_data = {
+                'menu_id': main.menu_id,
+                'menu_name_la': main.menu_name_la,
+                'menu_name_en': main.menu_name_en,
+                'menu_icon': main.menu_icon,
+                'menu_order': main.menu_order,
+                'is_active': main.is_active,
+                'sub_menus': []
+            }
+
+            # 6) Fetch active sub-menus for this main menu
+            sub_menus = (
+                MTTB_SUB_MENU.objects
+                .filter(menu_id=main, is_active='Y')
+                .order_by('sub_menu_order')
+            )
+
+            # 7) Loop through sub-menus
+            for sub in sub_menus:
+                sub_menu_data = {
+                    'sub_menu_id': sub.sub_menu_id,
+                    'sub_menu_name_la': sub.sub_menu_name_la,
+                    'sub_menu_name_en': sub.sub_menu_name_en,
+                    'sub_menu_icon': sub.sub_menu_icon,
+                    'sub_menu_order': sub.sub_menu_order,
+                    'sub_menu_urls': sub.sub_menu_urls,
+                    'is_active': sub.is_active,
+                    'functions': []
+                }
+
+                # 8) Fetch active functions for this sub-menu
+                functions = (
+                    MTTB_Function_Desc.objects
+                    .filter(sub_menu_id=sub, is_active='Y')
+                    .order_by('function_order')
+                )
+
+                # 9) Loop through functions
+                for func in functions:
+                    function_data = {
+                        'function_id': func.function_id,
+                        'description_la': func.description_la,
+                        'description_en': func.description_en,
+                        'function_order': func.function_order,
+                        'is_active': func.is_active
+                    }
+                    sub_menu_data['functions'].append(function_data)
+
+                main_menu_data['sub_menus'].append(sub_menu_data)
+
+            module_data['main_menus'].append(main_menu_data)
+
+        result.append(module_data)
+
+    return Response(result, status=status.HTTP_200_OK)
 
 
 from rest_framework import viewsets
@@ -986,42 +998,6 @@ def exchange_rate_history_for_ccy(request, ccy_code):
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# from rest_framework import viewsets
-# from rest_framework.permissions import IsAuthenticated, AllowAny
-# from django.utils import timezone
-# from .models import MTTB_GLMaster
-# from .serializers import GLMasterSerializer
-
-# class GLMasterViewSet(viewsets.ModelViewSet):
-#     """
-#     CRUD for General Ledger Master records.
-#     """
-#     queryset = MTTB_GLMaster.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('gl_code')
-#     serializer_class = GLMasterSerializer
-
-#     def get_permissions(self):
-#         # Allow unauthenticated creation (e.g. bootstrap), require auth otherwise
-#         if self.request.method == 'POST':
-#             return [AllowAny()]
-#         return [IsAuthenticated()]
-
-#     def perform_create(self, serializer):
-#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         gl = serializer.save(
-#             Maker_Id=maker,
-#             Maker_DT_Stamp=timezone.now()
-#         )
-#         return gl
-
-#     def perform_update(self, serializer):
-#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         gl = serializer.save(
-#             Checker_Id=checker,
-#             Checker_DT_Stamp=timezone.now()
-#         )
-#         return gl
-
-
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
@@ -1066,7 +1042,7 @@ class GLMasterViewSet(viewsets.ModelViewSet):
         # Search gl_code substring if provided
         code = params.get('gl_code')
         if code:
-            qs = qs.filter(gl_code__icontains=code)
+            qs = qs.filter(gl_code=code)
 
         return qs
 
@@ -1117,68 +1093,127 @@ class GLSubViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
-from .serializers import MTTB_EMPLOYEESerializer,MTTB_LCL_HolidaySerializer
 
-class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
-    serializer_class = MTTB_EMPLOYEESerializer
+
+# class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
+#     serializer_class = MTTB_EMPLOYEESerializer
+#     permission_classes = [IsAuthenticated]
+#     lookup_field = 'employee_id'
+
+#     def get_queryset(self):
+#         queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
+#         div_id = self.request.query_params.get('div_id')
+#         if div_id:
+#             queryset = queryset.filter(division_id=div_id)
+#         return queryset
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         if serializer.is_valid():
+#             self.perform_create(serializer)
+#             return Response({
+#                 "status": "success",
+#                 "message": "Employee created successfully.",
+#                 "data": serializer.data
+#             }, status=status.HTTP_201_CREATED)
+#         else:
+#             return Response({
+#                 "status": "error",
+#                 "message": "Failed to create employee.",
+#                 "errors": serializer.errors
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+#     def destroy(self, request, *args, **kwargs):
+#         try:
+#             instance = self.get_object()
+#             self.perform_destroy(instance)
+#             return Response({
+#                 "status": "success",
+#                 "message": "Employee deleted successfully."
+#             }, status=status.HTTP_204_NO_CONTENT)
+#         except Exception as e:
+#             return Response({
+#                 "status": "error",
+#                 "message": f"Failed to delete employee: {str(e)}"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+#     def perform_create(self, serializer):
+#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Maker_Id=maker,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Checker_Id=checker,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+from django.utils import timezone
+from .models import MTTB_EMPLOYEE, MTTB_Users, MTTB_Divisions
+from .serializers import EmployeeSerializer
+
+class EmployeeViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for employees, supporting:
+      - JSON and multipart/form-data for file uploads
+      - Filtering by ?div_id=...
+      - Soft deletion via record_stat='D'
+    """
+    serializer_class = EmployeeSerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
-    lookup_field = 'employee_id'
 
     def get_queryset(self):
-        queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
-        div_id = self.request.query_params.get('div_id')
+        """
+        Returns active employees (record_stat='A'), optionally filtered by div_id.
+        """
+        qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id').filter(record_stat='O')
+        
+        params = self.request.query_params
+        div_id = params.get('div_id')
         if div_id:
-            queryset = queryset.filter(division_id=div_id)
-        return queryset
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            self.perform_create(serializer)
-            return Response({
-                "status": "success",
-                "message": "Employee created successfully.",
-                "data": serializer.data
-            }, status=status.HTTP_201_CREATED)
-        else:
-            return Response({
-                "status": "error",
-                "message": "Failed to create employee.",
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-    def destroy(self, request, *args, **kwargs):
-        try:
-            instance = self.get_object()
-            self.perform_destroy(instance)
-            return Response({
-                "status": "success",
-                "message": "Employee deleted successfully."
-            }, status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            return Response({
-                "status": "error",
-                "message": f"Failed to delete employee: {str(e)}"
-            }, status=status.HTTP_400_BAD_REQUEST)
+            qs = qs.filter(div_id_id__div_id=div_id)
+        
+        return qs.order_by('employee_id')
 
     def perform_create(self, serializer):
-        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        """
+        Sets audit fields for creation.
+        """
         serializer.save(
-            Maker_Id=maker,
-            Maker_DT_Stamp=timezone.now()
+            Maker_Id=self.request.user if self.request.user.is_authenticated else None,
+            Maker_DT_Stamp=timezone.now(),
+            record_stat='A',
+            Auth_Status='U',
+            Once_Auth='N'
         )
 
     def perform_update(self, serializer):
-        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        """
+        Sets audit fields for updates.
+        """
         serializer.save(
-            Checker_Id=checker,
+            Checker_Id=self.request.user if self.request.user.is_authenticated else None,
             Checker_DT_Stamp=timezone.now()
         )
 
-class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
+    def perform_destroy(self, instance):
+        """
+        Soft deletes the employee by setting record_stat to 'D'.
+        """
+        instance.record_stat = 'D'
+        instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
+        instance.Checker_DT_Stamp = timezone.now()
+        instance.save()
+
+from .serializers import MTTB_LCL_HolidaySerializer
+from .models import MTTB_LCL_Holiday
+class HolidayViewSet(viewsets.ModelViewSet):
     queryset = MTTB_LCL_Holiday.objects.all().order_by('lcl_holiday_id')
     serializer_class = MTTB_LCL_HolidaySerializer
     permission_classes = [IsAuthenticated]
@@ -1194,10 +1229,10 @@ from .serializers import RoleDetailSerializer
 @permission_classes([IsAuthenticated])
 def update_role_detail(request):
     role_id = request.query_params.get('role_id')
-    function_id = request.query_params.get('function_id')
+    sub_menu_id = request.query_params.get('sub_menu_id')
 
     try:
-        obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
+        obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
     except MTTB_Role_Detail.DoesNotExist:
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
