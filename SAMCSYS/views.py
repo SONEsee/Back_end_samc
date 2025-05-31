@@ -1384,31 +1384,50 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Count
 from .models import MTTB_MAIN_MENU
+
 @api_view(['GET'])
 def count_menus_by_module(request):
+    module_id = request.query_params.get('module_Id')
+
+    queryset = MTTB_MAIN_MENU.objects.all()
+
+    if module_id:
+        queryset = queryset.filter(module_Id=module_id)
+
     data = (
-        MTTB_MAIN_MENU.objects
-        .values('module_Id')   
+        queryset
+        .values('module_Id')
         .annotate(c_main=Count('menu_id'))
     )
+
     return Response(data)
 
 
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Count
+from .models import MTTB_SUB_MENU
 
 @api_view(['GET'])
 def count_submenus_per_menu(request):
+    menu_id = request.query_params.get('menu_id')
+
+    queryset = MTTB_SUB_MENU.objects.all()
+
+    if menu_id:
+        queryset = queryset.filter(menu_id=menu_id)
+
     data = (
-        MTTB_SUB_MENU.objects
+        queryset
         .values(
-            'menu_id', 
+            'menu_id',
             'menu_id__menu_name_la',
             'menu_id__menu_name_en'
         )
         .annotate(count_menu=Count('sub_menu_id'))
-        .order_by('menu_id')  # Optional: sort by menu_id
+        .order_by('menu_id')
     )
 
-    # Optional: rename keys for cleaner frontend usage
     result = [
         {
             "menu_id": item['menu_id'],
