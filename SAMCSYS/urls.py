@@ -30,7 +30,8 @@ from .views import (
     exchange_rate_history_for_ccy,
     AllModule,
     roledetaildelete,
-    count_menus_by_module
+    count_menus_by_module,
+    count_submenus_per_menu
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -74,4 +75,5 @@ urlpatterns = [
     path('api/gl-hierarchy/', gl_hierarchy, name='gl-hierarchy'),
     path('api/gl-tree/', gl_tree, name='gl-tree'),
     path('api/count-menus/', count_menus_by_module, name='count-menus'),
+    path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

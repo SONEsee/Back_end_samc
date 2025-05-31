@@ -1394,3 +1394,31 @@ def count_menus_by_module(request):
     return Response(data)
 
 
+
+@api_view(['GET'])
+def count_submenus_per_menu(request):
+    data = (
+        MTTB_SUB_MENU.objects
+        .values(
+            'menu_id', 
+            'menu_id__menu_name_la',
+            'menu_id__menu_name_en'
+        )
+        .annotate(count_menu=Count('sub_menu_id'))
+        .order_by('menu_id')  # Optional: sort by menu_id
+    )
+
+    # Optional: rename keys for cleaner frontend usage
+    result = [
+        {
+            "menu_id": item['menu_id'],
+            "menu_name_la": item['menu_id__menu_name_la'],
+            "menu_name_en": item['menu_id__menu_name_en'],
+            "count_menu": item['count_menu']
+        }
+        for item in data
+    ]
+
+    return Response(result)
+
+
