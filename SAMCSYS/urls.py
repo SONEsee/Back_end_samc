@@ -29,7 +29,14 @@ from .views import (
     gl_tree,
     exchange_rate_history_for_ccy,
     AllModule,
-    roledetaildelete
+    roledetaildelete,
+    ProvinceInfoViewSet,
+    DistrictInfoViewSet,
+    VillageInfoViewSet,
+    VillageInfoViewSet_name,
+    ProvinceViewSets,
+    DistrictViewSets
+    
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -55,6 +62,12 @@ router.register(r'lcl_holiday', HolidayViewSet, basename='holiday')
 router.register(r'fin-cycles', FinCycleViewSet, basename='fin-cycle')
 router.register(r'user-access-logs',    UserAccessLogViewSet,     basename='user-access-log')
 router.register(r'user-activity-logs',  UserActivityLogViewSet,   basename='user-activity-log')
+router.register(r'provinceinfo', ProvinceInfoViewSet, basename='provinceinfo')
+router.register(r'districtinfo', DistrictInfoViewSet, basename='districtinfo')
+router.register(r'villageinfo', VillageInfoViewSet, basename='villageinfo')
+router.register(r'villageinfo_name', VillageInfoViewSet_name, basename='villageinfo_name')
+router.register(r'provinces', ProvinceViewSets, basename='province')
+router.register(r'districts', DistrictViewSets, basename='district')
 
 urlpatterns = [
     #TOKEN
