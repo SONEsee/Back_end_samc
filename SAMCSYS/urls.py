@@ -30,6 +30,7 @@ from .views import (
     exchange_rate_history_for_ccy,
     AllModule,
     roledetaildelete,
+<<<<<<< HEAD
     ProvinceInfoViewSet,
     DistrictInfoViewSet,
     VillageInfoViewSet,
@@ -37,6 +38,10 @@ from .views import (
     ProvinceViewSets,
     DistrictViewSets
     
+=======
+    count_menus_by_module,
+    count_submenus_per_menu
+>>>>>>> 5688891776a516c6df2fccf186670cf670b3f0a7
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -85,4 +90,6 @@ urlpatterns = [
     path('api/v1/role-details/update/', update_role_detail, name='update-role-detail'),
     path('api/gl-hierarchy/', gl_hierarchy, name='gl-hierarchy'),
     path('api/gl-tree/', gl_tree, name='gl-tree'),
+    path('api/count-menus/', count_menus_by_module, name='count-menus'),
+    path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

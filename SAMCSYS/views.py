@@ -823,7 +823,6 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             modified_date=timezone.now()
         )
     
-
 class SubMenuViewSet(viewsets.ModelViewSet):
     serializer_class = SubMenuSerializer
     permission_classes = [IsAuthenticated]
@@ -1381,6 +1380,7 @@ def gl_tree(request):
 
     return Response(roots)
 
+<<<<<<< HEAD
 
 from rest_framework import viewsets
 from .models import ProvinceInfo_new, DistrictInfo_new, VillageInfo_new
@@ -1495,3 +1495,66 @@ class ProvinceViewSets(viewsets.ReadOnlyModelViewSet):
 class DistrictViewSets(viewsets.ReadOnlyModelViewSet):
     queryset = DistrictInfo.objects.all()
     serializer_class = DistrictInfoSerializers
+=======
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Count
+from .models import MTTB_MAIN_MENU
+
+@api_view(['GET'])
+def count_menus_by_module(request):
+    module_id = request.query_params.get('module_Id')
+
+    queryset = MTTB_MAIN_MENU.objects.all()
+
+    if module_id:
+        queryset = queryset.filter(module_Id=module_id)
+
+    data = (
+        queryset
+        .values('module_Id')
+        .annotate(c_main=Count('menu_id'))
+    )
+
+    return Response(data)
+
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Count
+from .models import MTTB_SUB_MENU
+
+@api_view(['GET'])
+def count_submenus_per_menu(request):
+    menu_id = request.query_params.get('menu_id')
+
+    queryset = MTTB_SUB_MENU.objects.all()
+
+    if menu_id:
+        queryset = queryset.filter(menu_id=menu_id)
+
+    data = (
+        queryset
+        .values(
+            'menu_id',
+            'menu_id__menu_name_la',
+            'menu_id__menu_name_en'
+        )
+        .annotate(count_menu=Count('sub_menu_id'))
+        .order_by('menu_id')
+    )
+
+    result = [
+        {
+            "menu_id": item['menu_id'],
+            "menu_name_la": item['menu_id__menu_name_la'],
+            "menu_name_en": item['menu_id__menu_name_en'],
+            "count_menu": item['count_menu']
+        }
+        for item in data
+    ]
+
+    return Response(result)
+
+
+>>>>>>> 5688891776a516c6df2fccf186670cf670b3f0a7
