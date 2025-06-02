@@ -1478,121 +1478,6 @@ def count_submenus_per_menu(request):
 
     return Response(result)
 
-
-# from rest_framework import viewsets
-# from .models import ProvinceInfo_new, DistrictInfo_new, VillageInfo_new
-# from django.db.models import Q
-# from .serializers import ProvinceInfoSerializer, DistrictInfoSerializer, VillageInfoSerializer,VillageInfoSerializer_name
-
-# class ProvinceInfoViewSet(viewsets.ModelViewSet):
-#     queryset = ProvinceInfo_new.objects.all().order_by('pro_id')
-#     serializer_class = ProvinceInfoSerializer
-#     permission_classes = [IsAuthenticated]
-
-# class DistrictInfoViewSet(viewsets.ModelViewSet):
-#     # queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
-#     serializer_class = DistrictInfoSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
-#         pro_id = self.request.query_params.get('pro_id')
-#         if pro_id:
-#             queryset = queryset.filter(pro_id=pro_id) 
-#         return queryset
-    
-#     def perform_create(self, serializer):
-#         user = self.request.user
-#         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
-#         serializer.save(
-#             user_id=user_id,
-#             date_insert=timezone.now()
-#         )
-
-#     def perform_update(self, serializer):
-#         serializer.save(
-#             date_update=timezone.now()
-#         )
-
-
-# class VillageInfoViewSet(viewsets.ModelViewSet): # search params by pro_id, dis_id, vil_name_l
-#     serializer_class = VillageInfoSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         queryset = VillageInfo_new.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
-#         pro_id = self.request.query_params.get('pro_id')
-#         dis_id = self.request.query_params.get('dis_id')
-
-#         if pro_id:
-#             queryset = queryset.filter(pro_id__pro_id=pro_id)
-#         if dis_id:
-#             queryset = queryset.filter(dis_id__dis_id=dis_id)
-
-#         return queryset
-
-#     def perform_create(self, serializer):
-#         user = self.request.user
-#         user_id = getattr(user, 'user_id', None)
-#         serializer.save(
-#             user_id=user_id,
-#             date_insert=timezone.now()
-#         )
-
-#     def perform_update(self, serializer):
-#         serializer.save(
-#             date_update=timezone.now()
-#         )
-
-# class VillageInfoViewSet_name(viewsets.ModelViewSet): # search_name
-#     serializer_class = VillageInfoSerializer_name
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         queryset = VillageInfo_new.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
-        
-#         pro_id = self.request.query_params.get('pro_id')
-#         dis_id = self.request.query_params.get('dis_id')
-#         search = self.request.query_params.get('search')
-
-#         if pro_id:
-#             queryset = queryset.filter(pro_id__pro_id=pro_id)
-#         if dis_id:
-#             queryset = queryset.filter(dis_id__dis_id=dis_id)
-#         if search:
-#             queryset = queryset.filter(
-#                 Q(vil_name_l__icontains=search) | Q(vil_name_e__icontains=search)
-#         )
-
-
-#         return queryset
-
-#     def perform_create(self, serializer):
-#         user = self.request.user
-#         user_id = getattr(user, 'user_id', None)
-#         serializer.save(
-#             user_id=user_id,
-#             date_insert=timezone.now()
-#         )
-
-#     def perform_update(self, serializer):
-#         serializer.save(
-#             date_update=timezone.now()
-#         )
-
-# #test bb kao
-# from rest_framework import viewsets
-# from .models import ProvinceInfo, DistrictInfo
-# from .serializers import ProvinceDetailSerializers, DistrictInfoSerializers
-
-# class ProvinceViewSets(viewsets.ReadOnlyModelViewSet):
-#     queryset = ProvinceInfo.objects.all()
-#     serializer_class = ProvinceDetailSerializers
-
-# class DistrictViewSets(viewsets.ReadOnlyModelViewSet):
-#     queryset = DistrictInfo.objects.all()
-#     serializer_class = DistrictInfoSerializers
-
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -1867,3 +1752,73 @@ class MTTB_TRN_CodeViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(trn_code_obj)
         return Response(serializer.data)
+    
+from rest_framework import viewsets
+from django.db.models import Q
+from .models import MTTB_ProvinceInfo, MTTB_DistrictInfo, MTTB_VillageInfo
+from .serializers import ProvinceSerializer, DistrictSerializer, VillageSerializer
+
+class ProvinceViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_ProvinceInfo.objects.all().order_by('pro_id')
+    serializer_class = ProvinceSerializer
+    permission_classes = [IsAuthenticated]
+
+class DistrictViewSet(viewsets.ModelViewSet):
+        # queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
+    serializer_class = DistrictSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = MTTB_DistrictInfo.objects.all().order_by('pro_id', 'dis_id')
+        pro_id = self.request.query_params.get('pro_id')
+        if pro_id:
+            queryset = queryset.filter(pro_id=pro_id) 
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            user_id=user_id,
+            date_insert=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        serializer.save(
+            date_update=timezone.now()
+        )
+
+class VillageViewSet(viewsets.ModelViewSet):
+    serializer_class = VillageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = MTTB_VillageInfo.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
+        pro_id = self.request.query_params.get('pro_id')
+        dis_id = self.request.query_params.get('dis_id')
+        search_name = self.request.query_params.get('search_name')
+
+        if pro_id:
+            queryset = queryset.filter(pro_id=pro_id)
+        if dis_id:
+            queryset = queryset.filter(dis_id=dis_id)
+        if search_name:
+            queryset = queryset.filter(
+                Q(vil_name_e__icontains=search_name) | Q(vil_name_l__icontains=search_name)
+            )
+
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            user_id=user_id,
+            date_insert=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        serializer.save(
+            date_update=timezone.now()
+        )
+
