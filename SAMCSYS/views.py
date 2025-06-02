@@ -1320,7 +1320,7 @@ def gl_hierarchy(request):
 
     return Response(result)
 
-# views.py
+
 
 # from rest_framework.decorators import api_view, permission_classes
 # from rest_framework.permissions import IsAuthenticated
@@ -1331,49 +1331,23 @@ def gl_hierarchy(request):
 # @permission_classes([IsAuthenticated])
 # def gl_tree(request):
 #     """
-#     GET /api/gl-tree/
-#     Returns all GL codes nested by prefix:
-#     [
-#       {
-#         "gl_code": "110",
-#         "gl_Desc_la": "...",
-#         "gl_Desc_en": "...",
-#         "children": [
-#           {
-#             "gl_code": "1101",
-#             "gl_Desc_la": "...",
-#             "gl_Desc_en": "...",
-#             "children": [
-#               {
-#                 "gl_code": "11011",
-#                 "children": [
-#                   { "gl_code": "110111", "children": [] },
-#                   { "gl_code": "110112", "children": [] }
-#                 ]
-#               },
-#               { "gl_code": "11012", "children": [] }
-#             ]
-#           }
-#         ]
-#       }
-#     ]
+#     Returns GL codes nested by prefix.
 #     """
-#     # 1) load and order all
-#     q = MTTB_GLMaster.objects.all().order_by('gl_code')
-#     # 2) build a lookup of code -> node dict
+#     q = MTTB_GLMaster.objects.filter(gl_code__isnull=False).order_by('gl_code')
+
+#     # Build code-to-node map
 #     nodes = {}
 #     for gl in q:
-#         nodes[gl.gl_code] = {
-#             'gl_code': gl.gl_code,
-#             'gl_Desc_la': gl.gl_Desc_la,
-#             'gl_Desc_en': gl.gl_Desc_en,
-#             'children': []
-#         }
+#         if gl.gl_code:
+#             nodes[gl.gl_code] = {
+#                 'gl_code': gl.gl_code,
+#                 'gl_Desc_la': gl.gl_Desc_la,
+#                 'gl_Desc_en': gl.gl_Desc_en,
+#                 'children': []
+#             }
 
 #     roots = []
-#     # 3) attach each node to its parent (longest prefix)
 #     for code, node in nodes.items():
-#         # find the longest other code that's a strict prefix
 #         parent_code = None
 #         for candidate in nodes:
 #             if candidate != code and code.startswith(candidate):
@@ -1396,8 +1370,27 @@ from .models import MTTB_GLMaster
 def gl_tree(request):
     """
     Returns GL codes nested by prefix.
+    
+    Query Parameters:
+    - gl_code: Filter GL codes that start with this value (optional)
+    - glType: Filter by GL type (optional)
     """
-    q = MTTB_GLMaster.objects.filter(gl_code__isnull=False).order_by('gl_code')
+    # Get query parameters
+    gl_code_filter = request.query_params.get('gl_code', None)
+    gl_type_filter = request.query_params.get('glType', None)
+    
+    # Build base query
+    q = MTTB_GLMaster.objects.filter(gl_code__isnull=False)
+    
+    # Apply filters if provided
+    if gl_code_filter:
+        q = q.filter(gl_code__startswith=gl_code_filter)
+    
+    if gl_type_filter:
+        q = q.filter(glType=gl_type_filter)
+    
+    # Order by gl_code
+    q = q.order_by('gl_code')
 
     # Build code-to-node map
     nodes = {}
@@ -1407,6 +1400,7 @@ def gl_tree(request):
                 'gl_code': gl.gl_code,
                 'gl_Desc_la': gl.gl_Desc_la,
                 'gl_Desc_en': gl.gl_Desc_en,
+                'glType': gl.glType,  # Include glType in response
                 'children': []
             }
 
