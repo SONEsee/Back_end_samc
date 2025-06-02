@@ -1418,10 +1418,6 @@ def gl_tree(request):
 
     return Response(roots)
 
-<<<<<<< HEAD
-=======
-
->>>>>>> b8f4e9f8621754a7b5331435da39b7ffa439bd61
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Count
@@ -1483,8 +1479,6 @@ def count_submenus_per_menu(request):
     return Response(result)
 
 
-<<<<<<< HEAD
-=======
 # from rest_framework import viewsets
 # from .models import ProvinceInfo_new, DistrictInfo_new, VillageInfo_new
 # from django.db.models import Q
@@ -1600,4 +1594,3 @@ def count_submenus_per_menu(request):
 #     serializer_class = DistrictInfoSerializers
 
 
->>>>>>> b8f4e9f8621754a7b5331435da39b7ffa439bd61
