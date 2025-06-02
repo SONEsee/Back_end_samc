@@ -38,11 +38,14 @@ from .views import (
     # DistrictViewSets,
     count_menus_by_module,
     count_submenus_per_menu,
-    PerCodeViewSet
+    PerCodeViewSet,
+    MTTB_LCL_HolidayViewSet,
+    MTTB_TRN_CodeViewSet
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
+    
 )
 
 router = routers.DefaultRouter()
@@ -60,11 +63,13 @@ router.register(r'gl-master', GLMasterViewSet, basename='gl-master')
 router.register(r'gl-sub', GLSubViewSet, basename='gl-sub')
 router.register(r'functions', FunctionDescViewSet, basename='function-desc')
 router.register(r'employees', EmployeeViewSet, basename='employee')
-router.register(r'lcl_holiday', HolidayViewSet, basename='holiday')
+# router.register(r'lcl_holiday', HolidayViewSet, basename='holiday')
+router.register(r'lcl_holiday', MTTB_LCL_HolidayViewSet, basename='holiday')
 router.register(r'fin-cycles', FinCycleViewSet, basename='fin-cycle')
 router.register(r'user-access-logs',    UserAccessLogViewSet,     basename='user-access-log')
 router.register(r'user-activity-logs',  UserActivityLogViewSet,   basename='user-activity-log')
 router.register(r'percodes', PerCodeViewSet, basename='percode')
+router.register(r'trn-codes', MTTB_TRN_CodeViewSet, basename='trn-code')
 # router.register(r'provinceinfo', ProvinceInfoViewSet, basename='provinceinfo')
 # router.register(r'districtinfo', DistrictInfoViewSet, basename='districtinfo')
 # router.register(r'villageinfo', VillageInfoViewSet, basename='villageinfo')

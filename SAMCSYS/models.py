@@ -392,7 +392,7 @@ class MTTB_LCL_Holiday(models.Model):
     HYear = models.CharField(max_length=4,null=True,blank=True)
     HMonth = models.CharField(max_length=10,null=True,blank=True)
     HDate = models.DateTimeField(auto_now=True,null=True,blank=True)
-    Holiday_List = models.CharField(max_length=1,null=True,blank=True)
+    Holiday_List = models.CharField(max_length=31,null=True,blank=True)
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_TLCL_Holiday')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
@@ -878,9 +878,9 @@ class MTTB_DistrictInfo(models.Model):
         return self.dis_name_e or f"District {self.id}"
 
 
-class MTTB_VillageInfo(models.Model):
+class MTTB_VillageInfo_map(models.Model):
     
-    vil_id = models.CharField(primary_key=True,max_length=50)
+    vil_id = models.AutoField(primary_key=True)
     province = models.ForeignKey(
         MTTB_ProvinceInfo,
         on_delete=models.CASCADE,
@@ -902,7 +902,7 @@ class MTTB_VillageInfo(models.Model):
     vil_name_e = models.CharField(max_length=50, null=True, blank=True)
     vil_name_l = models.CharField(max_length=50, null=True, blank=True)
 
-    user_id = models.IntegerField(null=True, blank=True)
+    user_id = models.CharField(max_length=50, null=True, blank=True)
 
     date_insert = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     date_update = models.DateTimeField(auto_now=True, null=True, blank=True)

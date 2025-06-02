@@ -294,10 +294,33 @@ class EmployeeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"div_id": "This field is required"})
         return data
 
+from rest_framework import serializers
+from .models import MTTB_LCL_Holiday, MTTB_Users
+
 class MTTB_LCL_HolidaySerializer(serializers.ModelSerializer):
+    # Read-only fields for displaying user information
+    maker_username = serializers.CharField(source='Maker_Id.username', read_only=True)
+    checker_username = serializers.CharField(source='Checker_Id.username', read_only=True)
+    
     class Meta:
         model = MTTB_LCL_Holiday
-        fields = '__all__'
+        fields = [
+            'lcl_holiday_id',
+            'HYear',
+            'HMonth',
+            'HDate',
+            'Holiday_List',
+            'Record_Status',
+            'Maker_Id',
+            'maker_username',
+            'Maker_DT_Stamp',
+            'Checker_Id',
+            'checker_username',
+            'Checker_DT_Stamp',
+            'Auth_Status',
+            'Once_Auth'
+        ]
+        read_only_fields = ['Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp']
 
 
 from rest_framework import serializers
@@ -440,4 +463,26 @@ class RoleDetailSerializer(serializers.ModelSerializer):
 #             return None
 
 
+from .models import MTTB_TRN_Code
 
+class MTTB_TRN_CodeSerializer(serializers.ModelSerializer):   # Read-only fields for user information
+    maker_username = serializers.CharField(source='Maker_Id.username', read_only=True)
+    checker_username = serializers.CharField(source='Checker_Id.username', read_only=True)
+    
+    class Meta:
+        model = MTTB_TRN_Code
+        fields = [
+            'trn_code',
+            'trn_Desc_la',
+            'trn_Desc_en',
+            'Record_Status',
+            'Maker_Id',
+            'maker_username',
+            'Maker_DT_Stamp',
+            'Checker_Id',
+            'checker_username',
+            'Checker_DT_Stamp',
+            'Auth_Status',
+            'Once_Auth'
+        ]
+        read_only_fields = ['Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp']
