@@ -310,6 +310,15 @@ class FinCycleSerializer(serializers.ModelSerializer):
         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 from rest_framework import serializers
+from .models import MTTB_Per_Code
+
+class PerCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Per_Code
+        fields = '__all__'
+
+
+from rest_framework import serializers
 from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
 
 

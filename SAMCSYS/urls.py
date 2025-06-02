@@ -30,8 +30,20 @@ from .views import (
     exchange_rate_history_for_ccy,
     AllModule,
     roledetaildelete,
+<<<<<<< HEAD
     count_menus_by_module,
     count_submenus_per_menu
+=======
+    # ProvinceInfoViewSet,
+    # DistrictInfoViewSet,
+    # VillageInfoViewSet,
+    # VillageInfoViewSet_name,
+    # ProvinceViewSets,
+    # DistrictViewSets,
+    count_menus_by_module,
+    count_submenus_per_menu,
+    PerCodeViewSet
+>>>>>>> b8f4e9f8621754a7b5331435da39b7ffa439bd61
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -57,6 +69,10 @@ router.register(r'lcl_holiday', HolidayViewSet, basename='holiday')
 router.register(r'fin-cycles', FinCycleViewSet, basename='fin-cycle')
 router.register(r'user-access-logs',    UserAccessLogViewSet,     basename='user-access-log')
 router.register(r'user-activity-logs',  UserActivityLogViewSet,   basename='user-activity-log')
+<<<<<<< HEAD
+=======
+router.register(r'percodes', PerCodeViewSet, basename='percode')
+>>>>>>> b8f4e9f8621754a7b5331435da39b7ffa439bd61
 # router.register(r'provinceinfo', ProvinceInfoViewSet, basename='provinceinfo')
 # router.register(r'districtinfo', DistrictInfoViewSet, basename='districtinfo')
 # router.register(r'villageinfo', VillageInfoViewSet, basename='villageinfo')
@@ -82,4 +98,5 @@ urlpatterns = [
     path('api/gl-tree/', gl_tree, name='gl-tree'),
     path('api/count-menus/', count_menus_by_module, name='count-menus'),
     path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

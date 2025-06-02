@@ -1249,9 +1249,7 @@ from .models import MTTB_Fin_Cycle
 from .serializers import FinCycleSerializer
 
 class FinCycleViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for Financial Cycles.
-    """
+
     queryset = MTTB_Fin_Cycle.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('fin_cycle')
     serializer_class = FinCycleSerializer
 
@@ -1275,6 +1273,14 @@ class FinCycleViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+from rest_framework import viewsets
+from .models import MTTB_Per_Code
+from .serializers import PerCodeSerializer
+
+class PerCodeViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_Per_Code.objects.all()
+    serializer_class = PerCodeSerializer
+    lookup_field = 'period_code'  # use primary key (string)
 
 
 from collections import OrderedDict
@@ -1314,7 +1320,45 @@ def gl_hierarchy(request):
 
     return Response(result)
 
-# views.py
+
+
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from .models import MTTB_GLMaster
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def gl_tree(request):
+#     """
+#     Returns GL codes nested by prefix.
+#     """
+#     q = MTTB_GLMaster.objects.filter(gl_code__isnull=False).order_by('gl_code')
+
+#     # Build code-to-node map
+#     nodes = {}
+#     for gl in q:
+#         if gl.gl_code:
+#             nodes[gl.gl_code] = {
+#                 'gl_code': gl.gl_code,
+#                 'gl_Desc_la': gl.gl_Desc_la,
+#                 'gl_Desc_en': gl.gl_Desc_en,
+#                 'children': []
+#             }
+
+#     roots = []
+#     for code, node in nodes.items():
+#         parent_code = None
+#         for candidate in nodes:
+#             if candidate != code and code.startswith(candidate):
+#                 if parent_code is None or len(candidate) > len(parent_code):
+#                     parent_code = candidate
+#         if parent_code:
+#             nodes[parent_code]['children'].append(node)
+#         else:
+#             roots.append(node)
+
+#     return Response(roots)
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -1325,49 +1369,43 @@ from .models import MTTB_GLMaster
 @permission_classes([IsAuthenticated])
 def gl_tree(request):
     """
-    GET /api/gl-tree/
-    Returns all GL codes nested by prefix:
-    [
-      {
-        "gl_code": "110",
-        "gl_Desc_la": "...",
-        "gl_Desc_en": "...",
-        "children": [
-          {
-            "gl_code": "1101",
-            "gl_Desc_la": "...",
-            "gl_Desc_en": "...",
-            "children": [
-              {
-                "gl_code": "11011",
-                "children": [
-                  { "gl_code": "110111", "children": [] },
-                  { "gl_code": "110112", "children": [] }
-                ]
-              },
-              { "gl_code": "11012", "children": [] }
-            ]
-          }
-        ]
-      }
-    ]
+    Returns GL codes nested by prefix.
+    
+    Query Parameters:
+    - gl_code: Filter GL codes that start with this value (optional)
+    - glType: Filter by GL type (optional)
     """
-    # 1) load and order all
-    q = MTTB_GLMaster.objects.all().order_by('gl_code')
-    # 2) build a lookup of code -> node dict
+    # Get query parameters
+    gl_code_filter = request.query_params.get('gl_code', None)
+    gl_type_filter = request.query_params.get('glType', None)
+    
+    # Build base query
+    q = MTTB_GLMaster.objects.filter(gl_code__isnull=False)
+    
+    # Apply filters if provided
+    if gl_code_filter:
+        q = q.filter(gl_code__startswith=gl_code_filter)
+    
+    if gl_type_filter:
+        q = q.filter(glType=gl_type_filter)
+    
+    # Order by gl_code
+    q = q.order_by('gl_code')
+
+    # Build code-to-node map
     nodes = {}
     for gl in q:
-        nodes[gl.gl_code] = {
-            'gl_code': gl.gl_code,
-            'gl_Desc_la': gl.gl_Desc_la,
-            'gl_Desc_en': gl.gl_Desc_en,
-            'children': []
-        }
+        if gl.gl_code:
+            nodes[gl.gl_code] = {
+                'gl_code': gl.gl_code,
+                'gl_Desc_la': gl.gl_Desc_la,
+                'gl_Desc_en': gl.gl_Desc_en,
+                'glType': gl.glType,  # Include glType in response
+                'children': []
+            }
 
     roots = []
-    # 3) attach each node to its parent (longest prefix)
     for code, node in nodes.items():
-        # find the longest other code that's a strict prefix
         parent_code = None
         for candidate in nodes:
             if candidate != code and code.startswith(candidate):
@@ -1380,6 +1418,10 @@ def gl_tree(request):
 
     return Response(roots)
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> b8f4e9f8621754a7b5331435da39b7ffa439bd61
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Count
@@ -1441,3 +1483,121 @@ def count_submenus_per_menu(request):
     return Response(result)
 
 
+<<<<<<< HEAD
+=======
+# from rest_framework import viewsets
+# from .models import ProvinceInfo_new, DistrictInfo_new, VillageInfo_new
+# from django.db.models import Q
+# from .serializers import ProvinceInfoSerializer, DistrictInfoSerializer, VillageInfoSerializer,VillageInfoSerializer_name
+
+# class ProvinceInfoViewSet(viewsets.ModelViewSet):
+#     queryset = ProvinceInfo_new.objects.all().order_by('pro_id')
+#     serializer_class = ProvinceInfoSerializer
+#     permission_classes = [IsAuthenticated]
+
+# class DistrictInfoViewSet(viewsets.ModelViewSet):
+#     # queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
+#     serializer_class = DistrictInfoSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
+#         pro_id = self.request.query_params.get('pro_id')
+#         if pro_id:
+#             queryset = queryset.filter(pro_id=pro_id) 
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
+#         serializer.save(
+#             user_id=user_id,
+#             date_insert=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         serializer.save(
+#             date_update=timezone.now()
+#         )
+
+
+# class VillageInfoViewSet(viewsets.ModelViewSet): # search params by pro_id, dis_id, vil_name_l
+#     serializer_class = VillageInfoSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = VillageInfo_new.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
+#         pro_id = self.request.query_params.get('pro_id')
+#         dis_id = self.request.query_params.get('dis_id')
+
+#         if pro_id:
+#             queryset = queryset.filter(pro_id__pro_id=pro_id)
+#         if dis_id:
+#             queryset = queryset.filter(dis_id__dis_id=dis_id)
+
+#         return queryset
+
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         user_id = getattr(user, 'user_id', None)
+#         serializer.save(
+#             user_id=user_id,
+#             date_insert=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         serializer.save(
+#             date_update=timezone.now()
+#         )
+
+# class VillageInfoViewSet_name(viewsets.ModelViewSet): # search_name
+#     serializer_class = VillageInfoSerializer_name
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = VillageInfo_new.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
+        
+#         pro_id = self.request.query_params.get('pro_id')
+#         dis_id = self.request.query_params.get('dis_id')
+#         search = self.request.query_params.get('search')
+
+#         if pro_id:
+#             queryset = queryset.filter(pro_id__pro_id=pro_id)
+#         if dis_id:
+#             queryset = queryset.filter(dis_id__dis_id=dis_id)
+#         if search:
+#             queryset = queryset.filter(
+#                 Q(vil_name_l__icontains=search) | Q(vil_name_e__icontains=search)
+#         )
+
+
+#         return queryset
+
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         user_id = getattr(user, 'user_id', None)
+#         serializer.save(
+#             user_id=user_id,
+#             date_insert=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         serializer.save(
+#             date_update=timezone.now()
+#         )
+
+# #test bb kao
+# from rest_framework import viewsets
+# from .models import ProvinceInfo, DistrictInfo
+# from .serializers import ProvinceDetailSerializers, DistrictInfoSerializers
+
+# class ProvinceViewSets(viewsets.ReadOnlyModelViewSet):
+#     queryset = ProvinceInfo.objects.all()
+#     serializer_class = ProvinceDetailSerializers
+
+# class DistrictViewSets(viewsets.ReadOnlyModelViewSet):
+#     queryset = DistrictInfo.objects.all()
+#     serializer_class = DistrictInfoSerializers
+
+
+>>>>>>> b8f4e9f8621754a7b5331435da39b7ffa439bd61
