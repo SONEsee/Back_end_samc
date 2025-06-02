@@ -347,88 +347,88 @@ class RoleDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-from rest_framework import serializers
-from .models import ProvinceInfo_new, DistrictInfo_new, VillageInfo_new
+# from rest_framework import serializers
+# from .models import ProvinceInfo_new, DistrictInfo_new, VillageInfo_new
 
-class ProvinceDetailSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProvinceInfo_new
-        fields = ['pro_id', 'pro_code', 'pro_name_e', 'pro_name_l']
+# class ProvinceDetailSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = ProvinceInfo_new
+#         fields = ['pro_id', 'pro_code', 'pro_name_e', 'pro_name_l']
 
-class DistrictDetailSerializer(serializers.ModelSerializer):
-    pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
+# class DistrictDetailSerializer(serializers.ModelSerializer):
+#     pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
     
-    class Meta:
-        model = DistrictInfo_new
-        fields = ['dis_id', 'dis_code', 'dis_name_e', 'dis_name_l', 'pro_id', 'pro_detail']
+#     class Meta:
+#         model = DistrictInfo_new
+#         fields = ['dis_id', 'dis_code', 'dis_name_e', 'dis_name_l', 'pro_id', 'pro_detail']
 
-class ProvinceInfoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProvinceInfo_new
-        fields = '__all__'
+# class ProvinceInfoSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = ProvinceInfo_new
+#         fields = '__all__'
 
-class DistrictInfoSerializer(serializers.ModelSerializer):
-    pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
+# class DistrictInfoSerializer(serializers.ModelSerializer):
+#     pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
     
-    class Meta:
-        model = DistrictInfo_new
-        fields = '__all__'
-        read_only_fields = ('user_id', 'date_insert', 'date_update')
+#     class Meta:
+#         model = DistrictInfo_new
+#         fields = '__all__'
+#         read_only_fields = ('user_id', 'date_insert', 'date_update')
 
-class VillageInfoSerializer(serializers.ModelSerializer):
-    # pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
-    dis_detail = DistrictDetailSerializer(source='dis_id', read_only=True)
+# class VillageInfoSerializer(serializers.ModelSerializer):
+#     # pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
+#     dis_detail = DistrictDetailSerializer(source='dis_id', read_only=True)
 
-    class Meta:
-        model = VillageInfo_new
-        fields = '__all__'
-        read_only_fields = ('user_id', 'date_insert', 'date_update')
+#     class Meta:
+#         model = VillageInfo_new
+#         fields = '__all__'
+#         read_only_fields = ('user_id', 'date_insert', 'date_update')
 
-# serch by name 
-class ProvinceDetailSerializer_name(serializers.ModelSerializer):
-    class Meta:
-        model = ProvinceInfo_new
-        fields = ['pro_id', 'pro_name_l', 'pro_name_e']
+# # serch by name 
+# class ProvinceDetailSerializer_name(serializers.ModelSerializer):
+#     class Meta:
+#         model = ProvinceInfo_new
+#         fields = ['pro_id', 'pro_name_l', 'pro_name_e']
 
-class DistrictDetailSerializer_name(serializers.ModelSerializer):
-    class Meta:
-        model = DistrictInfo_new
-        fields = ['dis_id', 'dis_name_l','dis_name_e']
+# class DistrictDetailSerializer_name(serializers.ModelSerializer):
+#     class Meta:
+#         model = DistrictInfo_new
+#         fields = ['dis_id', 'dis_name_l','dis_name_e']
 
-class VillageInfoSerializer_name(serializers.ModelSerializer):
-    pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
-    dis_detail = DistrictDetailSerializer(source='dis_id', read_only=True)
+# class VillageInfoSerializer_name(serializers.ModelSerializer):
+#     pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
+#     dis_detail = DistrictDetailSerializer(source='dis_id', read_only=True)
 
-    class Meta:
-        model = VillageInfo_new
-        fields = '__all__'
+#     class Meta:
+#         model = VillageInfo_new
+#         fields = '__all__'
 
-#test bb kao
-from rest_framework import serializers
-from .models import ProvinceInfo, DistrictInfo
+# #test bb kao
+# from rest_framework import serializers
+# from .models import ProvinceInfo, DistrictInfo
 
-class ProvinceDetailSerializers(serializers.ModelSerializer):
-    class Meta:
-        model = ProvinceInfo
-        fields = ['pro_id', 'pro_code', 'pro_name_e', 'pro_name_l']
+# class ProvinceDetailSerializers(serializers.ModelSerializer):
+#     class Meta:
+#         model = ProvinceInfo
+#         fields = ['pro_id', 'pro_code', 'pro_name_e', 'pro_name_l']
 
-class DistrictInfoSerializers(serializers.ModelSerializer):
-    province_detail = serializers.SerializerMethodField()
+# class DistrictInfoSerializers(serializers.ModelSerializer):
+#     province_detail = serializers.SerializerMethodField()
 
-    class Meta:
-        model = DistrictInfo
-        fields = '__all__'
+#     class Meta:
+#         model = DistrictInfo
+#         fields = '__all__'
 
-    def get_province_detail(self, obj):
-        try:
-        # เปลี่ยนเป็นใช้ obj.pro_id ตรง ๆ ถ้า pro_sys_id ไม่ใช่ field จริงให้เปลี่ยนเป็น pro_id
-            province = ProvinceInfo.objects.get(pro_id=str(obj.pro_id).zfill(2))  # เติม 0 นำหน้าให้ตรงกับฐานข้อมูล
-            return ProvinceDetailSerializer(province).data
-        except ProvinceInfo.DoesNotExist:
-            return None
-        except Exception as e:
-            print("Error in get_province_detail:", e)
-            return None
+#     def get_province_detail(self, obj):
+#         try:
+#         # เปลี่ยนเป็นใช้ obj.pro_id ตรง ๆ ถ้า pro_sys_id ไม่ใช่ field จริงให้เปลี่ยนเป็น pro_id
+#             province = ProvinceInfo.objects.get(pro_id=str(obj.pro_id).zfill(2))  # เติม 0 นำหน้าให้ตรงกับฐานข้อมูล
+#             return ProvinceDetailSerializer(province).data
+#         except ProvinceInfo.DoesNotExist:
+#             return None
+#         except Exception as e:
+#             print("Error in get_province_detail:", e)
+#             return None
 
 
 

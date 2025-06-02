@@ -30,18 +30,8 @@ from .views import (
     exchange_rate_history_for_ccy,
     AllModule,
     roledetaildelete,
-<<<<<<< HEAD
-    ProvinceInfoViewSet,
-    DistrictInfoViewSet,
-    VillageInfoViewSet,
-    VillageInfoViewSet_name,
-    ProvinceViewSets,
-    DistrictViewSets
-    
-=======
     count_menus_by_module,
     count_submenus_per_menu
->>>>>>> 5688891776a516c6df2fccf186670cf670b3f0a7
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -67,12 +57,12 @@ router.register(r'lcl_holiday', HolidayViewSet, basename='holiday')
 router.register(r'fin-cycles', FinCycleViewSet, basename='fin-cycle')
 router.register(r'user-access-logs',    UserAccessLogViewSet,     basename='user-access-log')
 router.register(r'user-activity-logs',  UserActivityLogViewSet,   basename='user-activity-log')
-router.register(r'provinceinfo', ProvinceInfoViewSet, basename='provinceinfo')
-router.register(r'districtinfo', DistrictInfoViewSet, basename='districtinfo')
-router.register(r'villageinfo', VillageInfoViewSet, basename='villageinfo')
-router.register(r'villageinfo_name', VillageInfoViewSet_name, basename='villageinfo_name')
-router.register(r'provinces', ProvinceViewSets, basename='province')
-router.register(r'districts', DistrictViewSets, basename='district')
+# router.register(r'provinceinfo', ProvinceInfoViewSet, basename='provinceinfo')
+# router.register(r'districtinfo', DistrictInfoViewSet, basename='districtinfo')
+# router.register(r'villageinfo', VillageInfoViewSet, basename='villageinfo')
+# router.register(r'villageinfo_name', VillageInfoViewSet_name, basename='villageinfo_name')
+# router.register(r'provinces', ProvinceViewSets, basename='province')
+# router.register(r'districts', DistrictViewSets, basename='district')
 
 urlpatterns = [
     #TOKEN
