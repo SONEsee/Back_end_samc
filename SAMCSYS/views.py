@@ -1484,6 +1484,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from rest_framework import filters
+from rest_framework import viewsets, status
 from .models import MTTB_LCL_Holiday
 from .serializers import MTTB_LCL_HolidaySerializer
 
@@ -1588,7 +1589,7 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
             )
         
         # Prevent self-authorization
-        if holiday.Maker_Id == request.user:
+        if holiday.Maker_Id and holiday.Maker_Id == request.user:
             return Response(
                 {'detail': 'Cannot authorize your own record'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1663,11 +1664,7 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     def perform_destroy(self, instance):
-        """
-        Soft delete by setting Record_Status to 'D' instead of actual deletion
-        """
-        instance.Record_Status = 'O'
-        instance.save()
+        instance.delete()
 
 from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
