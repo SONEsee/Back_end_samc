@@ -378,91 +378,6 @@ class RoleDetailSerializer(serializers.ModelSerializer):
         model = MTTB_Role_Detail
         fields = '__all__'
 
-
-# from rest_framework import serializers
-# from .models import ProvinceInfo_new, DistrictInfo_new, VillageInfo_new
-
-# class ProvinceDetailSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = ProvinceInfo_new
-#         fields = ['pro_id', 'pro_code', 'pro_name_e', 'pro_name_l']
-
-# class DistrictDetailSerializer(serializers.ModelSerializer):
-#     pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
-    
-#     class Meta:
-#         model = DistrictInfo_new
-#         fields = ['dis_id', 'dis_code', 'dis_name_e', 'dis_name_l', 'pro_id', 'pro_detail']
-
-# class ProvinceInfoSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = ProvinceInfo_new
-#         fields = '__all__'
-
-# class DistrictInfoSerializer(serializers.ModelSerializer):
-#     pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
-    
-#     class Meta:
-#         model = DistrictInfo_new
-#         fields = '__all__'
-#         read_only_fields = ('user_id', 'date_insert', 'date_update')
-
-# class VillageInfoSerializer(serializers.ModelSerializer):
-#     # pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
-#     dis_detail = DistrictDetailSerializer(source='dis_id', read_only=True)
-
-#     class Meta:
-#         model = VillageInfo_new
-#         fields = '__all__'
-#         read_only_fields = ('user_id', 'date_insert', 'date_update')
-
-# # serch by name 
-# class ProvinceDetailSerializer_name(serializers.ModelSerializer):
-#     class Meta:
-#         model = ProvinceInfo_new
-#         fields = ['pro_id', 'pro_name_l', 'pro_name_e']
-
-# class DistrictDetailSerializer_name(serializers.ModelSerializer):
-#     class Meta:
-#         model = DistrictInfo_new
-#         fields = ['dis_id', 'dis_name_l','dis_name_e']
-
-# class VillageInfoSerializer_name(serializers.ModelSerializer):
-#     pro_detail = ProvinceDetailSerializer(source='pro_id', read_only=True)
-#     dis_detail = DistrictDetailSerializer(source='dis_id', read_only=True)
-
-#     class Meta:
-#         model = VillageInfo_new
-#         fields = '__all__'
-
-# #test bb kao
-# from rest_framework import serializers
-# from .models import ProvinceInfo, DistrictInfo
-
-# class ProvinceDetailSerializers(serializers.ModelSerializer):
-#     class Meta:
-#         model = ProvinceInfo
-#         fields = ['pro_id', 'pro_code', 'pro_name_e', 'pro_name_l']
-
-# class DistrictInfoSerializers(serializers.ModelSerializer):
-#     province_detail = serializers.SerializerMethodField()
-
-#     class Meta:
-#         model = DistrictInfo
-#         fields = '__all__'
-
-#     def get_province_detail(self, obj):
-#         try:
-#         # เปลี่ยนเป็นใช้ obj.pro_id ตรง ๆ ถ้า pro_sys_id ไม่ใช่ field จริงให้เปลี่ยนเป็น pro_id
-#             province = ProvinceInfo.objects.get(pro_id=str(obj.pro_id).zfill(2))  # เติม 0 นำหน้าให้ตรงกับฐานข้อมูล
-#             return ProvinceDetailSerializer(province).data
-#         except ProvinceInfo.DoesNotExist:
-#             return None
-#         except Exception as e:
-#             print("Error in get_province_detail:", e)
-#             return None
-
-
 from .models import MTTB_TRN_Code
 
 class MTTB_TRN_CodeSerializer(serializers.ModelSerializer):   # Read-only fields for user information
@@ -486,3 +401,61 @@ class MTTB_TRN_CodeSerializer(serializers.ModelSerializer):   # Read-only fields
             'Once_Auth'
         ]
         read_only_fields = ['Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp']
+
+
+from rest_framework import serializers
+from .models import MTTB_ProvinceInfo, MTTB_DistrictInfo, MTTB_VillageInfo
+
+class ProvinceDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_ProvinceInfo
+        fields = ['pro_id', 'pro_code', 'pro_name_e', 'pro_name_l']
+
+class ProvinceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_ProvinceInfo
+        fields = '__all__'
+
+class DistrictDetailSerializer(serializers.ModelSerializer):
+    pro_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MTTB_DistrictInfo
+        fields = ['dis_id', 'dis_code', 'dis_name_e', 'dis_name_l', 'pro_id', 'pro_detail']
+
+    def get_pro_detail(self, obj):
+        try:
+            province = MTTB_ProvinceInfo.objects.get(pro_id=obj.pro_id)
+            return ProvinceDetailSerializer(province).data
+        except MTTB_ProvinceInfo.DoesNotExist:
+            return None
+
+class DistrictSerializer(serializers.ModelSerializer):
+    pro_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MTTB_DistrictInfo
+        fields = '__all__'
+        read_only_fields = ('user_id', 'date_insert', 'date_update')
+
+    def get_pro_detail(self, obj):
+        try:
+            province = MTTB_ProvinceInfo.objects.get(pro_id=obj.pro_id)
+            return ProvinceDetailSerializer(province).data
+        except MTTB_ProvinceInfo.DoesNotExist:
+            return None
+
+class VillageSerializer(serializers.ModelSerializer):
+    dis_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MTTB_VillageInfo
+        fields = '__all__'
+        read_only_fields = ('user_id', 'date_insert', 'date_update')
+
+    def get_dis_detail(self, obj):
+        try:
+            district = MTTB_DistrictInfo.objects.get(dis_code=obj.dis_id)
+            return DistrictDetailSerializer(district).data
+        except MTTB_DistrictInfo.DoesNotExist:
+            return None

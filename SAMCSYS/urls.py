@@ -30,9 +30,9 @@ from .views import (
     exchange_rate_history_for_ccy,
     AllModule,
     roledetaildelete,
-    # ProvinceInfoViewSet,
-    # DistrictInfoViewSet,
-    # VillageInfoViewSet,
+    ProvinceViewSet, 
+    DistrictViewSet, 
+    VillageViewSet,
     # VillageInfoViewSet_name,
     # ProvinceViewSets,
     # DistrictViewSets,
@@ -70,12 +70,11 @@ router.register(r'user-access-logs',    UserAccessLogViewSet,     basename='user
 router.register(r'user-activity-logs',  UserActivityLogViewSet,   basename='user-activity-log')
 router.register(r'percodes', PerCodeViewSet, basename='percode')
 router.register(r'trn-codes', MTTB_TRN_CodeViewSet, basename='trn-code')
-# router.register(r'provinceinfo', ProvinceInfoViewSet, basename='provinceinfo')
-# router.register(r'districtinfo', DistrictInfoViewSet, basename='districtinfo')
-# router.register(r'villageinfo', VillageInfoViewSet, basename='villageinfo')
-# router.register(r'villageinfo_name', VillageInfoViewSet_name, basename='villageinfo_name')
-# router.register(r'provinces', ProvinceViewSets, basename='province')
-# router.register(r'districts', DistrictViewSets, basename='district')
+router.register(r'provinceinfo', ProvinceViewSet, basename='provinceinfo')
+router.register(r'districtinfo', DistrictViewSet, basename='districtinfo')
+router.register(r'villageinfo', VillageViewSet, basename='villageinfo')
+router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
+
 
 urlpatterns = [
     #TOKEN

@@ -770,147 +770,119 @@ class MonthlyReport(models.Model):
     class Meta:
         verbose_name_plural = 'MonthlyReport'  
 
-# class ProvinceInfo_new(models.Model):
+# class MTTB_ProvinceInfo(models.Model):
+
 #     pro_id = models.CharField(primary_key=True,max_length=10)
-#     pro_code = models.CharField(max_length=50,null=True, blank=True)
-#     pro_name_e = models.CharField(max_length=50,null=True, blank=True)
-#     pro_name_l = models.CharField(max_length=50,null=True, blank=True)
-#     date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
-#     date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
+#     pro_code = models.CharField(max_length=50, null=True, blank=True)
+#     pro_name_e = models.CharField(max_length=50, null=True, blank=True)
+#     pro_name_l = models.CharField(max_length=50, null=True, blank=True)
 
-#     class Meta:
-#         verbose_name_plural = 'ProvinceinfoNew' 
+#     # Timestamps
+#     date_insert = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+#     date_update = models.DateTimeField(auto_now=True, null=True, blank=True)
 
-# class DistrictInfo_new(models.Model):
-#     dis_id = models.CharField(primary_key=True,max_length=50)
-#     pro_id = models.ForeignKey(ProvinceInfo_new,null=True,blank=True,on_delete=models.CASCADE) 
-#     dis_code = models.CharField(max_length=50,null=True, blank=True)
-#     dis_name_e = models.CharField(max_length=50,null=True, blank=True)
-#     dis_name_l = models.CharField(max_length=50,null=True, blank=True)
+
+# class MTTB_DistrictInfo(models.Model):
+
+#     dis_id = models.CharField(max_length=50, null=True, blank=True)
+#     dis_code = models.CharField(primary_key=True, max_length=50)
+#     province = models.ForeignKey(
+#         MTTB_ProvinceInfo,
+#         on_delete=models.CASCADE,
+#         related_name="districts",
+#         null=True,
+#         blank=True,
+#     )
+
+    
+#     dis_name_e = models.CharField(max_length=50, null=True, blank=True)
+#     dis_name_l = models.CharField(max_length=50, null=True, blank=True)
+
+#     # If you still need to track a user ID who created/updated this district:
 #     user_id = models.IntegerField(null=True, blank=True)
-#     date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
-#     date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
 
-#     class Meta:
-#         verbose_name_plural = 'DistrictinfoNew' 
+#     date_insert = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+#     date_update = models.DateTimeField(auto_now=True, null=True, blank=True)
 
-# class VillageInfo_new(models.Model):
-#     vil_id = models.CharField(primary_key=True,max_length=50)
-#     pro_id = models.ForeignKey(ProvinceInfo_new,null=True,blank=True,on_delete=models.CASCADE)
-#     dis_id = models.ForeignKey(DistrictInfo_new,null=True,blank=True,on_delete=models.CASCADE)
-#     vil_code = models.CharField(max_length=50,null=True, blank=True)
-#     vil_name_e = models.CharField(max_length=50,null=True, blank=True)
-#     vil_name_l = models.CharField(max_length=50,null=True, blank=True)
-#     user_id = models.IntegerField(null=True, blank=True)
-#     date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
-#     date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
-#     vbol_code = models.CharField(max_length=50,null=True, blank=True)
-#     vbol_name = models.TextField(null=True, blank=True) 
-
-#     class Meta:
-#         verbose_name_plural = 'VillageinfoNew' 
-
-# #test bb kao
-# class ProvinceInfo(models.Model):
-#     pro_sys_id = models.AutoField(primary_key=True)
-#     pro_id = models.CharField(max_length=10,null=True, blank=True)
-#     pro_code = models.CharField(max_length=50,null=True, blank=True)
-#     pro_name_e = models.CharField(max_length=50,null=True, blank=True)
-#     pro_name_l = models.CharField(max_length=50,null=True, blank=True)
-#     date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
-#     date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
-
-#     class Meta:
-#         verbose_name_plural = 'Provinceinfo' 
-
-# class DistrictInfo(models.Model):
-#     dis_sys_id = models.AutoField(primary_key=True)
-#     pro_id = models.ForeignKey(ProvinceInfo,null=True,blank=True,on_delete=models.CASCADE) 
-#     dis_id = models.CharField(max_length=50,null=True, blank=True)
-#     dis_code = models.CharField(max_length=50,null=True, blank=True)
-#     dis_name_e = models.CharField(max_length=50,null=True, blank=True)
-#     dis_name_l = models.CharField(max_length=50,null=True, blank=True)
-#     user_id = models.IntegerField(null=True, blank=True)
-#     date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
-#     date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
-
-#     class Meta:
-#         verbose_name_plural = 'Districtinfo' 
+#     def __str__(self):
+#         return self.dis_name_e or f"District {self.id}"
 
 
+# class MTTB_VillageInfo_map(models.Model):
+    
+#     vil_id = models.AutoField(primary_key=True)
+#     province = models.ForeignKey(
+#         MTTB_ProvinceInfo,
+#         on_delete=models.CASCADE,
+#         related_name="villages",
+#         null=True,
+#         blank=True,
+#     )
 
+#     # Link back to District
+#     district = models.ForeignKey(
+#         MTTB_DistrictInfo,
+#         on_delete=models.CASCADE,
+#         related_name="villages",
+#         null=True,
+#         blank=True,
+#     )
+
+#     vil_code = models.CharField(max_length=50, null=True, blank=True)
+#     vil_name_e = models.CharField(max_length=50, null=True, blank=True)
+#     vil_name_l = models.CharField(max_length=50, null=True, blank=True)
+
+#     user_id = models.CharField(max_length=50, null=True, blank=True)
+
+#     date_insert = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+#     date_update = models.DateTimeField(auto_now=True, null=True, blank=True)
+
+#     vbol_code = models.CharField(max_length=50, null=True, blank=True)
+#     vbol_name = models.TextField(null=True, blank=True)
+
+#     def __str__(self):
+#         return self.vil_name_e or f"Village {self.id}"
+
+#test bb kao
 class MTTB_ProvinceInfo(models.Model):
+    pro_sys_id = models.AutoField(primary_key=True)
+    pro_id = models.CharField(max_length=10,null=True, blank=True)
+    pro_code = models.CharField(max_length=50,null=True, blank=True)
+    pro_name_e = models.CharField(max_length=50,null=True, blank=True)
+    pro_name_l = models.CharField(max_length=50,null=True, blank=True)
+    date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
+    date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
 
-    pro_id = models.CharField(primary_key=True,max_length=10)
-    pro_code = models.CharField(max_length=50, null=True, blank=True)
-    pro_name_e = models.CharField(max_length=50, null=True, blank=True)
-    pro_name_l = models.CharField(max_length=50, null=True, blank=True)
-
-    # Timestamps
-    date_insert = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    date_update = models.DateTimeField(auto_now=True, null=True, blank=True)
-
-
+    class Meta:
+        verbose_name_plural = 'Provinceinfo' 
 
 class MTTB_DistrictInfo(models.Model):
-
-    dis_id = models.CharField(max_length=50, null=True, blank=True)
-    dis_code = models.CharField(primary_key=True, max_length=50)
-    province = models.ForeignKey(
-        MTTB_ProvinceInfo,
-        on_delete=models.CASCADE,
-        related_name="districts",
-        null=True,
-        blank=True,
-    )
-
-    
-    dis_name_e = models.CharField(max_length=50, null=True, blank=True)
-    dis_name_l = models.CharField(max_length=50, null=True, blank=True)
-
-    # If you still need to track a user ID who created/updated this district:
-    user_id = models.IntegerField(null=True, blank=True)
-
-    date_insert = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    date_update = models.DateTimeField(auto_now=True, null=True, blank=True)
-
-    def __str__(self):
-        return self.dis_name_e or f"District {self.id}"
-
-
-class MTTB_VillageInfo_map(models.Model):
-    
-    vil_id = models.AutoField(primary_key=True)
-    province = models.ForeignKey(
-        MTTB_ProvinceInfo,
-        on_delete=models.CASCADE,
-        related_name="villages",
-        null=True,
-        blank=True,
-    )
-
-    # Link back to District
-    district = models.ForeignKey(
-        MTTB_DistrictInfo,
-        on_delete=models.CASCADE,
-        related_name="villages",
-        null=True,
-        blank=True,
-    )
-
-    vil_code = models.CharField(max_length=50, null=True, blank=True)
-    vil_name_e = models.CharField(max_length=50, null=True, blank=True)
-    vil_name_l = models.CharField(max_length=50, null=True, blank=True)
-
+    dis_sys_id = models.AutoField(primary_key=True)
+    pro_id = models.CharField(max_length=10,null=True, blank=True) 
+    dis_id = models.CharField(max_length=50,null=True, blank=True)
+    dis_code = models.CharField(max_length=50,null=True, blank=True)
+    dis_name_e = models.CharField(max_length=50,null=True, blank=True)
+    dis_name_l = models.CharField(max_length=50,null=True, blank=True)
     user_id = models.CharField(max_length=50, null=True, blank=True)
+    date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
+    date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
 
-    date_insert = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    date_update = models.DateTimeField(auto_now=True, null=True, blank=True)
+    class Meta:
+        verbose_name_plural = 'Districtinfo' 
 
-    vbol_code = models.CharField(max_length=50, null=True, blank=True)
-    vbol_name = models.TextField(null=True, blank=True)
+class MTTB_VillageInfo(models.Model):
+    vil_sys_id = models.AutoField(primary_key=True)
+    pro_id = models.CharField(max_length=10,null=True, blank=True)
+    dis_id = models.CharField(max_length=50,null=True, blank=True)
+    vil_id = models.CharField(max_length=50,null=True, blank=True)
+    vil_code = models.CharField(max_length=50,null=True, blank=True)
+    vil_name_e = models.CharField(max_length=50,null=True, blank=True)
+    vil_name_l = models.CharField(max_length=50,null=True, blank=True)
+    user_id = models.CharField(max_length=50, null=True, blank=True)
+    date_insert = models.DateTimeField(auto_now_add=True,null=True, blank=True)
+    date_update = models.DateTimeField(auto_now=True,null=True, blank=True)
+    vbol_code = models.CharField(max_length=50,null=True, blank=True)
+    vbol_name = models.TextField(null=True, blank=True) 
 
-    def __str__(self):
-        return self.vil_name_e or f"Village {self.id}"
-
-
+    class Meta:
+        verbose_name_plural = 'Villageinfo' 
