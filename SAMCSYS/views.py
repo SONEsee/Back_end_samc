@@ -1750,6 +1750,9 @@ class MTTB_TRN_CodeViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(trn_code_obj)
         return Response(serializer.data)
     
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework import viewsets
 from django.db.models import Q
 from .models import MTTB_ProvinceInfo, MTTB_DistrictInfo, MTTB_VillageInfo
@@ -1759,6 +1762,69 @@ class ProvinceViewSet(viewsets.ModelViewSet):
     queryset = MTTB_ProvinceInfo.objects.all().order_by('pro_id')
     serializer_class = ProvinceSerializer
     permission_classes = [IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        count = queryset.count()
+
+        if count == 0:
+            return Response({
+                "status": False,
+                "message": "ບໍ່ພົບຂໍ້ມູນແຂວງ",
+                "count": 0,
+                "data": []
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            "status": True,
+            "message": "ສຳເລັດການດຶງຂໍ້ມູນແຂວງທັງໝົດ",
+            "count": count,
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ສຳເລັດການເພີ່ມຂໍ້ມູນແຂວງ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ເພີ່ມຂໍ້ມູນແຂວງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ອັບເດດຂໍ້ມູນແຂວງສຳເລັດ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ອັບເດດຂໍ້ມູນແຂວງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "status": True,
+                "message": "ລົບຂໍ້ມູນແຂວງສຳເລັດ"
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ລົບຂໍ້ມູນແຂວງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
 
 class DistrictViewSet(viewsets.ModelViewSet):
         # queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
@@ -1784,6 +1850,86 @@ class DistrictViewSet(viewsets.ModelViewSet):
         serializer.save(
             date_update=timezone.now()
         )
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+
+        pro_id = self.request.query_params.get('pro_id')
+        pro_name = None
+
+        if pro_id:
+            try:
+                province = MTTB_ProvinceInfo.objects.get(pro_id=pro_id)
+                pro_name = province.pro_name_l
+            except MTTB_ProvinceInfo.DoesNotExist:
+                pro_name = None
+
+        count = queryset.count()
+
+        if count == 0:
+            message = "ບໍ່ພົບຂໍ້ມູນທີ່ຄົນຄົນຫາ."
+            return Response({
+                "status": False,
+                "message": message,
+                "count": 0,
+                "data": []
+            }, status=status.HTTP_200_OK)
+    
+        if pro_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນເມືອງຂອງແຂວງ={pro_name}."
+        else:
+            message = "ສຳເລັດການດຶງຂໍ້ມູນເມືອງທັງໝົດ."
+
+        return Response({
+            "status": True,
+            "message": message,
+            "count": queryset.count(),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ສຳເລັດການເພີ່ມຂໍ້ມູນເມືອງ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ການເພີ່ມຂໍ້ມູນເມືອງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ອັບເດດຂໍ້ມູນເມືອງສຳເລັດ.",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ອັບເດດຂໍ້ມູນເມືອງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "status": True,
+                "message": "ລົບຂໍ້ມູນສຳເລັດ."
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ລົບຂໍ້ມູນບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 class VillageViewSet(viewsets.ModelViewSet):
     serializer_class = VillageSerializer
@@ -1803,8 +1949,60 @@ class VillageViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 Q(vil_name_e__icontains=search_name) | Q(vil_name_l__icontains=search_name)
             )
-
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+
+        pro_id = request.query_params.get('pro_id')
+        dis_id = request.query_params.get('dis_id')
+
+        pro_name = None
+        dis_name = None
+
+        # ดึงชื่อจังหวัด
+        if pro_id:
+            try:
+                province = MTTB_ProvinceInfo.objects.get(pro_id=pro_id.strip())
+                pro_name = province.pro_name_l
+            except MTTB_ProvinceInfo.DoesNotExist:
+                pro_name = None
+        
+        # ดึงชื่ออำเภอ/ตำบล
+        if dis_id:
+            try:
+                district = MTTB_DistrictInfo.objects.get(dis_code=dis_id.strip())
+                dis_name = district.dis_name_l
+            except MTTB_DistrictInfo.DoesNotExist:
+                dis_name = None
+
+        count = queryset.count()
+
+        if count == 0:
+            return Response({
+                "status": False,
+                "message": "ບໍ່ພົບຂໍ້ມູນບ້ານທີ່ຄົ້ນຫາ",
+                "count": 0,
+                "data": []
+            }, status=status.HTTP_200_OK)
+
+        # สร้างข้อความ message ตามข้อมูลที่มี
+        if pro_name and dis_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name} ແລະ ເມືອງ {dis_name}."
+        elif pro_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name}."
+        elif dis_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນເມືອງ {dis_name}."
+        else:
+            message = "ສຳເລັດການດຶງຂໍ້ມູນບ້ານທັງໝົດ."
+
+        return Response({
+            "status": True,
+            "message": message,
+            "count": count,
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -1818,4 +2016,109 @@ class VillageViewSet(viewsets.ModelViewSet):
         serializer.save(
             date_update=timezone.now()
         )
+
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ສຳເລັດການເພີ່ມຂໍ້ມູນບ້ານ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ການເພີ່ມຂໍ້ມູນບ້ານບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ອັບເດດຂໍ້ມູນບ້ານສຳເລັດ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ອັບເດດຂໍ້ມູນບ້ານບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "status": True,
+                "message": "ລົບຂໍ້ມູນສຳເລັດ"
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ລົບຂໍ້ມູນບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated])
+def list_villages(request):
+    queryset = MTTB_VillageInfo.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
+    pro_id = request.query_params.get('pro_id')
+    dis_id = request.query_params.get('dis_id')
+    search_name = request.query_params.get('search_name')
+
+    if pro_id:
+        queryset = queryset.filter(pro_id=pro_id)
+    if dis_id:
+        queryset = queryset.filter(dis_id=dis_id)
+    if search_name:
+        queryset = queryset.filter(
+            Q(vil_name_e__icontains=search_name) | Q(vil_name_l__icontains=search_name)
+        )
+
+    if not queryset.exists():
+        return Response({
+            "status": False,
+            "message": "ບໍ່ພົບຂໍ້ມູນບ້ານທີ່ຄົ້ນຫາ",
+            "count": 0,
+            "data": []
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    # ดึงชื่อແຂວງ/ເມືອງ จาก ID
+    pro_name = None
+    dis_name = None
+
+    if pro_id:
+        try:
+            province = MTTB_ProvinceInfo.objects.get(pro_id=pro_id.strip())
+            pro_name = province.pro_name_l
+        except MTTB_ProvinceInfo.DoesNotExist:
+            pro_name = None
+
+    if dis_id:
+        try:
+            district = MTTB_DistrictInfo.objects.get(dis_code=dis_id.strip())
+            dis_name = district.dis_name_l
+        except MTTB_DistrictInfo.DoesNotExist:
+            dis_name = None
+
+    # สร้างข้อความแสดงผล
+    if pro_name and dis_name:
+        message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name} ແລະ ເມືອງ {dis_name}."
+    elif pro_name:
+        message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name}."
+    elif dis_name:
+        message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນເມືອງ {dis_name}."
+    else:
+        message = "ສຳເລັດການດຶງຂໍ້ມູນບ້ານທັງໝົດ."
+
+    serializer = VillageSerializer(queryset, many=True)
+
+    return Response({
+        "status": True,
+        "message": message,
+        "count": queryset.count(),
+        "data": serializer.data
+    }, status=status.HTTP_200_OK)
 
