@@ -1069,8 +1069,18 @@ class GLSubViewSet(viewsets.ModelViewSet):
     """
     CRUD for General Ledger Sub-account (GLSub) records.
     """
-    queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
+    # queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
+    # serializer_class = GLSubSerializer
     serializer_class = GLSubSerializer
+
+    def get_queryset(self):
+        queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
+        gl_code = self.request.query_params.get('gl_code')
+
+        if gl_code:
+            queryset = queryset.filter(gl_code=gl_code)
+
+        return queryset
 
     def get_permissions(self):
         # Allow unauthenticated create if needed
