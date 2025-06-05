@@ -1860,10 +1860,6 @@ class DistrictViewSet(viewsets.ModelViewSet):
         serializer.save(
             date_update=timezone.now()
         )
-<<<<<<< HEAD
-# Village Name = thatlaung tai, ...
-
-=======
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -1944,7 +1940,6 @@ class DistrictViewSet(viewsets.ModelViewSet):
                 "status": False,
                 "message": f"ລົບຂໍ້ມູນບໍ່ສຳເລັດ: {str(e)}"
             }, status=status.HTTP_400_BAD_REQUEST)
->>>>>>> fc0e366a34959d2e7c30a7acdace48028d029c65
 
 class VillageViewSet(viewsets.ModelViewSet):
     serializer_class = VillageSerializer
@@ -2032,30 +2027,6 @@ class VillageViewSet(viewsets.ModelViewSet):
             date_update=timezone.now()
         )
 
-<<<<<<< HEAD
-# thatluang -> xaysettha, Vientaine
-
-from rest_framework import viewsets
-from .models import MTTB_DATA_Entry
-from .serializers import MTTB_DATA_EntrySerializer
-class Data_EntryViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_DATA_Entry.objects.all()
-    serializer_class = MTTB_DATA_EntrySerializer
-
-    def perform_create(self, serializer):
-        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-        serializer.save(
-            Maker_Id=maker,
-            Maker_DT_Stamp=timezone.now()
-        )
-    
-    def perform_update(self, serializer):
-        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-        serializer.save(
-            Checker_Id=checker,
-            Checker_DT_Stamp=timezone.now()
-        )
-=======
     def create(self, request, *args, **kwargs):
         try:
             response = super().create(request, *args, **kwargs)
@@ -2161,4 +2132,92 @@ def list_villages(request):
         "data": serializer.data
     }, status=status.HTTP_200_OK)
 
->>>>>>> fc0e366a34959d2e7c30a7acdace48028d029c65
+from rest_framework import viewsets
+from .models import MTTB_DATA_Entry
+from .serializers import MTTB_DATA_EntrySerializer
+
+class Data_EntryViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_DATA_Entry.objects.all()
+    serializer_class = MTTB_DATA_EntrySerializer
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+    
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from .models import MTTB_GLMaster, MTTB_GLSub
+from .serializers import GLSubSerializer
+
+@api_view(['GET'])
+def GLTreeAPIView(request, gl_code_id):
+    """
+    Get GLSub details by GL code ID
+    
+    Args:
+        gl_code_id: The primary key (glid) of MTTB_GLMaster
+    
+    Returns:
+        JSON response with GLSub details and related GLMaster info
+    """
+    try:
+        # Verify GL Master exists
+        gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
+        
+        # Get all GLSub records for this GL code
+        glsub_records = MTTB_GLSub.objects.filter(
+            gl_code=gl_master,
+           
+        ).select_related('gl_code')
+        
+        if not glsub_records.exists():
+            return Response({
+                'success': False,
+                'message': f'No GLSub records found for GL code ID: {gl_code_id}',
+                'data': []
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Serialize the data
+        serializer = GLSubSerializer(glsub_records, many=True)
+        
+        return Response({
+            'success': True,
+            'message': f'Found {glsub_records.count()} GLSub record(s)',
+            'gl_master_info': {
+                'glid': gl_master.glid,
+                'gl_code': gl_master.gl_code,
+                'gl_Desc_en': gl_master.gl_Desc_en,
+                'gl_Desc_la': gl_master.gl_Desc_la
+            },
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+        
+    except MTTB_GLMaster.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': f'GL Master with ID {gl_code_id} not found',
+            'data': []
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'An error occurred: {str(e)}',
+            'data': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

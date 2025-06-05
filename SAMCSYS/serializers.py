@@ -468,3 +468,4 @@ class MTTB_DATA_EntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_DATA_Entry
         fields = '__all__'
+
