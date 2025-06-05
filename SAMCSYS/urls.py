@@ -43,7 +43,8 @@ from .views import (
     MTTB_TRN_CodeViewSet,
     Data_EntryViewSet,
     list_villages,
-    GLTreeAPIView
+    GLTreeAPIView,
+    GLTreeAll
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -101,7 +102,7 @@ urlpatterns = [
     path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
     path('api/villages_list/', list_villages, name='list_villages'),
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
-    path('api/glsub-tree-all/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
+    path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
 
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
