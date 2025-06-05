@@ -226,20 +226,34 @@ class ExcRateHistorySerializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import MTTB_GLMaster
 
-class GLMasterSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MTTB_GLMaster
-        fields = '__all__'
-        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
-
+# class GLMasterSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = MTTB_GLMaster
+#         fields = '__all__'
+#         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 from rest_framework import serializers
 from .models import MTTB_GLSub
-
 class GLSubSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_GLSub
         fields = '__all__'
         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+class GLMasterSerializer(serializers.ModelSerializer):
+    children = GLSubSerializer(many=True, source='glsub_set')
+    
+    class Meta:
+        model = MTTB_GLMaster
+        fields = '__all__'
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+
+
+# class GLSubSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = MTTB_GLSub
+#         fields = '__all__'
+#         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday,MTTB_Divisions,MTTB_Users
 from SAMCSYS.serializers import DivisionSerializer

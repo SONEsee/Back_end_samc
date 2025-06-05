@@ -2233,22 +2233,24 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from .models import MTTB_GLMaster, MTTB_GLSub
 from .serializers import GLSubSerializer
+from collections import defaultdict
 
 @api_view(['GET'])
 def GLTreeAll(request, gl_code_id=None):
     """
-    Get GLSub details by GL code ID, or get all GLSub records if no ID provided
+    Get GLSub details by GL code ID, or get all GLSub records grouped by GL Master
     
     Args:
         gl_code_id: Optional - The primary key (glid) of MTTB_GLMaster
-                   If None, returns all GLSub records
+                   If provided, returns GLSub records for that specific GL Master
+                   If None, returns all GLSub records grouped by their GL Master
     
     Returns:
-        JSON response with GLSub details and related GLMaster info
+        JSON response with GLSub details grouped by GLMaster info
     """
     try:
         if gl_code_id is not None:
-            # Get GLSub records for specific GL Master
+            # Get GLSub records for specific GL Master (existing functionality)
             gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
             
             glsub_records = MTTB_GLSub.objects.filter(
@@ -2267,7 +2269,7 @@ def GLTreeAll(request, gl_code_id=None):
             
             return Response({
                 'success': True,
-                'message': f'Found {glsub_records.count()} GLSub record(s) for GL Master ID: {gl_code_id}',
+                'message': f'Found {glsub_records.count()} GLSub record(s)',
                 'gl_master_info': {
                     'glid': gl_master.glid,
                     'gl_code': gl_master.gl_code,
@@ -2278,7 +2280,9 @@ def GLTreeAll(request, gl_code_id=None):
             }, status=status.HTTP_200_OK)
             
         else:
-            # Get all GLSub records from all GL Masters
+            # CORRECTED LOGIC: Find all GLSub records and group by GL Master
+            
+            # Step 1: Get all GLSub records with their GL Master info
             glsub_records = MTTB_GLSub.objects.all().select_related('gl_code')
             
             if not glsub_records.exists():
@@ -2288,14 +2292,49 @@ def GLTreeAll(request, gl_code_id=None):
                     'data': []
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            # Serialize the data
-            serializer = GLSubSerializer(glsub_records, many=True)
+            # Step 2: Group GLSub records by GL Master
+            gl_master_groups = defaultdict(list)
+            
+            for glsub in glsub_records:
+                if glsub.gl_code:  # Make sure gl_code exists
+                    gl_master_groups[glsub.gl_code].append(glsub)
+            
+            # Step 3: Build the tree structure
+            tree_data = []
+            total_glsub_count = 0
+            
+            for gl_master, glsub_list in gl_master_groups.items():
+                # Serialize GLSub records for this GL Master
+                glsub_serializer = GLSubSerializer(glsub_list, many=True)
+                
+                # Build GL Master node with children
+                gl_master_node = {
+                    'gl_master_info': {
+                        'glid': gl_master.glid,
+                        'gl_code': gl_master.gl_code,
+                        'gl_Desc_en': gl_master.gl_Desc_en,
+                        'gl_Desc_la': gl_master.gl_Desc_la,
+                        'glType': gl_master.glType,
+                        'category': gl_master.category,
+                        'Record_Status': gl_master.Record_Status,
+                        'Auth_Status': gl_master.Auth_Status
+                    },
+                    'children_count': len(glsub_list),
+                    'children': glsub_serializer.data
+                }
+                
+                tree_data.append(gl_master_node)
+                total_glsub_count += len(glsub_list)
+            
+            # Sort by GL Master glid for consistent ordering
+            tree_data.sort(key=lambda x: x['gl_master_info']['glid'])
             
             return Response({
                 'success': True,
-                'message': f'Found {glsub_records.count()} GLSub record(s) across all GL Masters',
-                'gl_master_info': None,  # No specific GL Master when getting all
-                'data': serializer.data
+                'message': f'Found {len(tree_data)} GL Master(s) with {total_glsub_count} total GLSub record(s)',
+                'total_gl_masters': len(tree_data),
+                'total_glsub_records': total_glsub_count,
+                'data': tree_data
             }, status=status.HTTP_200_OK)
         
     except MTTB_GLMaster.DoesNotExist:
