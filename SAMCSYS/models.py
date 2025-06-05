@@ -412,7 +412,7 @@ class MTTB_GLMaster(models.Model):
     category = models.CharField(max_length=1 ,null=True,blank=True)
     retal = models.CharField(max_length=1,null=True,blank=True)
     ccy_Res = models.CharField(max_length=1,null=True,blank=True)
-    Res_ccy = models.CharField(max_length=1 , null =True,blank=True)
+    Res_ccy = models.CharField(max_length=20 , null =True,blank=True)
     Allow_BackPeriodEntry = models.CharField(max_length=1,null=True,blank=True)
     pl_Split_ReqD = models.CharField(max_length=1,null=True,blank=True)
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
