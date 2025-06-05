@@ -100,6 +100,8 @@ urlpatterns = [
     path('api/count-menus/', count_menus_by_module, name='count-menus'),
     path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
     path('api/villages_list/', list_villages, name='list_villages'),
-    path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),    
+    path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
+    path('api/glsub-tree-all/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
+
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
