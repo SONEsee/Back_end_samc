@@ -240,7 +240,7 @@ class GLSubSerializer(serializers.ModelSerializer):
         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 class GLMasterSerializer(serializers.ModelSerializer):
-    children = GLSubSerializer(many=True, source='glsub_set')
+    # children = GLSubSerializer(many=True, source='glsub_set')
     
     class Meta:
         model = MTTB_GLMaster
