@@ -41,7 +41,11 @@ from .views import (
     PerCodeViewSet,
     MTTB_LCL_HolidayViewSet,
     MTTB_TRN_CodeViewSet,
+<<<<<<< HEAD
     Data_EntryViewSet
+=======
+    list_villages
+>>>>>>> fc0e366a34959d2e7c30a7acdace48028d029c65
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -74,8 +78,13 @@ router.register(r'trn-codes', MTTB_TRN_CodeViewSet, basename='trn-code')
 router.register(r'provinceinfo', ProvinceViewSet, basename='provinceinfo')
 router.register(r'districtinfo', DistrictViewSet, basename='districtinfo')
 router.register(r'villageinfo', VillageViewSet, basename='villageinfo')
+<<<<<<< HEAD
 router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
 router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
+=======
+# router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
+
+>>>>>>> fc0e366a34959d2e7c30a7acdace48028d029c65
 
 urlpatterns = [
     #TOKEN
@@ -95,5 +104,6 @@ urlpatterns = [
     path('api/gl-tree/', gl_tree, name='gl-tree'),
     path('api/count-menus/', count_menus_by_module, name='count-menus'),
     path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
+    path('api/villages_list/', list_villages, name='list_villages'),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
