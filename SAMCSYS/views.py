@@ -1769,6 +1769,9 @@ from .models import MTTB_ProvinceInfo, MTTB_DistrictInfo, MTTB_VillageInfo
 from .serializers import ProvinceSerializer, DistrictSerializer, VillageSerializer
 
 class ProvinceViewSet(viewsets.ModelViewSet):
+
+    " CRUD for provinces with custom list and create  methods"
+
     queryset = MTTB_ProvinceInfo.objects.all().order_by('pro_id')
     serializer_class = ProvinceSerializer
     permission_classes = [IsAuthenticated]
@@ -1837,6 +1840,7 @@ class ProvinceViewSet(viewsets.ModelViewSet):
 
 
 class DistrictViewSet(viewsets.ModelViewSet):
+    "CRUD for districts with custom list and create methods"
         # queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
     serializer_class = DistrictSerializer
     permission_classes = [IsAuthenticated]
@@ -1942,6 +1946,7 @@ class DistrictViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 class VillageViewSet(viewsets.ModelViewSet):
+    "CRUD for villages with custom list and create methods"
     serializer_class = VillageSerializer
     permission_classes = [IsAuthenticated]
 
@@ -1971,7 +1976,6 @@ class VillageViewSet(viewsets.ModelViewSet):
         pro_name = None
         dis_name = None
 
-        # ดึงชื่อจังหวัด
         if pro_id:
             try:
                 province = MTTB_ProvinceInfo.objects.get(pro_id=pro_id.strip())
@@ -1979,7 +1983,6 @@ class VillageViewSet(viewsets.ModelViewSet):
             except MTTB_ProvinceInfo.DoesNotExist:
                 pro_name = None
         
-        # ดึงชื่ออำเภอ/ตำบล
         if dis_id:
             try:
                 district = MTTB_DistrictInfo.objects.get(dis_code=dis_id.strip())
@@ -1997,7 +2000,6 @@ class VillageViewSet(viewsets.ModelViewSet):
                 "data": []
             }, status=status.HTTP_200_OK)
 
-        # สร้างข้อความ message ตามข้อมูลที่มี
         if pro_name and dis_name:
             message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name} ແລະ ເມືອງ {dis_name}."
         elif pro_name:
@@ -2073,6 +2075,9 @@ class VillageViewSet(viewsets.ModelViewSet):
 @api_view(['GET']) 
 @permission_classes([IsAuthenticated])
 def list_villages(request):
+
+    "method GET to list villages with optional filters only GET list_villages/"
+
     queryset = MTTB_VillageInfo.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
     pro_id = request.query_params.get('pro_id')
     dis_id = request.query_params.get('dis_id')
@@ -2095,7 +2100,6 @@ def list_villages(request):
             "data": []
         }, status=status.HTTP_404_NOT_FOUND)
 
-    # ดึงชื่อແຂວງ/ເມືອງ จาก ID
     pro_name = None
     dis_name = None
 
@@ -2113,7 +2117,6 @@ def list_villages(request):
         except MTTB_DistrictInfo.DoesNotExist:
             dis_name = None
 
-    # สร้างข้อความแสดงผล
     if pro_name and dis_name:
         message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name} ແລະ ເມືອງ {dis_name}."
     elif pro_name:
