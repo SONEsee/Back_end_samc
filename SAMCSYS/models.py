@@ -427,7 +427,7 @@ class MTTB_GLMaster(models.Model):
         
 class MTTB_GLSub(models.Model):
     glsub_id = models.AutoField(primary_key=True)
-    gl_code = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    gl_code = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)    
     glsub_code = models.CharField(max_length=20,null=True ,blank=True)
     glsub_Desc_la = models.CharField(max_length=250,null=True,blank=True)
     glsub_Desc_en = models.CharField(max_length=250,null=True,blank=True)

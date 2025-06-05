@@ -1784,6 +1784,8 @@ class DistrictViewSet(viewsets.ModelViewSet):
         serializer.save(
             date_update=timezone.now()
         )
+# Village Name = thatlaung tai, ...
+
 
 class VillageViewSet(viewsets.ModelViewSet):
     serializer_class = VillageSerializer
@@ -1819,3 +1821,25 @@ class VillageViewSet(viewsets.ModelViewSet):
             date_update=timezone.now()
         )
 
+# thatluang -> xaysettha, Vientaine
+
+from rest_framework import viewsets
+from .models import MTTB_DATA_Entry
+from .serializers import MTTB_DATA_EntrySerializer
+class Data_EntryViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_DATA_Entry.objects.all()
+    serializer_class = MTTB_DATA_EntrySerializer
+
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+    
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )

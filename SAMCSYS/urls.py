@@ -40,7 +40,8 @@ from .views import (
     count_submenus_per_menu,
     PerCodeViewSet,
     MTTB_LCL_HolidayViewSet,
-    MTTB_TRN_CodeViewSet
+    MTTB_TRN_CodeViewSet,
+    Data_EntryViewSet
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -74,7 +75,7 @@ router.register(r'provinceinfo', ProvinceViewSet, basename='provinceinfo')
 router.register(r'districtinfo', DistrictViewSet, basename='districtinfo')
 router.register(r'villageinfo', VillageViewSet, basename='villageinfo')
 router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
-
+router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
 
 urlpatterns = [
     #TOKEN

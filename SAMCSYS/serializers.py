@@ -459,3 +459,12 @@ class VillageSerializer(serializers.ModelSerializer):
             return DistrictDetailSerializer(district).data
         except MTTB_DistrictInfo.DoesNotExist:
             return None
+
+
+from rest_framework import serializers
+from .models import MTTB_DATA_Entry
+
+class MTTB_DATA_EntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_DATA_Entry
+        fields = '__all__'
