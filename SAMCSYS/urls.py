@@ -41,7 +41,10 @@ from .views import (
     PerCodeViewSet,
     MTTB_LCL_HolidayViewSet,
     MTTB_TRN_CodeViewSet,
-    list_villages
+    Data_EntryViewSet,
+    list_villages,
+    GLTreeAPIView,
+    GLTreeAll
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -74,6 +77,8 @@ router.register(r'trn-codes', MTTB_TRN_CodeViewSet, basename='trn-code')
 router.register(r'provinceinfo', ProvinceViewSet, basename='provinceinfo')
 router.register(r'districtinfo', DistrictViewSet, basename='districtinfo')
 router.register(r'villageinfo', VillageViewSet, basename='villageinfo')
+router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
+router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
 # router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
 
 
@@ -96,5 +101,8 @@ urlpatterns = [
     path('api/count-menus/', count_menus_by_module, name='count-menus'),
     path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
     path('api/villages_list/', list_villages, name='list_villages'),
+    path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
+    path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
+
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
