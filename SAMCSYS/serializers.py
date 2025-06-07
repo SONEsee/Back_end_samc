@@ -483,3 +483,51 @@ class MTTB_DATA_EntrySerializer(serializers.ModelSerializer):
         model = MTTB_DATA_Entry
         fields = '__all__'
 
+from rest_framework import serializers
+from .models import (
+    DETB_JRNL_LOG, MTTB_Ccy_DEFN, MTTB_GLSub, MTTB_TRN_Code,
+    MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
+)
+
+class CcySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Ccy_DEFN
+        fields = '__all__'
+
+class GLSubSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_GLSub
+        fields = '__all__'
+
+class TrnCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_TRN_Code
+        fields = '__all__'
+
+class FinCycleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Fin_Cycle
+        fields = '__all__'
+
+class PerCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Per_Code
+        fields = '__all__'
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Users
+        fields = ['id', 'username']  # Adjust fields to match your model
+
+class JRNLLogSerializer(serializers.ModelSerializer):
+    Ccy_cd = CcySerializer(read_only=True)
+    Account = GLSubSerializer(read_only=True)
+    Txn_code = TrnCodeSerializer(read_only=True)
+    fin_cycle = FinCycleSerializer(read_only=True)
+    Period_code = PerCodeSerializer(read_only=True)
+    Maker_Id = UserSerializer(read_only=True)
+    Checker_Id = UserSerializer(read_only=True)
+
+    class Meta:
+        model = DETB_JRNL_LOG
+        fields = '__all__'

@@ -1069,16 +1069,19 @@ class GLSubViewSet(viewsets.ModelViewSet):
     """
     CRUD for General Ledger Sub-account (GLSub) records.
     """
-    # queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
-    # serializer_class = GLSubSerializer
     serializer_class = GLSubSerializer
 
     def get_queryset(self):
         queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
+
         gl_code = self.request.query_params.get('gl_code')
+        glcode_sub = self.request.query_params.get('glcode_sub')  # New search param
 
         if gl_code:
             queryset = queryset.filter(gl_code=gl_code)
+
+        if glcode_sub:
+            queryset = queryset.filter(glsub_code__icontains=glcode_sub)
 
         return queryset
 
@@ -1283,14 +1286,32 @@ class FinCycleViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+# from rest_framework import viewsets
+# from .models import MTTB_Per_Code
+# from .serializers import PerCodeSerializer
+
+# class PerCodeViewSet(viewsets.ModelViewSet):
+#     queryset = MTTB_Per_Code.objects.all()
+#     serializer_class = PerCodeSerializer
+#     lookup_field = 'period_code'  # use primary key (string)
+
+
 from rest_framework import viewsets
 from .models import MTTB_Per_Code
 from .serializers import PerCodeSerializer
 
 class PerCodeViewSet(viewsets.ModelViewSet):
-    queryset = MTTB_Per_Code.objects.all()
     serializer_class = PerCodeSerializer
-    lookup_field = 'period_code'  # use primary key (string)
+    lookup_field = 'period_code'
+
+    def get_queryset(self):
+        queryset = MTTB_Per_Code.objects.all()
+        fincycle_param = self.request.query_params.get('fincycle')
+
+        if fincycle_param:
+            queryset = queryset.filter(Fin_cycle__fin_cycle=fincycle_param)
+
+        return queryset
 
 
 from collections import OrderedDict
@@ -2350,3 +2371,18 @@ def GLTreeAll(request, gl_code_id=None):
             'message': f'An error occurred: {str(e)}',
             'data': []
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+from rest_framework import viewsets
+from .models import DETB_JRNL_LOG
+from .serializers import JRNLLogSerializer
+from rest_framework.permissions import IsAuthenticated
+
+class JRNLLogViewSet(viewsets.ModelViewSet):
+    queryset = DETB_JRNL_LOG.objects.select_related(
+    'Ccy_cd', 'Account', 'Txn_code', 'fin_cycle', 'Period_code',
+    'Maker_Id', 'Checker_Id'
+).all().order_by('-Maker_DT_Stamp')
+
+    serializer_class = JRNLLogSerializer
+    permission_classes = [IsAuthenticated]  # optional, add/remove based on your needs
