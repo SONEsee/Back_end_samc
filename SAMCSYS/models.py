@@ -470,8 +470,8 @@ class MTTB_DATA_Entry(models.Model):
     JRN_REKEY_VALUE_DATE = models.CharField(max_length=1,null=True,blank=True)
     JRN_REKEY_AMOUNT = models.CharField(max_length=1,null=True,blank=True)
     JRN_REKEY_TXN_CODE = models.CharField(max_length=1,null=True,blank=True)
-    BACK_VALUE = models.IntegerField(default=0)
-    MOD_NO = models.IntegerField(default=0)
+    BACK_VALUE = models.CharField(max_length=1,null=True,blank=True)
+    MOD_NO = models.CharField(max_length=1,null=True,blank=True)
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_DATA_Entry')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
@@ -484,7 +484,7 @@ class MTTB_DATA_Entry(models.Model):
 
 class DETB_JRNL_LOG(models.Model):
     JRNLLog_id = models.AutoField(primary_key=True)
-    Reference_No = models.CharField(max_length=20)
+    Reference_No = models.CharField(max_length=20, unique=True)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
