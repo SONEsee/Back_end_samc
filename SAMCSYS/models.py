@@ -484,7 +484,7 @@ class MTTB_DATA_Entry(models.Model):
 
 class DETB_JRNL_LOG(models.Model):
     JRNLLog_id = models.AutoField(primary_key=True)
-    Reference_No = models.CharField(max_length=20, unique=True)
+    Reference_No = models.CharField(max_length=20, unique=True) # ModuleID - TrnCode - YYMMDD - 00001
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
