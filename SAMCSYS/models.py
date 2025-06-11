@@ -484,9 +484,10 @@ class MTTB_DATA_Entry(models.Model):
 
 class DETB_JRNL_LOG(models.Model):
     JRNLLog_id = models.AutoField(primary_key=True)
-    Reference_No = models.CharField(max_length=20, unique=True) # ModuleID - TrnCode - YYMMDD - 00001
+    module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
+    Reference_No = models.CharField(max_length=20, null=True, blank=True)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
-    Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    Fcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     fcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     fcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
@@ -508,9 +509,21 @@ class DETB_JRNL_LOG(models.Model):
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     class Meta:
         verbose_name_plural = 'JRNL_LOG'
+        # Optional: Prevent duplicate entries for same reference + account + dr_cr
+        unique_together = [
+            ['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount']
+        ]
+        # OR use constraints (Django 2.2+)
+        constraints = [
+            models.UniqueConstraint(
+                fields=['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount'],
+                name='unique_journal_entry'
+            )
+        ]
 
 class DETB_JRNL_LOG_HIST(models.Model):
     Reference_No = models.CharField(primary_key=True,max_length=20)
+    module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)

@@ -519,15 +519,102 @@ class UserSerializer(serializers.ModelSerializer):
         model = MTTB_Users
         fields = ['id', 'username']  # Adjust fields to match your model
 
-class JRNLLogSerializer(serializers.ModelSerializer):
-    Ccy_cd = CcySerializer(read_only=True)
-    Account = GLSubSerializer(read_only=True)
-    Txn_code = TrnCodeSerializer(read_only=True)
-    fin_cycle = FinCycleSerializer(read_only=True)
-    Period_code = PerCodeSerializer(read_only=True)
-    Maker_Id = UserSerializer(read_only=True)
-    Checker_Id = UserSerializer(read_only=True)
 
+# serializers.py
+from rest_framework import serializers
+from django.db import transaction
+from decimal import Decimal
+from .models import (
+    DETB_JRNL_LOG, MTTB_GLSub, MTTB_Ccy_DEFN, MTTB_TRN_Code, 
+    MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users, STTB_ModulesInfo,
+    MTTB_EXC_Rate
+)
+
+class JRNLLogSerializer(serializers.ModelSerializer):
+    # Read-only fields for display
+    currency_name = serializers.CharField(source='Ccy_cd.Ccy_Name_la', read_only=True)
+    account_code = serializers.CharField(source='Account.glsub_code', read_only=True)
+    account_name = serializers.CharField(source='Account.glsub_Desc_la', read_only=True)
+    transaction_name = serializers.CharField(source='Txn_code.trn_Desc_la', read_only=True)
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
+    
     class Meta:
         model = DETB_JRNL_LOG
         fields = '__all__'
+        read_only_fields = ('JRNLLog_id', 'Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+    def validate_Reference_No(self, value):
+        """
+        Remove unique validation since Reference_No can be shared
+        across multiple entries in the same transaction
+        """
+        # You can add other validation logic here if needed
+        # For example, check format or length
+        if len(value) > 20:
+            raise serializers.ValidationError("Reference number too long.")
+        
+        return value
+
+    def validate(self, data):
+        """Custom validation for journal entries"""
+        # Keep existing validation logic
+        if data.get('Fcy_Amount', 0) <= 0:
+            raise serializers.ValidationError("Foreign currency amount must be greater than 0.")
+        
+        if data.get('Lcy_Amount', 0) <= 0:
+            raise serializers.ValidationError("Local currency amount must be greater than 0.")
+        
+        if data.get('Dr_cr') not in ['D', 'C']:
+            raise serializers.ValidationError("Dr_cr must be 'D' for Debit or 'C' for Credit.")
+        
+        if data.get('Exch_rate', 0) <= 0:
+            raise serializers.ValidationError("Exchange rate must be greater than 0.")
+        
+        return data
+    
+
+class JournalEntryBatchSerializer(serializers.Serializer):
+    """Serializer for batch journal entry creation"""
+    Reference_No = serializers.CharField(max_length=20)
+    Ccy_cd = serializers.CharField(max_length=20)
+    Txn_code = serializers.CharField(max_length=20)
+    Value_date = serializers.DateTimeField()
+    Addl_text = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    fin_cycle = serializers.CharField(max_length=10, required=False)
+    Period_code = serializers.CharField(max_length=20, required=False)
+    module_id = serializers.CharField(max_length=20, required=False)
+    
+    entries = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1
+    )
+    
+    def validate_entries(self, entries):
+        """Validate journal entries for balanced transaction"""
+        total_debit = Decimal('0.00')
+        total_credit = Decimal('0.00')
+        
+        for entry in entries:
+            if not entry.get('Account'):
+                raise serializers.ValidationError("Each entry must have an Account.")
+            
+            if not entry.get('Amount') or Decimal(str(entry['Amount'])) <= 0:
+                raise serializers.ValidationError("Each entry must have a positive Amount.")
+            
+            dr_cr = entry.get('Dr_cr')
+            amount = Decimal(str(entry['Amount']))
+            
+            if dr_cr == 'D':
+                total_debit += amount
+            elif dr_cr == 'C':
+                total_credit += amount
+            else:
+                raise serializers.ValidationError("Each entry must specify Dr_cr as 'D' or 'C'.")
+        
+        if abs(total_debit - total_credit) > Decimal('0.01'):
+            raise serializers.ValidationError(
+                f"Transaction is not balanced. Debit: {total_debit}, Credit: {total_credit}"
+            )
+        
+        return entries

@@ -1,4 +1,5 @@
 # Create your views here.
+from decimal import Decimal
 import hashlib
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
@@ -928,6 +929,13 @@ class ExcRateViewSet(viewsets.ModelViewSet):
     """
     queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('ccy_code__ccy_code')
     serializer_class = ExcRateSerializer
+
+    def get_queryset(self):
+        queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('ccy_code__ccy_code')
+        ccy_code_param = self.request.query_params.get('ccy_code')
+        if ccy_code_param:
+            queryset = queryset.filter(ccy_code__ccy_code=ccy_code_param)
+        return queryset
 
     def get_permissions(self):
         # Allow unauthenticated create
@@ -2373,16 +2381,355 @@ def GLTreeAll(request, gl_code_id=None):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
-from rest_framework import viewsets
-from .models import DETB_JRNL_LOG
-from .serializers import JRNLLogSerializer
+# from rest_framework import viewsets
+# from .models import DETB_JRNL_LOG
+# from .serializers import JRNLLogSerializer
+# from rest_framework.permissions import IsAuthenticated
+
+# class JRNLLogViewSet(viewsets.ModelViewSet):
+#     queryset = DETB_JRNL_LOG.objects.select_related(
+#     'Ccy_cd', 'Account', 'Txn_code', 'fin_cycle', 'Period_code',
+#     'Maker_Id', 'Checker_Id'
+# ).all().order_by('-Maker_DT_Stamp')
+
+#     serializer_class = JRNLLogSerializer
+#     permission_classes = [IsAuthenticated]  # optional, add/remove based on your needs
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
+from django.utils import timezone
+from django.db.models import Q, Sum
+from datetime import datetime, timedelta
+import logging
+from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code
+from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
+from .utils import JournalEntryHelper
+
+logger = logging.getLogger(__name__)
 
 class JRNLLogViewSet(viewsets.ModelViewSet):
     queryset = DETB_JRNL_LOG.objects.select_related(
-    'Ccy_cd', 'Account', 'Txn_code', 'fin_cycle', 'Period_code',
-    'Maker_Id', 'Checker_Id'
-).all().order_by('-Maker_DT_Stamp')
-
+        'Ccy_cd', 'Account', 'Account__gl_code', 'Txn_code', 
+        'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id', 'module_id'
+    ).all().order_by('-Maker_DT_Stamp')
+    
     serializer_class = JRNLLogSerializer
-    permission_classes = [IsAuthenticated]  # optional, add/remove based on your needs
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['Reference_No', 'Ccy_cd', 'Dr_cr', 'Auth_Status', 'Txn_code']
+    search_fields = ['Reference_No', 'Addl_text', 'Account__glsub_code', 'Account__glsub_Desc_la']
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filter by date range
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(Value_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(Value_date__lte=end_date)
+        
+        # Filter by account
+        account_id = self.request.query_params.get('account_id')
+        if account_id:
+            queryset = queryset.filter(Account_id=account_id)
+        
+        return queryset
+
+    def perform_create(self, serializer):
+        """Set audit fields on creation"""
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now(),
+            Auth_Status='U'  # Unauthorized
+        )
+
+    def perform_update(self, serializer):
+        """Update only if not authorized"""
+        instance = serializer.instance
+        if instance.Auth_Status == 'A':
+            raise serializer.ValidationError("Cannot modify authorized entries.")
+        
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    @action(detail=False, methods=['post'])
+    def batch_create(self, request):
+        """Create multiple journal entries in a single transaction"""
+        serializer = JournalEntryBatchSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        data = serializer.validated_data
+        
+        try:
+            with transaction.atomic():
+                # Auto-generate reference number if not provided
+                if not data.get('Reference_No'):
+                    data['Reference_No'] = JournalEntryHelper.generate_reference_number(
+                        module_id=data.get('module_id', 'GL'),
+                        txn_code=data['Txn_code'],
+                        date=data['Value_date'].date() if data.get('Value_date') else None
+                    )
+                
+                # Get exchange rate
+                exchange_rate = self.get_exchange_rate(data['Ccy_cd'])
+                
+                created_entries = []
+                
+                for entry_data in data['entries']:
+                    # Calculate amounts based on Dr_cr
+                    fcy_amount = Decimal(str(entry_data['Amount']))
+                    lcy_amount = fcy_amount * exchange_rate
+                    
+                    # Set debit/credit amounts
+                    fcy_dr = fcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+                    fcy_cr = fcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                    lcy_dr = lcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+                    lcy_cr = lcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                    
+                    # Create journal entry
+                    journal_entry = DETB_JRNL_LOG.objects.create(
+                        module_id_id=data.get('module_id'),
+                        Reference_No=data['Reference_No'],  # Now includes module_id
+                        Ccy_cd_id=data['Ccy_cd'],
+                        Fcy_Amount=fcy_amount,
+                        Lcy_Amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        Dr_cr=entry_data['Dr_cr'],
+                        Account_id=entry_data['Account'],
+                        Txn_code_id=data['Txn_code'],
+                        Value_date=data['Value_date'],
+                        Exch_rate=exchange_rate,
+                        fin_cycle_id=data.get('fin_cycle'),
+                        Period_code_id=data.get('Period_code'),
+                        Addl_text=data.get('Addl_text', ''),
+                        Maker_Id=request.user,
+                        Maker_DT_Stamp=timezone.now(),
+                        Auth_Status='U'
+                    )
+                    
+                    created_entries.append(journal_entry)
+                
+                # Serialize response
+                response_serializer = JRNLLogSerializer(created_entries, many=True)
+                
+                return Response({
+                    'message': f'Successfully created {len(created_entries)} journal entries',
+                    'reference_no': data['Reference_No'],  # Return the generated reference
+                    'entries': response_serializer.data
+                }, status=status.HTTP_201_CREATED)
+                
+        except Exception as e:
+            logger.error(f"Error creating batch journal entries: {str(e)}")
+            return Response({
+                'error': 'Failed to create journal entries',
+                'detail': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def balance_check(self, request):
+        """Check if journal entries are balanced by reference number"""
+        reference_no = request.query_params.get('reference_no')
+        
+        if not reference_no:
+            return Response({'error': 'reference_no parameter is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+        
+        if not entries.exists():
+            return Response({'error': 'No entries found for this reference number'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Calculate totals
+        totals = entries.aggregate(
+            total_lcy_dr=Sum('lcy_dr'),
+            total_lcy_cr=Sum('lcy_cr'),
+            total_fcy_dr=Sum('fcy_dr'),
+            total_fcy_cr=Sum('fcy_cr')
+        )
+        
+        lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
+        fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
+        
+        return Response({
+            'reference_no': reference_no,
+            'entry_count': entries.count(),
+            'lcy_totals': {
+                'debit': totals['total_lcy_dr'] or 0,
+                'credit': totals['total_lcy_cr'] or 0,
+                'balanced': lcy_balanced
+            },
+            'fcy_totals': {
+                'debit': totals['total_fcy_dr'] or 0,
+                'credit': totals['total_fcy_cr'] or 0,
+                'balanced': fcy_balanced
+            },
+            'overall_balanced': lcy_balanced and fcy_balanced
+        })
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+        
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+        
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=False, methods=['post'])
+    def authorize_batch(self, request):
+        """Authorize multiple journal entries by reference number"""
+        reference_no = request.data.get('reference_no')
+        
+        if not reference_no:
+            return Response({'error': 'reference_no is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        entries = DETB_JRNL_LOG.objects.filter(
+            Reference_No=reference_no,
+            Auth_Status='U'
+        )
+        
+        if not entries.exists():
+            return Response({'error': 'No unauthorized entries found for this reference number'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if balanced before authorization
+        balance_info = self.balance_check(request)
+        if not balance_info.data.get('overall_balanced'):
+            return Response({'error': 'Cannot authorize unbalanced entries'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        updated_count = entries.update(
+            Auth_Status='A',
+            Checker_Id=request.user,
+            Checker_DT_Stamp=timezone.now()
+        )
+        
+        return Response({
+            'message': f'Successfully authorized {updated_count} entries',
+            'reference_no': reference_no
+        })
+
+    @action(detail=False, methods=['get'])
+    def summary_report(self, request):
+        """Generate summary report for journal entries"""
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        queryset = self.get_queryset()
+        
+        if start_date:
+            queryset = queryset.filter(Value_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(Value_date__lte=end_date)
+        
+        # Summary statistics
+        summary = queryset.aggregate(
+            total_entries=models.Count('JRNLLog_id'),
+            total_lcy_amount=Sum('Lcy_Amount'),
+            total_fcy_amount=Sum('Fcy_Amount'),
+            authorized_count=models.Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+            unauthorized_count=models.Count('JRNLLog_id', filter=Q(Auth_Status='U'))
+        )
+        
+        # By currency breakdown
+        by_currency = queryset.values('Ccy_cd__ccy_code', 'Ccy_cd__Ccy_Name_la').annotate(
+            entry_count=models.Count('JRNLLog_id'),
+            total_amount=Sum('Fcy_Amount')
+        ).order_by('-total_amount')
+        
+        # By transaction code breakdown
+        by_txn_code = queryset.values('Txn_code__trn_code', 'Txn_code__trn_Desc_la').annotate(
+            entry_count=models.Count('JRNLLog_id'),
+            total_amount=Sum('Lcy_Amount')
+        ).order_by('-total_amount')
+        
+        return Response({
+            'period': {
+                'start_date': start_date,
+                'end_date': end_date
+            },
+            'summary': summary,
+            'by_currency': list(by_currency),
+            'by_transaction_code': list(by_txn_code)
+        })
+
+    def get_exchange_rate(self, currency_code):
+        """Get current exchange rate for currency"""
+        try:
+            if currency_code == 'LAK':
+                return Decimal('1.00')
+            
+            exc_rate = MTTB_EXC_Rate.objects.filter(
+                ccy_code__ccy_code=currency_code,
+                Auth_Status='A'
+            ).first()
+            
+            if exc_rate:
+                return exc_rate.Sale_Rate
+            else:
+                # Fallback to currency definition or default
+                currency = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
+                return getattr(currency, 'default_rate', Decimal('1.00'))
+                
+        except Exception:
+            return Decimal('1.00')
+    @action(detail=False, methods=['post'])
+    def generate_reference(self, request):
+        """Generate a reference number without creating entries"""
+        module_id = request.data.get('module_id', 'GL')
+        txn_code = request.data.get('txn_code')
+        value_date = request.data.get('value_date')
+        
+        if not txn_code:
+            return Response({'error': 'txn_code is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse date if provided
+        date = None
+        if value_date:
+            try:
+                from datetime import datetime
+                date = datetime.fromisoformat(value_date.replace('Z', '+00:00')).date()
+            except:
+                pass
+        
+        reference_no = JournalEntryHelper.generate_reference_number(
+            module_id=module_id,
+            txn_code=txn_code,
+            date=date
+        )
+        
+        return Response({
+            'reference_no': reference_no,
+            'module_id': module_id,
+            'txn_code': txn_code,
+            'date': date or timezone.now().date()
+        })

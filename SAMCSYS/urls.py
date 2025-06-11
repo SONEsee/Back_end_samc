@@ -80,7 +80,8 @@ router.register(r'districtinfo', DistrictViewSet, basename='districtinfo')
 router.register(r'villageinfo', VillageViewSet, basename='villageinfo')
 router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
 router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
-router.register(r'gl-capture', JRNLLogViewSet)
+# router.register(r'gl-capture', JRNLLogViewSet)
+router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
 # router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
 
 
