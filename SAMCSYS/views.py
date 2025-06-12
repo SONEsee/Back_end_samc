@@ -1439,7 +1439,13 @@ def gl_tree(request):
                 'gl_code': gl.gl_code,
                 'gl_Desc_la': gl.gl_Desc_la,
                 'gl_Desc_en': gl.gl_Desc_en,
-                'glType': gl.glType,  # Include glType in response
+                'glType': gl.glType,
+                'glCategory': gl.category,
+                'gl_Retal': gl.retal,
+                'ccy_Res': gl.ccy_Res,
+                # 'Res_ccy': gl.Res_ccy,
+                'Record_Status': gl.Record_Status,
+                'Auth_Status': gl.Auth_Status,
                 'children': []
             }
 
@@ -2303,7 +2309,14 @@ def GLTreeAll(request, gl_code_id=None):
                     'glid': gl_master.glid,
                     'gl_code': gl_master.gl_code,
                     'gl_Desc_en': gl_master.gl_Desc_en,
-                    'gl_Desc_la': gl_master.gl_Desc_la
+                    'gl_Desc_la': gl_master.gl_Desc_la,
+                    'glType': gl_master.glType,
+                    'category': gl_master.category,
+                    'retal': gl_master.retal,
+                    'ccy_Res': gl_master.ccy_Res,
+                    'Res_ccy': gl_master.Res_ccy,
+                    'Record_Status': gl_master.Record_Status,
+                    'Auth_Status': gl_master.Auth_Status
                 },
                 'data': serializer.data
             }, status=status.HTTP_200_OK)
@@ -2498,6 +2511,12 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     lcy_dr = lcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
                     lcy_cr = lcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
                     
+                    addl_sub_text = (
+                        entry_data.get('Addl_sub_text') or 
+                        data.get('Addl_sub_text', '') or 
+                        f"Entry for {entry_data['Dr_cr']} {fcy_amount}"
+                    )
+
                     # Create journal entry
                     journal_entry = DETB_JRNL_LOG.objects.create(
                         module_id_id=data.get('module_id'),
@@ -2510,6 +2529,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_dr=lcy_dr,
                         lcy_cr=lcy_cr,
                         Dr_cr=entry_data['Dr_cr'],
+                        Ac_relatives=entry_data.get('Ac_relatives'),
                         Account_id=entry_data['Account'],
                         Txn_code_id=data['Txn_code'],
                         Value_date=data['Value_date'],
@@ -2517,6 +2537,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         fin_cycle_id=data.get('fin_cycle'),
                         Period_code_id=data.get('Period_code'),
                         Addl_text=data.get('Addl_text', ''),
+                        Addl_sub_text=addl_sub_text,
                         Maker_Id=request.user,
                         Maker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
@@ -2526,11 +2547,15 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 
                 # Serialize response
                 response_serializer = JRNLLogSerializer(created_entries, many=True)
+                response_data = response_serializer.data
+
+                for idx, entry in enumerate(created_entries):
+                    response_data[idx]['Account_id'] = entry.Account.glsub_code
                 
                 return Response({
                     'message': f'Successfully created {len(created_entries)} journal entries',
                     'reference_no': data['Reference_No'],  # Return the generated reference
-                    'entries': response_serializer.data
+                    'entries': response_data
                 }, status=status.HTTP_201_CREATED)
                 
         except Exception as e:

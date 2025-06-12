@@ -440,6 +440,8 @@ class MTTB_GLSub(models.Model):
     Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='GLSub'
+    def __str__(self):
+        return self.glsub_code or str(self.glsub_id)
 
 class MTTB_Fin_Cycle(models.Model):
     fin_cycle = models.CharField(primary_key=True,max_length=10)
@@ -495,13 +497,14 @@ class DETB_JRNL_LOG(models.Model):
     lcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Dr_cr = models.CharField(max_length=1)
     Account = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
-    ac_relative = models.CharField(max_length=50, null=True, blank=True)
+    Ac_relatives = models.CharField(max_length=50, null=True, blank=True)
     Txn_code = models.ForeignKey(MTTB_TRN_Code,null=True,blank=True,on_delete=models.CASCADE)
     Value_date = models.DateTimeField(auto_now=False,null=True , blank=True)
     Exch_rate = models.DecimalField(max_digits=24, decimal_places=12, null=True, blank=True)
     fin_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
     Period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
     Addl_text = models.CharField(max_length=255, null=True, blank=True)
+    Addl_sub_text = models.CharField(max_length=255, null=True, blank=True)
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_JRNL_LOG')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_JRNL_LOG')
@@ -520,6 +523,7 @@ class DETB_JRNL_LOG(models.Model):
                 name='unique_journal_entry'
             )
         ]
+        
 
 class DETB_JRNL_LOG_HIST(models.Model):
     Reference_No = models.CharField(primary_key=True,max_length=20)
@@ -533,7 +537,7 @@ class DETB_JRNL_LOG_HIST(models.Model):
     lcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Dr_cr = models.CharField(max_length=1)
     Account = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
-    ac_relative = models.CharField(max_length=50, null=True, blank=True)
+    Ac_relative = models.CharField(max_length=50, null=True, blank=True)
     Txn_code = models.ForeignKey(MTTB_TRN_Code,null=True,blank=True,on_delete=models.CASCADE)
     Value_date = models.DateTimeField(auto_now=False,null=True , blank=True)
     Exch_rate = models.DecimalField(max_digits=24, decimal_places=12, null=True, blank=True)
