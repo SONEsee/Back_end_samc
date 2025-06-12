@@ -497,6 +497,7 @@ class DETB_JRNL_LOG(models.Model):
     lcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Dr_cr = models.CharField(max_length=1)
     Account = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
+    Account_no = models.CharField(max_length=30, null=True, blank=True)
     Ac_relatives = models.CharField(max_length=50, null=True, blank=True)
     Txn_code = models.ForeignKey(MTTB_TRN_Code,null=True,blank=True,on_delete=models.CASCADE)
     Value_date = models.DateTimeField(auto_now=False,null=True , blank=True)

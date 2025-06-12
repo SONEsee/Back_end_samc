@@ -2451,7 +2451,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         account_id = self.request.query_params.get('account_id')
         if account_id:
             queryset = queryset.filter(Account_id=account_id)
-        
+
+        # Filter by Currency
+        ccy_cd = self.request.query_params.get('Ccy_cd')
+        if ccy_cd:
+            queryset = queryset.filter(Ccy_cd_id=ccy_cd)
+
+        Auth_Status = self.request.query_params.get('Auth_Status')
+        if Auth_Status:
+            queryset = queryset.filter(Auth_Status=Auth_Status)
+
+
         return queryset
 
     def perform_create(self, serializer):
@@ -2517,6 +2527,8 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         f"Entry for {entry_data['Dr_cr']} {fcy_amount}"
                     )
 
+                    account_no = entry_data.get('Account_no')
+
                     # Create journal entry
                     journal_entry = DETB_JRNL_LOG.objects.create(
                         module_id_id=data.get('module_id'),
@@ -2531,6 +2543,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Dr_cr=entry_data['Dr_cr'],
                         Ac_relatives=entry_data.get('Ac_relatives'),
                         Account_id=entry_data['Account'],
+                        Account_no=account_no,
                         Txn_code_id=data['Txn_code'],
                         Value_date=data['Value_date'],
                         Exch_rate=exchange_rate,

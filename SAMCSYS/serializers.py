@@ -580,6 +580,7 @@ class JournalEntryBatchSerializer(serializers.Serializer):
     Ccy_cd = serializers.CharField(max_length=20)
     Txn_code = serializers.CharField(max_length=20)
     Value_date = serializers.DateTimeField()
+    Account_no = serializers.CharField(max_length=30, required=False, allow_blank=True)
     Addl_text = serializers.CharField(max_length=255, required=False, allow_blank=True)
     fin_cycle = serializers.CharField(max_length=10, required=False)
     Period_code = serializers.CharField(max_length=20, required=False)
