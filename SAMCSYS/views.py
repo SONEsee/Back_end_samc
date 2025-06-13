@@ -1122,6 +1122,7 @@ class GLSubViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+    
 
 
 
@@ -1240,6 +1241,22 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
         instance.Checker_DT_Stamp = timezone.now()
         instance.save()
+        
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, pk=None):
+        """
+        Set Auth_Status = 'A' for a GLSub record
+        """
+        glsub = self.get_object()
+        if glsub.Auth_Status == 'A':
+            return Response({'detail': 'Already authorized'}, status=status.HTTP_400_BAD_REQUEST)
+        glsub.Auth_Status = 'A'
+        glsub.Checker_Id = request.user
+        glsub.Checker_DT_Stamp = timezone.now()
+        glsub.save()
+        serializer = self.get_serializer(glsub)
+        return Response(serializer.data)
+        
 
 from .serializers import MTTB_LCL_HolidaySerializer
 from .models import MTTB_LCL_Holiday
