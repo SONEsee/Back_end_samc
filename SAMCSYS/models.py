@@ -486,6 +486,29 @@ class MTTB_DATA_Entry(models.Model):
     class Meta:
         verbose_name_plural = 'DaTa_Entry'
 
+class DETB_JRNL_LOG_MASTER(models.Model):
+    JRNLLog_id = models.AutoField(primary_key=True)
+    module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
+    Reference_No = models.CharField(max_length=20, null=True, blank=True)
+    Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
+    Fcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    Txn_code = models.ForeignKey(MTTB_TRN_Code,null=True,blank=True,on_delete=models.CASCADE)
+    Value_date = models.DateTimeField(auto_now=False,null=True , blank=True)
+    Exch_rate = models.DecimalField(max_digits=24, decimal_places=12, null=True, blank=True)
+    fin_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
+    Period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
+    Addl_text = models.CharField(max_length=255, null=True, blank=True)
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_JRNL_LOG_MASTER')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_JRNL_LOG_MASTER')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    entry_seq_no = models.IntegerField(null=True, blank=True)
+    delete_stat = models.CharField(max_length=1, null=True, blank=True)
+    class Meta:
+        verbose_name_plural = 'DETB_JRNL_LOG_MASTER'
+
 class DETB_JRNL_LOG(models.Model):
     JRNLLog_id = models.AutoField(primary_key=True)
     module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
