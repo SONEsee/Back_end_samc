@@ -31,16 +31,14 @@ def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
 class MTTBUserViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for users, supporting:
-      - file uploads via multipart/form-data
-      - filtering by ?div_id=... and ?Role_ID=...
-    """
     serializer_class = MTTBUserSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
@@ -81,6 +79,20 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, pk=None):
+        """
+        Set Auth_Status = 'A' for a user record
+        """
+        user = self.get_object()
+        if user.Auth_Status == 'A':
+            return Response({'detail': 'Already authorized'}, status=status.HTTP_400_BAD_REQUEST)
+        user.Auth_Status = 'A'
+        user.Checker_Id = request.user
+        user.Checker_DT_Stamp = timezone.now()
+        user.save()
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import MTTB_USER_ACCESS_LOG
@@ -1122,6 +1134,20 @@ class GLSubViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, pk=None):
+        """
+        Set Auth_Status = 'A' for a GLSub record
+        """
+        glsub = self.get_object()
+        if glsub.Auth_Status == 'A':
+            return Response({'detail': 'Already authorized'}, status=status.HTTP_400_BAD_REQUEST)
+        glsub.Auth_Status = 'A'
+        glsub.Checker_Id = request.user
+        glsub.Checker_DT_Stamp = timezone.now()
+        glsub.save()
+        serializer = self.get_serializer(glsub)
+        return Response(serializer.data)
     
 
 
@@ -1241,21 +1267,6 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
         instance.Checker_DT_Stamp = timezone.now()
         instance.save()
-        
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def authorize(self, request, pk=None):
-        """
-        Set Auth_Status = 'A' for a GLSub record
-        """
-        glsub = self.get_object()
-        if glsub.Auth_Status == 'A':
-            return Response({'detail': 'Already authorized'}, status=status.HTTP_400_BAD_REQUEST)
-        glsub.Auth_Status = 'A'
-        glsub.Checker_Id = request.user
-        glsub.Checker_DT_Stamp = timezone.now()
-        glsub.save()
-        serializer = self.get_serializer(glsub)
-        return Response(serializer.data)
         
 
 from .serializers import MTTB_LCL_HolidaySerializer
@@ -1638,6 +1649,7 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
         
         return queryset
     
+
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def pending_authorization(self, request):
         """
@@ -2444,7 +2456,7 @@ from django.utils import timezone
 from django.db.models import Q, Sum
 from datetime import datetime, timedelta
 import logging
-from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code
+from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER
 from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
 from .utils import JournalEntryHelper
 
@@ -2584,6 +2596,43 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
                     
                     created_entries.append(journal_entry)
+
+
+                if created_entries:
+                    # Use the first entry as a reference for shared fields
+                    entry_seq_no = len(created_entries) 
+                    first = created_entries[0]
+                    reference_no = first.Reference_No
+                    module_id = first.module_id
+                    ccy_cd = first.Ccy_cd
+                    txn_code = first.Txn_code
+                    value_date = first.Value_date
+                    exch_rate = first.Exch_rate
+                    fin_cycle = first.fin_cycle
+                    period_code = first.Period_code
+                    addl_text = first.Addl_text
+
+                    # Sum Fcy_Amount and Lcy_Amount for this batch
+                    total_fcy = sum(e.Fcy_Amount for e in created_entries)
+                    total_lcy = sum(e.Lcy_Amount for e in created_entries)
+
+                    DETB_JRNL_LOG_MASTER.objects.create(
+                        module_id=module_id,
+                        Reference_No=reference_no,
+                        Ccy_cd=ccy_cd,
+                        Fcy_Amount=total_fcy,
+                        Lcy_Amount=total_lcy,
+                        Txn_code=txn_code,
+                        Value_date=value_date,
+                        Exch_rate=exch_rate,
+                        fin_cycle=fin_cycle,
+                        Period_code=period_code,
+                        Addl_text=addl_text,
+                        Maker_Id=request.user,
+                        Maker_DT_Stamp=timezone.now(),
+                        Auth_Status='U',
+                        entry_seq_no=entry_seq_no 
+                    )
                 
                 # Serialize response
                 response_serializer = JRNLLogSerializer(created_entries, many=True)
