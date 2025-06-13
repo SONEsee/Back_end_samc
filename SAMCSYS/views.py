@@ -328,7 +328,17 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     CRUD for Role_Detail records, with optional filtering by role_id and/or function_id via query params.
     """
     serializer_class = RoleDetailSerializer
+    def create(self, request, *args, **kwargs):
+        role_id = request.data.get('role_id')
+        sub_menu_id = request.data.get('sub_menu_id')
 
+        if MTTB_Role_Detail.objects.filter(role_id=role_id, sub_menu_id=sub_menu_id).exists():
+            return Response(
+                {"detail": "This role_id and sub_menu_id combination already exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return super().create(request, *args, **kwargs)
     @action(detail=False, methods=['get'], url_path='single')
     def get_single(self, request):
         role_id = request.query_params.get('role_id')

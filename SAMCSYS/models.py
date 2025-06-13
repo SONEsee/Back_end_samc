@@ -291,6 +291,7 @@ class MTTB_Role_Detail(models.Model):
     View_Detail = models.IntegerField(default=0)
     class Meta:
         verbose_name_plural='Role_Detail'
+        unique_together = ('role_id', 'sub_menu_id')
 
 class MTTB_EMPLOYEE(models.Model):
     employee_id = models.CharField(max_length=20, primary_key=True)
@@ -410,6 +411,7 @@ class MTTB_GLMaster(models.Model):
     gl_Desc_en = models.CharField(max_length=250,null=True,blank=True)
     glType = models.CharField(max_length=1,null=True ,blank=True)
     category = models.CharField(max_length=1 ,null=True,blank=True)
+    CategoryType = models.CharField(max_length=1,null=True,blank=True)
     retal = models.CharField(max_length=1,null=True,blank=True)
     ccy_Res = models.CharField(max_length=1,null=True,blank=True)
     Res_ccy = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
