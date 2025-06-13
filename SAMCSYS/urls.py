@@ -45,7 +45,8 @@ from .views import (
     list_villages,
     GLTreeAPIView,
     GLTreeAll,
-    JRNLLogViewSet
+    JRNLLogViewSet,
+    DETB_JRNL_LOG_MASTER_ViewSet
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -82,6 +83,7 @@ router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name'
 router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
 # router.register(r'gl-capture', JRNLLogViewSet)
 router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
+router.register(r'jrnl_log_master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
 # router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name')
 
 

@@ -2847,3 +2847,27 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             'txn_code': txn_code,
             'date': date or timezone.now().date()
         })
+
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+
+from .models import DETB_JRNL_LOG_MASTER
+from .serializers import DETB_JRNL_LOG_MASTER_Serializer
+
+class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
+    queryset = DETB_JRNL_LOG_MASTER.objects.all()
+    serializer_class = DETB_JRNL_LOG_MASTER_Serializer
+
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status', 'delete_stat']  # Add more as needed
+    search_fields = ['Reference_No', 'Addl_text']  # Optional
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date']  # Optional
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # Soft delete logic
+        instance.delete_stat = 'D'
+        instance.save()
+        return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)

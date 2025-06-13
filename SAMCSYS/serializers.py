@@ -619,3 +619,12 @@ class JournalEntryBatchSerializer(serializers.Serializer):
             )
         
         return entries
+    
+
+from rest_framework import serializers
+from .models import DETB_JRNL_LOG_MASTER
+
+class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
+    class Meta:
+        model = DETB_JRNL_LOG_MASTER
+        fields = '__all__'
