@@ -191,7 +191,7 @@ class SubMenuSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_SUB_MENU
         fields = '__all__'
-        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
+        read_only_fields = ('created_by', 'created_date')
 
 class FunctionDescSerializer(serializers.ModelSerializer):
     sub_menu = SubMenu_detail(source='sub_menu_id', read_only=True)
