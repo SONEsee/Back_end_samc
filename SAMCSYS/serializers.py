@@ -90,7 +90,34 @@ class MTTBRoleSerializer(serializers.ModelSerializer):
             'Checker_DT_Stamp',
         )
 
+from .models import MTTB_Role_Detail
+class RoleDetailSerializer(serializers.ModelSerializer):
+    sub_menu_name_la = serializers.CharField(source='sub_menu_id.sub_menu_name_la', read_only=True)
+    sub_menu_name_en = serializers.CharField(source='sub_menu_id.sub_menu_name_en', read_only=True)
+    menu_name_la = serializers.CharField(source='sub_menu_id.menu_id.menu_name_la', read_only=True)
+    
+    class Meta:
+        model = MTTB_Role_Detail
+        fields = '__all__'
         
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Include sub menu and main menu information if available
+        if instance.sub_menu_id:
+            data['sub_menu_info'] = {
+                'sub_menu_id': instance.sub_menu_id.sub_menu_id,
+                'sub_menu_name_la': instance.sub_menu_id.sub_menu_name_la,
+                'sub_menu_name_en': instance.sub_menu_id.sub_menu_name_en,
+                'sub_menu_urls': instance.sub_menu_id.sub_menu_urls,
+            }
+            if instance.sub_menu_id.menu_id:
+                data['menu_info'] = {
+                    'menu_id': instance.sub_menu_id.menu_id.menu_id,
+                    'menu_name_la': instance.sub_menu_id.menu_id.menu_name_la,
+                    'menu_name_en': instance.sub_menu_id.menu_id.menu_name_en,
+                }
+        return data
+
 from .models import (
     MTTB_Role_Detail,
     MTTB_Function_Desc,
