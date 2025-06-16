@@ -2500,6 +2500,11 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         if Auth_Status:
             queryset = queryset.filter(Auth_Status=Auth_Status)
 
+        # Filter by Reference_No
+        Reference_No = self.request.query_params.get('Reference_No')
+        if Reference_No:
+            queryset = queryset.filter(Reference_No=Reference_No)
+            
 
         return queryset
 
@@ -2865,9 +2870,22 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     search_fields = ['Reference_No', 'Addl_text']  # Optional
     ordering_fields = ['Maker_DT_Stamp', 'Value_date']  # Optional
 
+    def perform_update(self, serializer):
+        """
+        If Auth_Status is set to 'A', set all DETB_JRNL_LOG rows with the same Reference_No to 'A'.
+        """
+        instance = serializer.save()
+        if instance.Auth_Status == 'A':
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No=instance.Reference_No
+            ).update(Auth_Status='A')
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         # Soft delete logic
         instance.delete_stat = 'D'
         instance.save()
         return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    
+    
