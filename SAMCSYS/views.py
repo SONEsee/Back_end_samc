@@ -624,7 +624,7 @@ def role_sidebar(request, role_id=None):
                 'module_name_en': mod.module_name_en,
                 'module_icon':    mod.module_icon,
                 'module_order':   mod.module_order,
-                'is_active':      mod.is_active,
+                'Record_Status':      mod.Record_Status,
                 'main_menus':     OrderedDict()
             }
         mm_group = modules[mod.module_Id]['main_menus']
@@ -637,7 +637,7 @@ def role_sidebar(request, role_id=None):
                 'menu_name_en': main.menu_name_en,
                 'menu_icon':    main.menu_icon,
                 'menu_order':   main.menu_order,
-                'is_active':    main.is_active,
+                'Record_Status':    main.Record_Status,
                 'sub_menus':    OrderedDict()
             }
         sm_group = mm_group[main.menu_id]['sub_menus']
@@ -651,7 +651,7 @@ def role_sidebar(request, role_id=None):
                 'sub_menu_icon':    sub.sub_menu_icon,
                 'sub_menu_order':   sub.sub_menu_order,
                 'sub_menu_urls':    sub.sub_menu_urls,
-                'is_active':        sub.is_active,
+                'Record_Status':        sub.Record_Status,
                 'permissions': {
                     'new':    det.New_Detail,
                     'delete': det.Del_Detail,
@@ -698,7 +698,7 @@ def AllModule(request):
     # 1) Fetch all active modules
     modules = (
         STTB_ModulesInfo.objects
-        .filter(is_active='Y')
+        .filter(Record_Status='Y')
         .order_by('module_order')
     )
 
@@ -713,14 +713,14 @@ def AllModule(request):
             'module_name_en': mod.module_name_en,
             'module_icon': mod.module_icon,
             'module_order': mod.module_order,
-            'is_active': mod.is_active,
+            'Record_Status': mod.Record_Status,
             'main_menus': []
         }
 
         # 4) Fetch active main menus for this module
         main_menus = (
             MTTB_MAIN_MENU.objects
-            .filter(module_Id=mod, is_active='Y')
+            .filter(module_Id=mod, Record_Status='Y')
             .order_by('menu_order')
         )
 
@@ -732,14 +732,14 @@ def AllModule(request):
                 'menu_name_en': main.menu_name_en,
                 'menu_icon': main.menu_icon,
                 'menu_order': main.menu_order,
-                'is_active': main.is_active,
+                'Record_Status': main.Record_Status,
                 'sub_menus': []
             }
 
             # 6) Fetch active sub-menus for this main menu
             sub_menus = (
                 MTTB_SUB_MENU.objects
-                .filter(menu_id=main, is_active='Y')
+                .filter(menu_id=main, Record_Status='Y')
                 .order_by('sub_menu_order')
             )
 
@@ -752,14 +752,14 @@ def AllModule(request):
                     'sub_menu_icon': sub.sub_menu_icon,
                     'sub_menu_order': sub.sub_menu_order,
                     'sub_menu_urls': sub.sub_menu_urls,
-                    'is_active': sub.is_active,
+                    'Record_Status': sub.Record_Status,
                     'functions': []
                 }
 
                 # 8) Fetch active functions for this sub-menu
                 functions = (
                     MTTB_Function_Desc.objects
-                    .filter(sub_menu_id=sub, is_active='Y')
+                    .filter(sub_menu_id=sub, Record_Status='Y')
                     .order_by('function_order')
                 )
 
@@ -770,7 +770,7 @@ def AllModule(request):
                         'description_la': func.description_la,
                         'description_en': func.description_en,
                         'function_order': func.function_order,
-                        'is_active': func.is_active
+                        'Record_Status': func.Record_Status
                     }
                     sub_menu_data['functions'].append(function_data)
 
@@ -878,7 +878,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
     def set_stt_submenu(self, request, pk=None):
         submenu = self.get_object()
 
-        if submenu.is_active == 'N':
+        if submenu.Record_Status == 'N':
             return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
 
     # ดึง user_id จาก request.user โดยตรง
@@ -887,7 +887,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or current_user.id
 
         serializer = self.get_serializer(submenu, data={
-            'is_active': 'N',
+            'Record_Status': 'N',
             'modified_by': user_id,
             'modified_date': timezone.now()
         }, partial=True)
