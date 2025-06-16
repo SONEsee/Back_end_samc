@@ -2482,7 +2482,7 @@ from django.utils import timezone
 from django.db.models import Q, Sum
 from datetime import datetime, timedelta
 import logging
-from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER
+from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HIST
 from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
 from .utils import JournalEntryHelper
 
@@ -2526,6 +2526,11 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         if Auth_Status:
             queryset = queryset.filter(Auth_Status=Auth_Status)
 
+        # Filter by Reference_No
+        Reference_No = self.request.query_params.get('Reference_No')
+        if Reference_No:
+            queryset = queryset.filter(Reference_No=Reference_No)
+            
 
         return queryset
 
@@ -2622,6 +2627,33 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
                     
                     created_entries.append(journal_entry)
+
+                    # Create journal entry
+                    journal_entry = DETB_JRNL_LOG_HIST.objects.create(
+                        module_id_id=data.get('module_id'),
+                        Reference_No=data['Reference_No'],  # Now includes module_id
+                        Ccy_cd_id=data['Ccy_cd'],
+                        Fcy_Amount=fcy_amount,
+                        Lcy_Amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        Dr_cr=entry_data['Dr_cr'],
+                        Ac_relatives=entry_data.get('Ac_relatives'),
+                        Account_id=entry_data['Account'],
+                        Account_no=account_no,
+                        Txn_code_id=data['Txn_code'],
+                        Value_date=data['Value_date'],
+                        Exch_rate=exchange_rate,
+                        fin_cycle_id=data.get('fin_cycle'),
+                        Period_code_id=data.get('Period_code'),
+                        Addl_text=data.get('Addl_text', ''),
+                        Addl_sub_text=addl_sub_text,
+                        Maker_Id=request.user,
+                        Maker_DT_Stamp=timezone.now(),
+                        Auth_Status='U'
+                    )
 
 
                 if created_entries:
@@ -2891,9 +2923,22 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     search_fields = ['Reference_No', 'Addl_text']  # Optional
     ordering_fields = ['Maker_DT_Stamp', 'Value_date']  # Optional
 
+    def perform_update(self, serializer):
+        """
+        If Auth_Status is set to 'A', set all DETB_JRNL_LOG rows with the same Reference_No to 'A'.
+        """
+        instance = serializer.save()
+        if instance.Auth_Status == 'A':
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No=instance.Reference_No
+            ).update(Auth_Status='A')
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         # Soft delete logic
         instance.delete_stat = 'D'
         instance.save()
         return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    
+    
