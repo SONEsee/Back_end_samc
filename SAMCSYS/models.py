@@ -884,3 +884,16 @@ class MTTB_VillageInfo(models.Model):
     class Meta:
         verbose_name_plural = 'Villageinfo' 
 
+# class FA_asset_type(models.Model):
+#     type_id = models.AutoField(primary_key=True)
+#     type_code = models.CharField(max_length=50, unique=True,null=True, blank=True)
+#     type_name = models.CharField(max_length=255, null=True, blank=True)
+#     description = models.TextField(null=True, blank=True)
+#     record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+#     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_division')
+#     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+#     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_division')
+#     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+#     class Meta:
+#         verbose_name_plural = 'AssestType'
