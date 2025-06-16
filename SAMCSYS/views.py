@@ -337,9 +337,10 @@ from .serializers import RoleDetailSerializer
 
 class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     """
-    CRUD for Role_Detail records, with optional filtering by role_id and/or function_id via query params.
+    CRUD for Role_Detail records, with optional filtering by role_id and/or sub_menu_id via query params.
     """
     serializer_class = RoleDetailSerializer
+
     def create(self, request, *args, **kwargs):
         role_id = request.data.get('role_id')
         sub_menu_id = request.data.get('sub_menu_id')
@@ -349,8 +350,8 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
                 {"detail": "This role_id and sub_menu_id combination already exists."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         return super().create(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'], url_path='single')
     def get_single(self, request):
         role_id = request.query_params.get('role_id')
@@ -358,12 +359,14 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
 
         if not role_id or not sub_menu_id:
             return Response(
-                {'detail': 'Both role_id and function_id are required.'}, 
+                {'detail': 'Both role_id and sub_menu_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
+            obj = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').get(
+                role_id=role_id, sub_menu_id=sub_menu_id
+            )
             serializer = self.get_serializer(obj)
             return Response(serializer.data)
         except MTTB_Role_Detail.DoesNotExist:
@@ -378,28 +381,35 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
             )
 
     def get_permissions(self):
-        # Allow open creation; require auth for read/update/delete
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        qs = MTTB_Role_Detail.objects.all()
+        qs = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').all().order_by('role_id', 'sub_menu_id')
         params = self.request.query_params
-        role = params.get('role_id')
-        func = params.get('sub_menu_id')
         
-        # If role_id and function_id are direct fields (not foreign keys)
-        if role and func:
-            qs = qs.filter(role_id=role, sub_menu_id=func)
-        elif role:
-            qs = qs.filter(role_id=role)
-        elif func:
-            qs = qs.filter(sub_menu_id=func)
-            
+        # Filter parameters
+        role_id = params.get('role_id')
+        sub_menu_id = params.get('sub_menu_id')
+        menu_id = params.get('menu_id')  # Filter by main menu
+        module_id = params.get('module_Id')  # Filter by module
+        
+        # Apply filters
+        if role_id and sub_menu_id:
+            qs = qs.filter(role_id=role_id, sub_menu_id=sub_menu_id)
+        elif role_id:
+            qs = qs.filter(role_id=role_id)
+        elif sub_menu_id:
+            qs = qs.filter(sub_menu_id=sub_menu_id)
+        
+        if menu_id:
+            qs = qs.filter(sub_menu_id__menu_id_id=menu_id)
+        if module_id:
+            qs = qs.filter(sub_menu_id__menu_id__module_Id_id=module_id)
+
         return qs
 
-    # Optional: Add custom update method for your frontend URL pattern
     @action(detail=False, methods=['put'], url_path='update')
     def update_role_detail(self, request):
         role_id = request.query_params.get('role_id')
@@ -407,7 +417,7 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
 
         if not role_id or not sub_menu_id:
             return Response(
-                {'detail': 'Both role_id and function_id are required.'}, 
+                {'detail': 'Both role_id and sub_menu_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -428,19 +438,19 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
                 {'detail': f'Error updating role detail: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
-def roledetaildelete(request):
+def roledetail_delete(request):
     role_id = request.GET.get('role_id')
     sub_menu_id = request.GET.get('sub_menu_id')
     try:
         obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
         obj.delete()
-        return Response({"detail": "Deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        return Response({"detail": "Role detail deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
     except MTTB_Role_Detail.DoesNotExist:
-        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
+        return Response({"detail": "Role detail not found."}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"detail": f"Error deleting role detail: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 # Function Loop Sidebar Menu
 
 from collections import OrderedDict
@@ -2627,7 +2637,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
                     DETB_JRNL_LOG_HIST.objects.create(
                         module_id_id=data.get('module_id'),
-                        Reference_No=data['Reference_No'],
+                        Reference_No=data.get('Reference_No'),
                         Ccy_cd_id=data['Ccy_cd'],
                         Fcy_Amount=fcy_amount,
                         Lcy_Amount=lcy_amount,
@@ -2945,3 +2955,4 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
     
     
+
