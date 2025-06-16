@@ -782,8 +782,9 @@ def AllModule(request):
 
     return Response(result, status=status.HTTP_200_OK)
 
-
-from rest_framework import viewsets
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import (
     STTB_ModulesInfo,
@@ -872,6 +873,31 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             modified_by=user_id,
             modified_date=timezone.now()
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_stt_submenu(self, request, pk=None):
+        submenu = self.get_object()
+
+        if submenu.is_active == 'N':
+            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # ดึง user_id จาก request.user โดยตรง
+        current_user = request.user
+    # สมมติ user_id คือ attribute หรือใช้ id แทน
+        user_id = getattr(current_user, 'user_id', None) or current_user.id
+
+        serializer = self.get_serializer(submenu, data={
+            'is_active': 'N',
+            'modified_by': user_id,
+            'modified_date': timezone.now()
+        }, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
     serializer_class = FunctionDescSerializer
