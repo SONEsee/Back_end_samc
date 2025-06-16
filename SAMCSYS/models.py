@@ -7,11 +7,14 @@ class STTB_ModulesInfo(models.Model):
     module_name_en = models.CharField(max_length=250)
     module_icon = models.CharField(max_length=255, null=True, blank=True)  
     module_order = models.CharField(max_length=3, null=True, blank=True) 
-    is_active = models.CharField(max_length=1, default='Y')  
-    created_by = models.CharField(max_length=30, null=True, blank=True)
-    created_date = models.DateTimeField(auto_now_add=True )
-    modified_by = models.CharField(max_length=30, null=True, blank=True)
-    modified_date = models.DateTimeField(auto_now=True, null=True, blank=True)
+    # is_active = models.CharField(max_length=1, default='Y')  
+    Record_Status = models.CharField(max_length=1, null=True, blank=True, default='C')
+    Maker_Id = models.CharField(max_length=30, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now_add=True )
+    Checker_Id = models.CharField(max_length=30, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='ModulesInfo'
     def __str__(self):
