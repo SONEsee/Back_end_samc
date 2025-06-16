@@ -2482,7 +2482,7 @@ from django.utils import timezone
 from django.db.models import Q, Sum
 from datetime import datetime, timedelta
 import logging
-from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER
+from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HIST
 from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
 from .utils import JournalEntryHelper
 
@@ -2627,6 +2627,33 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
                     
                     created_entries.append(journal_entry)
+
+                    # Create journal entry
+                    journal_entry = DETB_JRNL_LOG_HIST.objects.create(
+                        module_id_id=data.get('module_id'),
+                        Reference_No=data['Reference_No'],  # Now includes module_id
+                        Ccy_cd_id=data['Ccy_cd'],
+                        Fcy_Amount=fcy_amount,
+                        Lcy_Amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        Dr_cr=entry_data['Dr_cr'],
+                        Ac_relatives=entry_data.get('Ac_relatives'),
+                        Account_id=entry_data['Account'],
+                        Account_no=account_no,
+                        Txn_code_id=data['Txn_code'],
+                        Value_date=data['Value_date'],
+                        Exch_rate=exchange_rate,
+                        fin_cycle_id=data.get('fin_cycle'),
+                        Period_code_id=data.get('Period_code'),
+                        Addl_text=data.get('Addl_text', ''),
+                        Addl_sub_text=addl_sub_text,
+                        Maker_Id=request.user,
+                        Maker_DT_Stamp=timezone.now(),
+                        Auth_Status='U'
+                    )
 
 
                 if created_entries:
