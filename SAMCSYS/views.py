@@ -2625,13 +2625,9 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Maker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
                     )
-                    
-                    created_entries.append(journal_entry)
-
-                    # Create journal entry
-                    journal_entry = DETB_JRNL_LOG_HIST.objects.create(
+                    DETB_JRNL_LOG_HIST.objects.create(
                         module_id_id=data.get('module_id'),
-                        Reference_No=data['Reference_No'],  # Now includes module_id
+                        Reference_No=data['Reference_No'],
                         Ccy_cd_id=data['Ccy_cd'],
                         Fcy_Amount=fcy_amount,
                         Lcy_Amount=lcy_amount,
@@ -2654,7 +2650,11 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Maker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
                     )
+                   
+                    created_entries.append(journal_entry)
 
+                    # Create journal entry
+                    
 
                 if created_entries:
                     # Use the first entry as a reference for shared fields
@@ -2691,6 +2691,9 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Auth_Status='U',
                         entry_seq_no=entry_seq_no 
                     )
+
+                    
+
                 
                 # Serialize response
                 response_serializer = JRNLLogSerializer(created_entries, many=True)
