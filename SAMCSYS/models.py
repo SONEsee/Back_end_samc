@@ -7,11 +7,13 @@ class STTB_ModulesInfo(models.Model):
     module_name_en = models.CharField(max_length=250)
     module_icon = models.CharField(max_length=255, null=True, blank=True)  
     module_order = models.CharField(max_length=3, null=True, blank=True) 
-    is_active = models.CharField(max_length=1, default='Y')  
-    created_by = models.CharField(max_length=30, null=True, blank=True)
-    created_date = models.DateTimeField(auto_now_add=True )
-    modified_by = models.CharField(max_length=30, null=True, blank=True)
-    modified_date = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1, default='C')  
+    Maker_Id = models.CharField(max_length=30, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now_add=True )
+    Checker_Id = models.CharField(max_length=30, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural='ModulesInfo'
     def __str__(self):
@@ -24,11 +26,13 @@ class MTTB_MAIN_MENU(models.Model):
     menu_name_en = models.CharField(max_length=250,null=True,blank=True)
     menu_icon = models.CharField(max_length=250, null=True, blank=True)
     menu_order = models.CharField(max_length=3,null=True,blank=True)
-    is_active = models.CharField(max_length=1, default='Y') 
-    created_by = models.CharField(max_length=20, null=True, blank=True)
-    created_date = models.DateTimeField(auto_now_add=True)
-    modified_by = models.CharField(max_length=20, null=True, blank=True)
-    modified_date = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1, default='C') 
+    Maker_Id = models.CharField(max_length=20, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now_add=True)
+    Checker_Id = models.CharField(max_length=20, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural = 'MAIN_MENU'
  
@@ -40,11 +44,13 @@ class MTTB_SUB_MENU(models.Model):
     sub_menu_icon = models.CharField(max_length=250, null=True, blank=True)
     sub_menu_order = models.CharField(max_length=3,null=True,blank=True)
     sub_menu_urls = models.CharField(max_length=100, null=True, blank=True)
-    is_active = models.CharField(max_length=1, default='Y') 
-    created_by = models.CharField(max_length=20, null=True, blank=True)
-    created_date = models.DateTimeField(auto_now_add=True)
-    modified_by = models.CharField(max_length=20, null=True, blank=True)
-    modified_date = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1, default='C') 
+    Maker_Id = models.CharField(max_length=20, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now_add=True)
+    Checker_Id = models.CharField(max_length=20, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
     class Meta:
         verbose_name_plural = 'SUB_MENU'
     
@@ -563,7 +569,6 @@ class DETB_JRNL_LOG_HIST(models.Model):
     lcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Dr_cr = models.CharField(max_length=1)
     Account = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
-    Account_no = models.CharField(max_length=30, null=True, blank=True)
     Ac_relatives = models.CharField(max_length=50, null=True, blank=True)
     Txn_code = models.ForeignKey(MTTB_TRN_Code,null=True,blank=True,on_delete=models.CASCADE)
     Value_date = models.DateTimeField(auto_now=False,null=True , blank=True)
