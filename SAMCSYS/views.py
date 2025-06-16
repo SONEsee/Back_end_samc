@@ -759,7 +759,7 @@ def AllModule(request):
                 # 8) Fetch active functions for this sub-menu
                 functions = (
                     MTTB_Function_Desc.objects
-                    .filter(sub_menu_id=sub, Record_Status='Y')
+                    .filter(sub_menu_id=sub, is_active='Y')
                     .order_by('function_order')
                 )
 
@@ -770,7 +770,7 @@ def AllModule(request):
                         'description_la': func.description_la,
                         'description_en': func.description_en,
                         'function_order': func.function_order,
-                        'Record_Status': func.Record_Status
+                        'Record_Status': func.is_active
                     }
                     sub_menu_data['functions'].append(function_data)
 
@@ -835,18 +835,18 @@ class MainMenuViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=user_id,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)
         serializer.save(
-            modified_by=user_id,
-            modified_date=timezone.now()
+            Checker_Id=user_id,
+            Checker_DT_Stamp=timezone.now()
         )
-    
+
 class SubMenuViewSet(viewsets.ModelViewSet):
     serializer_class = SubMenuSerializer
     permission_classes = [IsAuthenticated]
