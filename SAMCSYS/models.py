@@ -884,20 +884,3 @@ class MTTB_VillageInfo(models.Model):
     class Meta:
         verbose_name_plural = 'Villageinfo' 
 
-class FA_asset_type(models.Model):
-    id = models.AutoField(primary_key=True)
-    IS_TANGIBLE_CHOICES = (
-        ('Y', 'Yes'),
-        ('N', 'No'),
-    )
-    is_tangible = models.CharField(max_length=1, choices=IS_TANGIBLE_CHOICES,null=True, blank=True)
-    type_code = models.CharField(max_length=50, unique=True,null=True, blank=True)
-    type_name_la = models.CharField(max_length=255, null=True, blank=True)
-    type_name_en = models.CharField(max_length=255, null=True, blank=True)
-    create_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_assest_type')
-    create_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)
-    update_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='update_assest_type')
-    update_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)
-
-    class Meta:
-        verbose_name_plural = 'AssestType'
