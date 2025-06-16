@@ -500,7 +500,7 @@ def sidebar_for_user(request, user_id):
                 'module_name_en': mod.module_name_en,
                 'module_icon':    mod.module_icon,
                 'module_order':   mod.module_order,
-                'is_active':      mod.is_active,
+                'Record_Status': mod.Record_Status,
                 'main_menus':     OrderedDict()
             }
 
@@ -514,7 +514,7 @@ def sidebar_for_user(request, user_id):
                 'menu_name_en': main.menu_name_en,
                 'menu_icon':    main.menu_icon,
                 'menu_order':   main.menu_order,
-                'is_active':    main.is_active,
+                'Record_Status': main.Record_Status,
                 'sub_menus':    OrderedDict()
             }
 
@@ -529,7 +529,7 @@ def sidebar_for_user(request, user_id):
                 'sub_menu_icon':    sub.sub_menu_icon,
                 'sub_menu_order':   sub.sub_menu_order,
                 'sub_menu_urls':    sub.sub_menu_urls,
-                'is_active':        sub.is_active,
+                'Record_Status':        sub.Record_Status,
                 'permissions': {
                     'new':    det.New_Detail,
                     'delete': det.Del_Detail,
