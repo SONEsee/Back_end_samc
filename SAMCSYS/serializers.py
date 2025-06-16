@@ -132,7 +132,7 @@ class SubMenuSerializer(serializers.Serializer):
     sub_menu_name_en = serializers.CharField()
     sub_menu_icon  = serializers.CharField(allow_null=True)
     sub_menu_order = serializers.CharField()
-    is_active      = serializers.BooleanField()
+    Record_Status      = serializers.BooleanField()
     functions      = FunctionPermSerializer(many=True)
 
 class MainMenuSerializer(serializers.Serializer):
@@ -141,7 +141,7 @@ class MainMenuSerializer(serializers.Serializer):
     menu_name_en   = serializers.CharField()
     menu_icon      = serializers.CharField(allow_null=True)
     menu_order     = serializers.CharField()
-    is_active      = serializers.BooleanField()
+    Record_Status      = serializers.BooleanField()
     SubMenuSerializer = SubMenuSerializer(many=True)
 
 class ModuleSerializer(serializers.Serializer):
@@ -150,7 +150,7 @@ class ModuleSerializer(serializers.Serializer):
     module_name_en = serializers.CharField()
     module_icon    = serializers.CharField(allow_null=True)
     module_order   = serializers.CharField()
-    is_active      = serializers.CharField()
+    Record_Status      = serializers.CharField()
     main_menus     = MainMenuSerializer(many=True)
 
 
