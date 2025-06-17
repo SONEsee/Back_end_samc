@@ -829,6 +829,30 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
             modified_by=user_id,
             modified_date=timezone.now()
         )
+    def authorize(self, request, pk=None):
+        """
+        Set Record_Status = 'O' for a module record
+        """
+        module = self.get_object()
+
+        if module.Record_Status == 'O':
+            return Response({'detail': 'Already authorized'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ดึง user_id จาก request.user โดยตรง
+        current_user = request.user
+        user_id = getattr(current_user, 'user_id', None) or current_user.id
+
+        serializer = self.get_serializer(module, data={
+            'Record_Status': 'O',
+            'modified_by': user_id,
+            'modified_date': timezone.now()
+        }, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MainMenuViewSet(viewsets.ModelViewSet):
     serializer_class = MainMenuSerializer
