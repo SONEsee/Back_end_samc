@@ -79,20 +79,50 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'])
     def authorize(self, request, pk=None):
-        """
-        Set Auth_Status = 'A' for a user record
-        """
-        user = self.get_object()
-        if user.Auth_Status == 'A':
-            return Response({'detail': 'Already authorized'}, status=status.HTTP_400_BAD_REQUEST)
-        user.Auth_Status = 'A'
-        user.Checker_Id = request.user
-        user.Checker_DT_Stamp = timezone.now()
-        user.save()
-        serializer = self.get_serializer(user)
-        return Response(serializer.data)
+        """Authorize a journal entry"""
+        users = self.get_object()
+
+        if users.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        users.Auth_Status = 'A'
+        users.Once_Status = 'Y'
+        users.Record_Status = 'O'
+        users.Checker_Id = request.user
+        users.Checker_DT_Stamp = timezone.now()
+        users.save()
+
+        serializer = self.get_serializer(users)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        users = self.get_object()
+
+        if users.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        users.Auth_Status = 'U'
+        users.Record_Status = 'C'
+        users.Checker_Id = request.user
+        users.Checker_DT_Stamp = timezone.now()
+        users.save()
+
+        serializer = self.get_serializer(users)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import MTTB_USER_ACCESS_LOG
@@ -829,6 +859,50 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
             modified_by=user_id,
             modified_date=timezone.now()
         )
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'O'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
 
 class MainMenuViewSet(viewsets.ModelViewSet):
     serializer_class = MainMenuSerializer
@@ -878,6 +952,50 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'O'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
 
 class SubMenuViewSet(viewsets.ModelViewSet):
     serializer_class = SubMenuSerializer
@@ -928,6 +1046,50 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'O'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
 
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
