@@ -624,10 +624,12 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -1108,10 +1110,12 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -1226,10 +1230,12 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -1346,10 +1352,12 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -1503,10 +1511,12 @@ class CcyDefnViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -1659,10 +1669,12 @@ class ExcRateViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -2080,10 +2092,12 @@ class FinCycleViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -2647,10 +2661,12 @@ class MTTB_TRN_CodeViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open)"""
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
