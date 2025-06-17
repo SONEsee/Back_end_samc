@@ -332,7 +332,7 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -342,6 +342,33 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         else:
             return Response(serializer.errors, status=status.HTTP_406_NOT_ACCEPTABLE)
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
     @action(detail=True, methods=['post'])
     def authorize(self, request, pk=None):
@@ -387,6 +414,7 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
             'message': 'Entry unauthorized successfully',
             'entry': serializer.data
         })
+
     
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -433,7 +461,7 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -443,6 +471,33 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         else:
             return Response(serializer.errors, status=status.HTTP_406_NOT_ACCEPTABLE)
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
     @action(detail=True, methods=['post'])
     def authorize(self, request, pk=None):
@@ -488,6 +543,7 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
             'message': 'Entry unauthorized successfully',
             'entry': serializer.data
         })
+
 
 
 from rest_framework import viewsets, status
@@ -612,7 +668,7 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -1098,7 +1154,7 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -1218,7 +1274,7 @@ class MainMenuViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -1340,7 +1396,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -1499,7 +1555,7 @@ class CcyDefnViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -1657,7 +1713,7 @@ class ExcRateViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -2080,7 +2136,7 @@ class FinCycleViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -2649,7 +2705,7 @@ class MTTB_TRN_CodeViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(approve, data={
-            'Record_Status': 'N',
+            'Record_Status': 'U',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -3704,43 +3760,53 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     
                     history_entries.append(history_entry)
 
-                    daily_log_entry = ACTB_DAIRY_LOG.objects.create(
-                        module_id=data.get('module_id'),
-                        trn_ref_no=journal_entry,  # FK to the created journal entry
-                        event_sr_no=idx + 1,  # Sequential number for this batch
-                        event='JRNL',  # Journal event type
-                        ac_no_id=entry_data['Account'],
-                        ac_relative=entry_data.get('Ac_relatives'),
-                        ac_ccy_id=data['Ccy_cd'],
-                        drcr_ind=entry_data['Dr_cr'],
-                        trn_code_id=data['Txn_code'],
-                        fcy_amount=fcy_amount,
-                        exch_rate=exchange_rate,
-                        lcy_amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        external_ref_no=data['Reference_No'],  # Truncate to fit max length
-                        addl_text=data.get('Addl_text', ''),
-                        addl_sub_text=addl_sub_text,  # Truncate to fit max length
-                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        # type='JRNL',  # Type of transaction
-                        category='J',  # 'J' for Journal entry
-                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        financial_cycle_id=data.get('fin_cycle'),
-                        period_code_id=data.get('Period_code'),
-                        user_id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        auth_id=None,  # Will be set during authorization
-                        Checker_DT_Stamp=None,  # Will be set during authorization
-                        Auth_Status='U',  # Unauthorized
-                        product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
-                        entry_seq_no=idx + 1,  # Sequential number in batch
-                        delete_stat=None  # Not deleted
+                try:
+                    glsub_account = MTTB_GLSub.objects.select_related('gl_code').get(
+                        glsub_id=entry_data['Account']
                     )
-                    
-                    daily_log_entries.append(daily_log_entry)
+                    gl_master = glsub_account.gl_code  # Assuming gl_head is the FK to GLMaster
+                except MTTB_GLSub.DoesNotExist:
+                    logger.warning(f"GLSub account {entry_data['Account']} not found")
+                    gl_master = None
+                
+                # Create daily log entry
+                daily_log_entry = ACTB_DAIRY_LOG.objects.create(
+                    module_id=data.get('module_id'),
+                    trn_ref_no=journal_entry,  # FK to the created journal entry
+                    event_sr_no=idx + 1,  # Sequential number for this batch
+                    event='JRNL',  # Journal event type
+                    ac_no_id=entry_data['Account'],
+                    ac_relative=entry_data.get('Ac_relatives'),
+                    ac_ccy_id=data['Ccy_cd'],
+                    drcr_ind=entry_data['Dr_cr'],
+                    trn_code_id=data['Txn_code'],
+                    fcy_amount=fcy_amount,
+                    exch_rate=exchange_rate,
+                    lcy_amount=lcy_amount,
+                    fcy_dr=fcy_dr,
+                    fcy_cr=fcy_cr,
+                    lcy_dr=lcy_dr,
+                    lcy_cr=lcy_cr,
+                    external_ref_no=data['Reference_No'][:16],  # Truncate to fit max length
+                    addl_text=data.get('Addl_text', ''),
+                    addl_sub_text=addl_sub_text,
+                    trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    type=gl_master,  # GLMaster instance for type
+                    category=gl_master.category if gl_master else None,  # category from GLMaster
+                    value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    financial_cycle_id=data.get('fin_cycle'),
+                    period_code_id=data.get('Period_code'),
+                    user_id=request.user,
+                    Maker_DT_Stamp=current_time,
+                    auth_id=None,  # Will be set during authorization
+                    Checker_DT_Stamp=None,  # Will be set during authorization
+                    Auth_Status='U',  # Unauthorized
+                    product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
+                    entry_seq_no=idx + 1,  # Sequential number in batch
+                    delete_stat=None  # Not deleted
+                )
+                
+                daily_log_entries.append(daily_log_entry)
                 
                 
 

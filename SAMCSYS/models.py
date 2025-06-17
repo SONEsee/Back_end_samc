@@ -258,7 +258,7 @@ class MTTB_Divisions(models.Model):
     div_id = models.CharField(primary_key=True, max_length=20)
     division_name_la = models.CharField(max_length=250,null=True,blank=True)
     division_name_en = models.CharField(max_length=250,null=True,blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_division')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_division')
