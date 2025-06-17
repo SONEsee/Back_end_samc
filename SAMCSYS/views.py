@@ -769,7 +769,7 @@ def AllModule(request):
                 # 8) Fetch active functions for this sub-menu
                 functions = (
                     MTTB_Function_Desc.objects
-                    .filter(sub_menu_id=sub, is_active='Y')
+                    .filter(sub_menu_id=sub, is_active='O')
                     .order_by('function_order')
                 )
 
@@ -818,8 +818,8 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=user_id,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
@@ -829,30 +829,6 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
             modified_by=user_id,
             modified_date=timezone.now()
         )
-    def authorize(self, request, pk=None):
-        """
-        Set Record_Status = 'O' for a module record
-        """
-        module = self.get_object()
-
-        if module.Record_Status == 'O':
-            return Response({'detail': 'Already authorized'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # ดึง user_id จาก request.user โดยตรง
-        current_user = request.user
-        user_id = getattr(current_user, 'user_id', None) or current_user.id
-
-        serializer = self.get_serializer(module, data={
-            'Record_Status': 'O',
-            'modified_by': user_id,
-            'modified_date': timezone.now()
-        }, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MainMenuViewSet(viewsets.ModelViewSet):
     serializer_class = MainMenuSerializer
@@ -880,6 +856,28 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             Checker_Id=user_id,
             Checker_DT_Stamp=timezone.now()
         )
+#set  stt of Record_Status to 'O' for mainmenu
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_stt_mainmenu(self, request, pk=None):
+        mainmenu = self.get_object()
+
+        if mainmenu.Record_Status == 'O':
+            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
+
+        current_user = request.user
+        user_id = getattr(current_user, 'user_id', None) or current_user.id
+
+        serializer = self.get_serializer(mainmenu, data={
+            'Record_Status': 'O',
+            'Checker_Id': user_id,
+            'Checker_DT_Stamp': timezone.now()
+        }, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class SubMenuViewSet(viewsets.ModelViewSet):
     serializer_class = SubMenuSerializer
@@ -896,32 +894,31 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=user_id,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)
         serializer.save(
-            modified_by=user_id,
-            modified_date=timezone.now()
+            Checker_Id=user_id,
+            Checker_DT_Stamp=timezone.now()
         )
 
+#set  stt of Record_Status to 'O' for submenu
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_stt_submenu(self, request, pk=None):
         submenu = self.get_object()
 
-        if submenu.Record_Status == 'C':
+        if submenu.Record_Status == 'N':
             return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # ดึง user_id จาก request.user โดยตรง
         current_user = request.user
-    # สมมติ user_id คือ attribute หรือใช้ id แทน
         user_id = getattr(current_user, 'user_id', None) or current_user.id
 
         serializer = self.get_serializer(submenu, data={
-            'Record_Status': 'O',
+            'Record_Status': 'N',
             'modified_by': user_id,
             'modified_date': timezone.now()
         }, partial=True)
@@ -948,16 +945,16 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=user_id,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)
         serializer.save(
-            modified_by=user_id,
-            modified_date=timezone.now()
+            Checker_Id=user_id,
+            Checker_DT_Stamp=timezone.now()
         )
 
 from rest_framework import viewsets, status
@@ -3155,6 +3152,7 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         instance.delete_stat = 'D'
         instance.save()
         return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    
     
     
 
