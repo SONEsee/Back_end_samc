@@ -198,7 +198,7 @@ class ModulesInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = STTB_ModulesInfo
         fields = '__all__'
-        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 from .models import STTB_ModulesInfo
 class STTBModuleSerializers(serializers.ModelSerializer):
@@ -211,21 +211,21 @@ class MainMenuSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_MAIN_MENU
         fields = '__all__'
-        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 class SubMenuSerializer(serializers.ModelSerializer):
     menu = MainMenu_detail(source='menu_id',read_only=True)
     class Meta:
         model = MTTB_SUB_MENU
         fields = '__all__'
-        read_only_fields = ('created_by', 'created_date')
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 class FunctionDescSerializer(serializers.ModelSerializer):
     sub_menu = SubMenu_detail(source='sub_menu_id', read_only=True)
     class Meta:
         model = MTTB_Function_Desc
         fields = '__all__'
-        read_only_fields = ('created_by', 'created_date', 'modified_by', 'modified_date')
+        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 from .models import MTTB_Ccy_DEFN
 

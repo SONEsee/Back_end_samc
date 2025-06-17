@@ -708,7 +708,7 @@ def AllModule(request):
     # 1) Fetch all active modules
     modules = (
         STTB_ModulesInfo.objects
-        .filter(Record_Status='Y')
+        .filter(Record_Status='O')
         .order_by('module_order')
     )
 
@@ -730,7 +730,7 @@ def AllModule(request):
         # 4) Fetch active main menus for this module
         main_menus = (
             MTTB_MAIN_MENU.objects
-            .filter(module_Id=mod, Record_Status='Y')
+            .filter(module_Id=mod, Record_Status='O')
             .order_by('menu_order')
         )
 
@@ -749,7 +749,7 @@ def AllModule(request):
             # 6) Fetch active sub-menus for this main menu
             sub_menus = (
                 MTTB_SUB_MENU.objects
-                .filter(menu_id=main, Record_Status='Y')
+                .filter(menu_id=main, Record_Status='O')
                 .order_by('sub_menu_order')
             )
 
@@ -888,7 +888,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
     def set_stt_submenu(self, request, pk=None):
         submenu = self.get_object()
 
-        if submenu.Record_Status == 'N':
+        if submenu.Record_Status == 'C':
             return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
 
     # ดึง user_id จาก request.user โดยตรง
@@ -897,7 +897,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         user_id = getattr(current_user, 'user_id', None) or current_user.id
 
         serializer = self.get_serializer(submenu, data={
-            'Record_Status': 'N',
+            'Record_Status': 'O',
             'modified_by': user_id,
             'modified_date': timezone.now()
         }, partial=True)
@@ -2492,7 +2492,7 @@ from django.utils import timezone
 from django.db.models import Q, Sum
 from datetime import datetime, timedelta
 import logging
-from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HISTORY
+from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HIST
 from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
 from .utils import JournalEntryHelper
 
@@ -2565,6 +2565,169 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             Maker_DT_Stamp=timezone.now()
         )
 
+    # @action(detail=False, methods=['post'])
+    # def batch_create(self, request):
+    #     """Create multiple journal entries in a single transaction"""
+    #     serializer = JournalEntryBatchSerializer(data=request.data)
+        
+    #     if not serializer.is_valid():
+    #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    #     data = serializer.validated_data
+        
+    #     try:
+    #         with transaction.atomic():
+    #             # Auto-generate reference number if not provided
+    #             if not data.get('Reference_No'):
+    #                 data['Reference_No'] = JournalEntryHelper.generate_reference_number(
+    #                     module_id=data.get('module_id', 'GL'),
+    #                     txn_code=data['Txn_code'],
+    #                     date=data['Value_date'].date() if data.get('Value_date') else None
+    #                 )
+                
+    #             # Get exchange rate
+    #             exchange_rate = self.get_exchange_rate(data['Ccy_cd'])
+                
+    #             created_entries = []
+    #             history_entries = []
+                
+    #             for entry_data in data['entries']:
+    #                 # Calculate amounts based on Dr_cr
+    #                 fcy_amount = Decimal(str(entry_data['Amount']))
+    #                 lcy_amount = fcy_amount * exchange_rate
+                    
+    #                 # Set debit/credit amounts
+    #                 fcy_dr = fcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+    #                 fcy_cr = fcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+    #                 lcy_dr = lcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+    #                 lcy_cr = lcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                    
+    #                 addl_sub_text = (
+    #                     entry_data.get('Addl_sub_text') or 
+    #                     data.get('Addl_sub_text', '') or 
+    #                     f"Entry for {entry_data['Dr_cr']} {fcy_amount}"
+    #                 )
+
+    #                 account_no = entry_data.get('Account_no')
+
+    #                 # Create journal entry
+    #                 journal_entry = DETB_JRNL_LOG.objects.create(
+    #                     module_id_id=data.get('module_id'),
+    #                     Reference_No=data['Reference_No'],  # Now includes module_id
+    #                     Ccy_cd_id=data['Ccy_cd'],
+    #                     Fcy_Amount=fcy_amount,
+    #                     Lcy_Amount=lcy_amount,
+    #                     fcy_dr=fcy_dr,
+    #                     fcy_cr=fcy_cr,
+    #                     lcy_dr=lcy_dr,
+    #                     lcy_cr=lcy_cr,
+    #                     Dr_cr=entry_data['Dr_cr'],
+    #                     Ac_relatives=entry_data.get('Ac_relatives'),
+    #                     Account_id=entry_data['Account'],
+    #                     Account_no=account_no,
+    #                     Txn_code_id=data['Txn_code'],
+    #                     Value_date=data['Value_date'],
+    #                     Exch_rate=exchange_rate,
+    #                     fin_cycle_id=data.get('fin_cycle'),
+    #                     Period_code_id=data.get('Period_code'),
+    #                     Addl_text=data.get('Addl_text', ''),
+    #                     Addl_sub_text=addl_sub_text,
+    #                     Maker_Id=request.user,
+    #                     Maker_DT_Stamp=timezone.now(),
+    #                     Auth_Status='U'
+    #                 )
+
+    #                 created_entries.append(journal_entry)
+
+    #                 history_ref_no = f"{data['Reference_No']}-{len(history_entries) + 1:03d}"
+                
+    #                 history_entry = DETB_JRNL_LOG_HISTORY.objects.create(
+    #                     Reference_No=history_ref_no,  # Unique reference for history
+    #                     module_id_id=data.get('module_id'),
+    #                     Ccy_cd_id=data['Ccy_cd'],
+    #                     Fcy_Amount=fcy_amount,
+    #                     Lcy_Amount=lcy_amount,
+    #                     fcy_dr=fcy_dr,
+    #                     fcy_cr=fcy_cr,
+    #                     lcy_dr=lcy_dr,
+    #                     lcy_cr=lcy_cr,
+    #                     Dr_cr=entry_data['Dr_cr'],
+    #                     Ac_relatives=entry_data.get('Ac_relatives'),
+    #                     Account_id=entry_data['Account'],
+    #                     Account_no=account_no,
+    #                     Txn_code_id=data['Txn_code'],
+    #                     Value_date=data['Value_date'],
+    #                     Exch_rate=exchange_rate,
+    #                     fin_cycle_id=data.get('fin_cycle'),
+    #                     Period_code_id=data.get('Period_code'),
+    #                     Addl_text=data.get('Addl_text', ''),
+    #                     Addl_sub_text=addl_sub_text,
+    #                     Maker_Id=request.user,
+    #                     Maker_DT_Stamp=timezone.now(),
+    #                     Auth_Status='U'
+    #                 )
+                    
+    #                 history_entries.append(history_entry)
+
+    #             if created_entries:
+    #                 # Use the first entry as a reference for shared fields
+    #                 entry_seq_no = len(created_entries) 
+    #                 first = created_entries[0]
+    #                 reference_no = first.Reference_No
+    #                 module_id = first.module_id
+    #                 ccy_cd = first.Ccy_cd
+    #                 txn_code = first.Txn_code
+    #                 value_date = first.Value_date
+    #                 exch_rate = first.Exch_rate
+    #                 fin_cycle = first.fin_cycle
+    #                 period_code = first.Period_code
+    #                 addl_text = first.Addl_text
+
+    #                 # Sum Fcy_Amount and Lcy_Amount for this batch
+    #                 total_fcy = sum(e.Fcy_Amount for e in created_entries)
+    #                 total_lcy = sum(e.Lcy_Amount for e in created_entries)
+
+    #                 DETB_JRNL_LOG_MASTER.objects.create(
+    #                     module_id=module_id,
+    #                     Reference_No=reference_no,
+    #                     Ccy_cd=ccy_cd,
+    #                     Fcy_Amount=total_fcy,
+    #                     Lcy_Amount=total_lcy,
+    #                     Txn_code=txn_code,
+    #                     Value_date=value_date,
+    #                     Exch_rate=exch_rate,
+    #                     fin_cycle=fin_cycle,
+    #                     Period_code=period_code,
+    #                     Addl_text=addl_text,
+    #                     Maker_Id=request.user,
+    #                     Maker_DT_Stamp=timezone.now(),
+    #                     Auth_Status='U',
+    #                     entry_seq_no=entry_seq_no 
+    #                 )
+
+                    
+
+                
+    #             # Serialize response
+    #             response_serializer = JRNLLogSerializer(created_entries, many=True)
+    #             response_data = response_serializer.data
+
+    #             for idx, entry in enumerate(created_entries):
+    #                 response_data[idx]['Account_id'] = entry.Account.glsub_code
+                
+    #             return Response({
+    #                 'message': f'Successfully created {len(created_entries)} journal entries',
+    #                 'reference_no': data['Reference_No'],  # Return the generated reference
+    #                 'entries': response_data
+    #             }, status=status.HTTP_201_CREATED)
+                
+    #     except Exception as e:
+    #         logger.error(f"Error creating batch journal entries: {str(e)}")
+    #         return Response({
+    #             'error': 'Failed to create journal entries',
+    #             'detail': str(e)
+    #         }, status=status.HTTP_400_BAD_REQUEST)
+        
     @action(detail=False, methods=['post'])
     def batch_create(self, request):
         """Create multiple journal entries in a single transaction"""
@@ -2591,7 +2754,10 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 created_entries = []
                 history_entries = []
                 
-                for entry_data in data['entries']:
+                # Generate base timestamp for unique history references
+                base_timestamp = timezone.now().strftime("%H%M%S")  # HHMMSS format (6 chars)
+                
+                for idx, entry_data in enumerate(data['entries']):
                     # Calculate amounts based on Dr_cr
                     fcy_amount = Decimal(str(entry_data['Amount']))
                     lcy_amount = fcy_amount * exchange_rate
@@ -2609,11 +2775,12 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
 
                     account_no = entry_data.get('Account_no')
+                    current_time = timezone.now()
 
                     # Create journal entry
                     journal_entry = DETB_JRNL_LOG.objects.create(
                         module_id_id=data.get('module_id'),
-                        Reference_No=data['Reference_No'],  # Now includes module_id
+                        Reference_No=data['Reference_No'],
                         Ccy_cd_id=data['Ccy_cd'],
                         Fcy_Amount=fcy_amount,
                         Lcy_Amount=lcy_amount,
@@ -2633,16 +2800,20 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Addl_text=data.get('Addl_text', ''),
                         Addl_sub_text=addl_sub_text,
                         Maker_Id=request.user,
-                        Maker_DT_Stamp=timezone.now(),
+                        Maker_DT_Stamp=current_time,
                         Auth_Status='U'
                     )
 
                     created_entries.append(journal_entry)
 
-                    history_ref_no = f"{data['Reference_No']}-{len(history_entries) + 1:03d}"
-                
-                    history_entry = DETB_JRNL_LOG_HISTORY.objects.create(
-                        Reference_No=history_ref_no,  # Unique reference for history
+                    # Generate shorter history reference number (max 20 chars)
+                    # Strategy: Use first part of original ref + timestamp + sequence
+                    original_ref = data['Reference_No']
+                    
+                    # Method 1: Truncate original and add timestamp + sequence
+                    
+                    history_entry = DETB_JRNL_LOG_HIST.objects.create(
+                        Reference_No=original_ref,
                         module_id_id=data.get('module_id'),
                         Ccy_cd_id=data['Ccy_cd'],
                         Fcy_Amount=fcy_amount,
@@ -2663,11 +2834,13 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Addl_text=data.get('Addl_text', ''),
                         Addl_sub_text=addl_sub_text,
                         Maker_Id=request.user,
-                        Maker_DT_Stamp=timezone.now(),
+                        Maker_DT_Stamp=current_time,
                         Auth_Status='U'
                     )
                     
                     history_entries.append(history_entry)
+                
+                
 
                 if created_entries:
                     # Use the first entry as a reference for shared fields
@@ -2687,7 +2860,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     total_fcy = sum(e.Fcy_Amount for e in created_entries)
                     total_lcy = sum(e.Lcy_Amount for e in created_entries)
 
-                    DETB_JRNL_LOG_MASTER.objects.create(
+                    master_entry = DETB_JRNL_LOG_MASTER.objects.create(
                         module_id=module_id,
                         Reference_No=reference_no,
                         Ccy_cd=ccy_cd,
@@ -2705,8 +2878,8 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         entry_seq_no=entry_seq_no 
                     )
 
-                    
-
+                    # Log successful creation
+                    logger.info(f"Journal batch created - Reference: {reference_no}, Entries: {len(created_entries)}, History: {len(history_entries)}")
                 
                 # Serialize response
                 response_serializer = JRNLLogSerializer(created_entries, many=True)
@@ -2716,18 +2889,19 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     response_data[idx]['Account_id'] = entry.Account.glsub_code
                 
                 return Response({
-                    'message': f'Successfully created {len(created_entries)} journal entries',
-                    'reference_no': data['Reference_No'],  # Return the generated reference
+                    'message': f'Successfully created {len(created_entries)} journal entries with history',
+                    'reference_no': data['Reference_No'],
+                    'entries_created': len(created_entries),
+                    'history_entries_created': len(history_entries),
                     'entries': response_data
                 }, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
-            logger.error(f"Error creating batch journal entries: {str(e)}")
+            logger.error(f"Error creating batch journal entries with history: {str(e)}")
             return Response({
                 'error': 'Failed to create journal entries',
                 'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
-        
 
     @action(detail=False, methods=['get'])
     def balance_check(self, request):
@@ -2960,3 +3134,57 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     
     
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from datetime import datetime
+from django.utils.timezone import make_aware
+from .models import STTB_Dates, MTTB_LCL_Holiday
+
+
+@api_view(['POST'])  # or ['GET'] if you want it triggered without payload
+@permission_classes([IsAuthenticated])
+def submit_eod_journal(request):
+    today = datetime.today().date()
+    current_year = today.year
+    current_month = today.month
+    current_day = today.day
+
+    try:
+        # Get Holiday Entry for Current Month and Year
+        holiday = MTTB_LCL_Holiday.objects.get(HYear=str(current_year), HMonth=str(current_month))
+
+        # Check Working Day from Holiday_List
+        day_index = current_day - 1  # 0-based index
+        if day_index >= len(holiday.Holiday_List):
+            return Response({"status": "error", "message": "Holiday list does not include today."}, status=400)
+
+        day_type = holiday.Holiday_List[day_index]
+        if day_type != 'W':
+            return Response({"status": "error", "message": f"Today is not a working day: {day_type}"}, status=400)
+
+        # Check if EOD Already Submitted
+        last_eod = STTB_Dates.objects.filter(eod_time='Y').order_by('-Start_Date').first()
+
+        if last_eod and last_eod.Start_Date.date() >= today:
+            return Response({"status": "error", "message": "EOD already submitted for today or later."}, status=400)
+
+        # Save New EOD Entry
+        new_eod = STTB_Dates.objects.create(
+            Start_Date=make_aware(datetime.combine(today, datetime.min.time())),
+            prev_Wroking_Day=last_eod.Start_Date if last_eod else None,
+            next_working_Day=None,  # To be calculated if needed
+            eod_time='Y'
+        )
+
+        return Response({
+            "status": "success",
+            "message": f"EOD submitted for {today}",
+            "eod_id": new_eod.date_id
+        }, status=201)
+
+    except MTTB_LCL_Holiday.DoesNotExist:
+        return Response({"status": "error", "message": "Holiday data not found for this month."}, status=404)
+
+    except Exception as e:
+        return Response({"status": "error", "message": str(e)}, status=500)
