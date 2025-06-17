@@ -468,6 +468,73 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
                 {'detail': f'Error updating role detail: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_stt_menu(self, request, pk=None):
+        approve = self.get_object()
+
+        if approve.Record_Status == 'N':
+            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
+
+        current_user = request.user
+        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
+
+        serializer = self.get_serializer(approve, data={
+            'Record_Status': 'N',
+            'Checker_Id': user_id,
+            'Checker_DT_Stamp': timezone.now()
+        }, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'O'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def roledetail_delete(request):
@@ -859,6 +926,28 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
             modified_by=user_id,
             modified_date=timezone.now()
         )
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_stt_menu(self, request, pk=None):
+        approve = self.get_object()
+
+        if approve.Record_Status == 'N':
+            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
+
+        current_user = request.user
+        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
+
+        serializer = self.get_serializer(approve, data={
+            'Record_Status': 'N',
+            'Checker_Id': user_id,
+            'Checker_DT_Stamp': timezone.now()
+        }, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def authorize(self, request, pk=None):
         """Authorize a journal entry"""
@@ -872,7 +961,7 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
         journal_entry.Auth_Status = 'A'
         journal_entry.Once_Status = 'Y'
         journal_entry.Record_Status = 'O'
-        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         journal_entry.Checker_DT_Stamp = timezone.now()
         journal_entry.save()
 
@@ -894,7 +983,7 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
         # Set Auth_Status = 'U', Record_Status = 'C'
         journal_entry.Auth_Status = 'U'
         journal_entry.Record_Status = 'C'
-        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         journal_entry.Checker_DT_Stamp = timezone.now()
         journal_entry.save()
 
@@ -932,17 +1021,17 @@ class MainMenuViewSet(viewsets.ModelViewSet):
         )
 #set  stt of Record_Status to 'O' for mainmenu
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_stt_mainmenu(self, request, pk=None):
-        mainmenu = self.get_object()
+    def set_stt_menu(self, request, pk=None):
+        approve = self.get_object()
 
-        if mainmenu.Record_Status == 'O':
+        if approve.Record_Status == 'N':
             return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
 
         current_user = request.user
-        user_id = getattr(current_user, 'user_id', None) or current_user.id
+        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
-        serializer = self.get_serializer(mainmenu, data={
-            'Record_Status': 'O',
+        serializer = self.get_serializer(approve, data={
+            'Record_Status': 'N',
             'Checker_Id': user_id,
             'Checker_DT_Stamp': timezone.now()
         }, partial=True)
@@ -952,6 +1041,7 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def authorize(self, request, pk=None):
         """Authorize a journal entry"""
@@ -965,7 +1055,7 @@ class MainMenuViewSet(viewsets.ModelViewSet):
         journal_entry.Auth_Status = 'A'
         journal_entry.Once_Status = 'Y'
         journal_entry.Record_Status = 'O'
-        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         journal_entry.Checker_DT_Stamp = timezone.now()
         journal_entry.save()
 
@@ -987,7 +1077,7 @@ class MainMenuViewSet(viewsets.ModelViewSet):
         # Set Auth_Status = 'U', Record_Status = 'C'
         journal_entry.Auth_Status = 'U'
         journal_entry.Record_Status = 'C'
-        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         journal_entry.Checker_DT_Stamp = timezone.now()
         journal_entry.save()
 
@@ -1024,7 +1114,6 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
-#set  stt of Record_Status to 'O' for submenu
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_stt_submenu(self, request, pk=None):
         submenu = self.get_object()
@@ -1033,12 +1122,12 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
 
         current_user = request.user
-        user_id = getattr(current_user, 'user_id', None) or current_user.id
+        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
 
         serializer = self.get_serializer(submenu, data={
             'Record_Status': 'N',
-            'modified_by': user_id,
-            'modified_date': timezone.now()
+            'Checker_Id': user_id,
+            'Checker_DT_Stamp': timezone.now()
         }, partial=True)
 
         if serializer.is_valid():
@@ -1046,6 +1135,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def authorize(self, request, pk=None):
         """Authorize a journal entry"""
@@ -1059,7 +1149,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         journal_entry.Auth_Status = 'A'
         journal_entry.Once_Status = 'Y'
         journal_entry.Record_Status = 'O'
-        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         journal_entry.Checker_DT_Stamp = timezone.now()
         journal_entry.save()
 
@@ -1081,7 +1171,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         # Set Auth_Status = 'U', Record_Status = 'C'
         journal_entry.Auth_Status = 'U'
         journal_entry.Record_Status = 'C'
-        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         journal_entry.Checker_DT_Stamp = timezone.now()
         journal_entry.save()
 
@@ -1090,7 +1180,6 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             'message': 'Entry unauthorized successfully',
             'entry': serializer.data
         })
-
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
     serializer_class = FunctionDescSerializer
