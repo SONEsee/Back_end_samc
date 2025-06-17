@@ -2492,7 +2492,7 @@ from django.utils import timezone
 from django.db.models import Q, Sum
 from datetime import datetime, timedelta
 import logging
-from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HIST
+from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HISTORY
 from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
 from .utils import JournalEntryHelper
 
@@ -2589,6 +2589,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 exchange_rate = self.get_exchange_rate(data['Ccy_cd'])
                 
                 created_entries = []
+                history_entries = []
                 
                 for entry_data in data['entries']:
                     # Calculate amounts based on Dr_cr
@@ -2635,9 +2636,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Maker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
                     )
-                    DETB_JRNL_LOG_HIST.objects.create(
+
+                    created_entries.append(journal_entry)
+
+                    history_ref_no = f"{data['Reference_No']}-{len(history_entries) + 1:03d}"
+                
+                    history_entry = DETB_JRNL_LOG_HISTORY.objects.create(
+                        Reference_No=history_ref_no,  # Unique reference for history
                         module_id_id=data.get('module_id'),
-                        Reference_No=data.get('Reference_No'),
                         Ccy_cd_id=data['Ccy_cd'],
                         Fcy_Amount=fcy_amount,
                         Lcy_Amount=lcy_amount,
@@ -2660,11 +2666,8 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Maker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
                     )
-                   
-                    created_entries.append(journal_entry)
-
-                    # Create journal entry
                     
+                    history_entries.append(history_entry)
 
                 if created_entries:
                     # Use the first entry as a reference for shared fields
@@ -2724,6 +2727,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'error': 'Failed to create journal entries',
                 'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
+        
 
     @action(detail=False, methods=['get'])
     def balance_check(self, request):
