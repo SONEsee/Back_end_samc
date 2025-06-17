@@ -1357,7 +1357,7 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
         if getattr(obj, 'Auth_Status', None) != 'A':
-            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
         obj.Record_Status = 'O'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -2074,7 +2074,7 @@ class FinCycleViewSet(viewsets.ModelViewSet):
         approve = self.get_object()
 
         if approve.Record_Status == 'N':
-            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_406_NOT_ACCEPTABLE)
 
         current_user = request.user
         user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
@@ -2089,13 +2089,13 @@ class FinCycleViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response(serializer.data)
         else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(serializer.errors, status=status.HTTP_406_NOT_ACCEPTABLE)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
-            return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
         if getattr(obj, 'Auth_Status', None) != 'A':
             return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
@@ -2110,7 +2110,7 @@ class FinCycleViewSet(viewsets.ModelViewSet):
         """Set Record_Status = 'C' (Close)"""
         obj = self.get_object()
         if obj.Record_Status == 'C':
-            return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
         obj.Record_Status = 'C'
         obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
         obj.Checker_DT_Stamp = timezone.now()
@@ -2148,7 +2148,7 @@ class FinCycleViewSet(viewsets.ModelViewSet):
 
         if journal_entry.Auth_Status == 'U':
             return Response({'error': 'Entry is already unauthorized'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
 
         # Set Auth_Status = 'U', Record_Status = 'C'
         journal_entry.Auth_Status = 'U'
