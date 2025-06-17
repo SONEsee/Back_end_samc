@@ -3355,7 +3355,7 @@ from django.utils import timezone
 from django.db.models import Q, Sum
 from datetime import datetime, timedelta
 import logging
-from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HIST
+from .models import DETB_JRNL_LOG, MTTB_GLSub, MTTB_GLMaster,MTTB_TRN_Code, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HIST, ACTB_DAIRY_LOG
 from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
 from .utils import JournalEntryHelper
 
@@ -3616,6 +3616,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 
                 created_entries = []
                 history_entries = []
+                daily_log_entries = []
                 
                 # Generate base timestamp for unique history references
                 base_timestamp = timezone.now().strftime("%H%M%S")  # HHMMSS format (6 chars)
@@ -3702,6 +3703,44 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
                     
                     history_entries.append(history_entry)
+
+                    daily_log_entry = ACTB_DAIRY_LOG.objects.create(
+                        module_id=data.get('module_id'),
+                        trn_ref_no=journal_entry,  # FK to the created journal entry
+                        event_sr_no=idx + 1,  # Sequential number for this batch
+                        event='JRNL',  # Journal event type
+                        ac_no_id=entry_data['Account'],
+                        ac_relative=entry_data.get('Ac_relatives'),
+                        ac_ccy_id=data['Ccy_cd'],
+                        drcr_ind=entry_data['Dr_cr'],
+                        trn_code_id=data['Txn_code'],
+                        fcy_amount=fcy_amount,
+                        exch_rate=exchange_rate,
+                        lcy_amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        external_ref_no=data['Reference_No'],  # Truncate to fit max length
+                        addl_text=data.get('Addl_text', ''),
+                        addl_sub_text=addl_sub_text,  # Truncate to fit max length
+                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                        # type='JRNL',  # Type of transaction
+                        category='J',  # 'J' for Journal entry
+                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                        financial_cycle_id=data.get('fin_cycle'),
+                        period_code_id=data.get('Period_code'),
+                        user_id=request.user,
+                        Maker_DT_Stamp=current_time,
+                        auth_id=None,  # Will be set during authorization
+                        Checker_DT_Stamp=None,  # Will be set during authorization
+                        Auth_Status='U',  # Unauthorized
+                        product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
+                        entry_seq_no=idx + 1,  # Sequential number in batch
+                        delete_stat=None  # Not deleted
+                    )
+                    
+                    daily_log_entries.append(daily_log_entry)
                 
                 
 
@@ -3756,6 +3795,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     'reference_no': data['Reference_No'],
                     'entries_created': len(created_entries),
                     'history_entries_created': len(history_entries),
+                    'daily_log_entries_created': len(daily_log_entries),
                     'entries': response_data
                 }, status=status.HTTP_201_CREATED)
                 
