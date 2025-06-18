@@ -47,7 +47,9 @@ from .views import (
     GLTreeAll,
     JRNLLogViewSet,
     DETB_JRNL_LOG_MASTER_ViewSet,
-    submit_eod_journal
+    submit_eod_journal,
+    FAAssetTypeViewSet
+
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -85,6 +87,7 @@ router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
 # router.register(r'gl-capture', JRNLLogViewSet)
 router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
 router.register(r'journal-log-master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
+router.register(r'asset_types', FAAssetTypeViewSet , basename='asset_type')
 
 
 

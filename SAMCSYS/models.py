@@ -258,7 +258,7 @@ class MTTB_Divisions(models.Model):
     div_id = models.CharField(primary_key=True, max_length=20)
     division_name_la = models.CharField(max_length=250,null=True,blank=True)
     division_name_en = models.CharField(max_length=250,null=True,blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_division')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_division')
@@ -893,10 +893,11 @@ class MTTB_VillageInfo(models.Model):
 
 class FA_Asset_Type(models.Model):
     type_id = models.AutoField(primary_key=True)
+    is_tangible = models.CharField(max_length=1, null=True, blank=True, default='N')
     type_code = models.CharField(max_length=10,null=True, blank=True)
-    type_name = models.CharField(max_length=100, null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    type_name_la = models.CharField(max_length=100, null=True, blank=True)
+    type_name_en = models.CharField(max_length=100, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_type')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_type')
@@ -905,7 +906,22 @@ class FA_Asset_Type(models.Model):
     class Meta:
         verbose_name_plural = 'AssestType'
 
-class FA_Asset_Suppliers(models.Model):
+class FA_Chart_Of_Asset(models.Model):
+    coa_id = models.AutoField(primary_key=True)
+    asset_code = models.CharField(max_length=50,null=True, blank=True)
+    asset_name_la = models.CharField(max_length=255, null=True, blank=True)
+    asset_name_en = models.CharField(max_length=255, null=True, blank=True)
+    asset_type_id = models.ForeignKey(FA_Asset_Type, null=True, blank=True, on_delete=models.CASCADE)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_chart_of_asset')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_chart_of_asset')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'ChartOfAsset'
+
+class FA_Suppliers(models.Model):
     supplier_id = models.AutoField(primary_key=True)
     supplier_code = models.CharField(max_length=20,null=True, blank=True)
     supplier_name = models.CharField(max_length=100, null=True, blank=True)
@@ -913,63 +929,88 @@ class FA_Asset_Suppliers(models.Model):
     phone = models.CharField(max_length=20, null=True, blank=True)
     email = models.CharField(max_length=100, null=True, blank=True)
     address = models.TextField(null=True, blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    tax_id = models.CharField(max_length=20, null=True, blank=True)
+    bank_account = models.CharField(max_length=50, null=True, blank=True)
+    bank_name = models.CharField(max_length=100, null=True, blank=True)
+    supplier_type = models.CharField(max_length=50, null=True, blank=True) 
+    credit_limit = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    payment_terms = models.CharField(max_length=100, null=True, blank=True) 
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_suppliers')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_suppliers')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssesSuppliers'
+        verbose_name_plural = 'AssetSuppliers'
 
-class FA_Asset_AccountOfAsset(models.Model):
-    account_id = models.AutoField(primary_key=True)
-    account_code = models.CharField(max_length=10,null=True, blank=True)
-    account_name = models.CharField(max_length=100, null=True, blank=True)
-    account_type = models.CharField(max_length=100, null=True, blank=True)
-    parent_account_id = models.IntegerField(null=True, blank=True)
+class FA_Location(models.Model):
+    location_id = models.AutoField(primary_key=True)
+    location_code = models.CharField(max_length=20,null=True, blank=True)
+    location_name_la = models.CharField(max_length=255, null=True, blank=True)
+    location_name_en = models.CharField(max_length=255, null=True, blank=True)
+    parent_location_id = models.IntegerField(null=True, blank=True) 
+    location_type = models.CharField(max_length=50, null=True, blank=True)  
+    phone = models.CharField(max_length=20, null=True, blank=True)
     address = models.TextField(null=True, blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_accountofasset')
+    responsible_person = models.CharField(max_length=100, null=True, blank=True)  
+    remarks = models.TextField(null=True, blank=True)  
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_locations')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_accountofasset')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_locations')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssesAccountOfAsset'
+        verbose_name_plural = 'AssetLocations'
 
-class FA_Transaction_TypeOfAsset(models.Model):
-    tran_id = models.AutoField(primary_key=True)
-    tran_name_la = models.CharField(max_length=250,null=True, blank=True)
-    tran_name_en = models.CharField(max_length=250, null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_transaction_type_ofasset')
+class FA_Expense_Category (models.Model):
+    ec_id = models.AutoField(primary_key=True)
+    category_code = models.CharField(max_length=20,null=True, blank=True)
+    category_name_la = models.CharField(max_length=255, null=True, blank=True)
+    category_name_en = models.CharField(max_length=255, null=True, blank=True)
+    is_capitalized_default = models.CharField(max_length=1, null=True, blank=True, default='N') 
+    default_gl_account = models.CharField(max_length=50, null=True, blank=True)  
+    required_approval = models.CharField(max_length=1, null=True, blank=True, default='Y')  
+    approval_limit = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_expense_category')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_transaction_type_ofasset')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_expense_category')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'TransactionTypeOfAsset'
+        verbose_name_plural = 'ExpenseCategory'
 
 class FA_Asset_List(models.Model):
-    asset_id = models.AutoField(primary_key=True)
-    asset_code = models.CharField(max_length=20,null=True, blank=True)
-    asset_name = models.CharField(max_length=100, null=True, blank=True)
-    type_id = models.ForeignKey(FA_Asset_Type, null=True, blank=True, on_delete=models.CASCADE)
+    al_id = models.AutoField(primary_key=True)
+    asset_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
+    asset_serial_no = models.CharField(max_length=50, null=True, blank=True)
     asset_tag = models.CharField(max_length=50, null=True, blank=True)
-    supplier_id = models.ForeignKey(FA_Asset_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
-    department_id = models.IntegerField(null=True, blank=True)
-    purchase_date = models.DateField(null=True, blank=True)
-    cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    useful_life = models.IntegerField(null=True, blank=True)
-    salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    serial_number = models.CharField(max_length=50, null=True, blank=True)
-    location = models.CharField(max_length=100, null=True, blank=True)
-    warranty_date = models.DateField(null=True, blank=True)
-    lasst_maintenance_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=20, null=True, blank=True, default='InProgress')
-    accumulated_depreciation = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    asset_location_id = models.ForeignKey(FA_Location, null=True, blank=True, on_delete=models.CASCADE)
+    asset_spec = models.TextField(null=True, blank=True)
+    asset_date = models.DateField(null=True, blank=True)
+    asset_currency = models.CharField(max_length=5, null=True, blank=True)
+    asset_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    asset_status  = models.CharField(max_length=20, null=True, blank=True, default='ACTIVE')  
+    warranty_end_date = models.DateField(null=True, blank=True)
+    supplier_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
+    has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')  # Y or N
+    dpca_type = models.CharField(max_length=20, null=True, blank=True)
+    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  
+    asset_useful_life = models.IntegerField(null=True, blank=True)  
+    asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    dpca_start_date = models.DateField(null=True, blank=True)  
+    dpca_end_date = models.DateField(null=True, blank=True) 
+    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    asset_latest_date_dpca = models.DateField(null=True, blank=True)  
+    asset_disposal_date = models.DateField(null=True, blank=True)  
+    asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    asset_ac_date = models.DateField(null=True, blank=True) 
+    asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
+    aaset_ac_by = models.IntegerField(null=True, blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_list')
@@ -978,136 +1019,224 @@ class FA_Asset_List(models.Model):
     class Meta:
         verbose_name_plural = 'AssestList'
 
-class FA_Asset_List_Disposal_Acc_mothod(models.Model):
-    mapping_id = models.AutoField(primary_key=True)
-    type_id = models.ForeignKey(FA_Asset_Type, null=True, blank=True, on_delete=models.CASCADE)
-    transaction_type = models.ForeignKey(FA_Transaction_TypeOfAsset, null=True, blank=True, on_delete=models.CASCADE)
+class FA_Depreciation_Main (models.Model):
+    dm_id = models.AutoField(primary_key=True)
     asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
-    debit_account_id = models.IntegerField(null=True, blank=True)
-    credit_account_id = models.IntegerField(null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list_disposal_acc_method')
+    dpca_type = models.CharField(max_length=20, null=True, blank=True) 
+    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  
+    dpca_useful_life = models.IntegerField(null=True, blank=True)  
+    start_date = models.DateField(null=True, blank=True)  
+    end_date = models.DateField(null=True, blank=True)  
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_depreciation_main')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_list_disposal_acc_method')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_depreciation_main')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssestListDisposalAccMethod'
+        verbose_name_plural = 'DepreciationMain'
 
-class FA_Asset_Transaction(models.Model):
-    at_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
-    assetTransaction_name_la = models.CharField(max_length=250, null=True, blank=True)
-    assetTransaction_name_en = models.CharField(max_length=250, null=True, blank=True)
-    supplier_id = models.ForeignKey(FA_Asset_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
-    purchase_date = models.DateField(null=True, blank=True)
-    cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    warranty_date = models.DateField(null=True, blank=True)
+class FA_Depreciation_Sub (models.Model):
+    ds_id = models.AutoField(primary_key=True)
+    m_id = models.ForeignKey(FA_Depreciation_Main, null=True, blank=True, on_delete=models.CASCADE)
+    round_no = models.IntegerField(null=True, blank=True) 
+    dpca_date = models.DateField(null=True, blank=True) 
+    dpca_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True) 
+    dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    dpca_per_month = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    dpca_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    period_year = models.CharField(max_length=4, null=True, blank=True) 
+    period_month = models.CharField(max_length=7, null=True, blank=True)  
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_depreciation_sub')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_depreciation_sub')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    approve_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='approve_depreciation_sub')
+    approve_datetime = models.DateTimeField(auto_now=False, null=True, blank=True) 
 
     class Meta:
-        verbose_name_plural = 'AssestTransaction'
+        verbose_name_plural = 'DepreciationSub'
 
-class FA_Asset_Of_Activity(models.Model):
-    transaction_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
-    transaction_type = models.CharField(max_length=50, null=True, blank=True)
-    transaction_date = models.DateField(null=True, blank=True)
-    debit_account_id = models.IntegerField(null=True, blank=True)
-    credit_account_id = models.IntegerField(null=True, blank=True)
-    amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    reference_number = models.CharField(max_length=50, null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_of_activity')
+class FA_Asset_List_Depreciation (models.Model):
+    ald_id = models.AutoField(primary_key=True)
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    dpca_date = models.DateField(null=True, blank=True)  
+    dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    dpca_no_of_days = models.IntegerField(null=True, blank=True) 
+    remaining_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    accumulated_dpca = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    dpca_desc = models.CharField(max_length=255, null=True, blank=True) 
+    dpca_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    dpca_date = models.DateField(null=True, blank=True)  
+    dpca_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
+    dpca_ac_by = models.IntegerField(null=True, blank=True) 
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list_depreciation')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_of_activity')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_list_depreciation')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssestOfActivity'
+        verbose_name_plural = 'AssestListDepreciation'
 
-class FA_Asset_Depreciation(models.Model):
-    depreciation_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
-    depreciation_date = models.DateField(null=True, blank=True)
-    amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    method = models.CharField(max_length=250, null=True, blank=True)  # e.g., Straight-Line, Declining Balance
-    depreciation_rate = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True)
-    remaining_life = models.IntegerField(null=True, blank=True)  # in months or years
-    book_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    transaction_id = models.ForeignKey(FA_Asset_Of_Activity, null=True, blank=True, on_delete=models.CASCADE)
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_depreciation')
+class FA_Asset_List_Disposal(models.Model):
+    alds_id = models.AutoField(primary_key=True)
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    disposal_date = models.DateField(null=True, blank=True)  
+    disposal_type = models.CharField(max_length=20, null=True, blank=True)  
+    disposal_by = models.IntegerField(null=True, blank=True) 
+    disposal_purpose = models.CharField(max_length=255, null=True, blank=True)  
+    disposal_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    disposal_proceeds = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    disposal_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    gain_loss = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    buyer_name = models.CharField(max_length=100, null=True, blank=True)  
+    disposal_reason = models.CharField(max_length=255, null=True, blank=True)  
+    disposal_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N') 
+    disposal_ac_date = models.DateField(null=True, blank=True)  
+    disposal_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True) 
+    disposal_ac_by = models.IntegerField(null=True, blank=True)   
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list_disposal')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_depreciation')
-    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    period_year = models.CharField(max_length=4, null=True, blank=True)  # e.g., '2023'
-    period_month = models.CharField(max_length=7, null=True, blank=True)  # e.g., '2023-09'
-
-    class Meta:
-        verbose_name_plural = 'Depreciation'
-
-class FA_Asset_Disposal_Logs(models.Model):
-    disposal_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
-    disposal_date = models.DateField(null=True, blank=True)
-    disposal_type = models.CharField(max_length=100, null=True, blank=True) 
-    proceeds = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    disposal_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    gain_loss = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Positive for gain, negative for loss
-    buyer_name = models.CharField(max_length=100, null=True, blank=True)
-    transaction_id = models.ForeignKey(FA_Asset_Transaction, null=True, blank=True, on_delete=models.CASCADE)
-    description = models.TextField(null=True, blank=True)
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_disposal_logs')
-    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_disposal_logs')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_list_disposal')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssestDisposalLogs'
+        verbose_name_plural = 'AssestListDisposal'
 
-class FA_Asset_Maintenance_Logs(models.Model):
-    maintenance_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
-    maintenance_date = models.DateField(null=True, blank=True)
-    maintenance_type = models.CharField(max_length=100, null=True, blank=True)  # e.g., Repair, Service
-    description = models.TextField(null=True, blank=True)
-    cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    technician = models.CharField(max_length=100, null=True, blank=True)  # Name of the technician or service provider
-    next_maintenance_date = models.DateField(null=True, blank=True)  # Scheduled date for next maintenance
-    status = models.CharField(max_length=50, null=True, blank=True, default='Completed')  # e.g., Completed, Pending
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_maintenance_logs')
+class FA_Asset_Expense(models.Model):
+    ae_id = models.AutoField(primary_key=True)
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    expense_type = models.CharField(max_length=50, null=True, blank=True)  
+    expense_date = models.DateField(null=True, blank=True)  
+    expense_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    currency_code = models.CharField(max_length=5, null=True, blank=True)  
+    exchange_rate = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)  
+    expense_amount_base = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    vendore_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)  
+    invoice_no = models.CharField(max_length=50, null=True, blank=True) 
+    invoice_date = models.DateField(null=True, blank=True)  
+    expense_description = models.TextField(null=True, blank=True)  
+    is_capitalized = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    warranty_coverd = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    downtime_hours = models.IntegerField(null=True, blank=True)  
+    expense_status = models.CharField(max_length=20, null=True, blank=True, default='PENDING')  
+    approved_by = models.IntegerField(null=True, blank=True) 
+    approved_date = models.DateField(null=True, blank=True)  
+    payment_date = models.DateField(null=True, blank=True) 
+    is_posted = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    posted_by = models.IntegerField(null=True, blank=True)  
+    posted_date = models.DateField(null=True, blank=True)  
+    journal_entry_id = models.IntegerField(null=True, blank=True)  
+    notes = models.TextField(null=True, blank=True)  
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_expense')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_maintenance_logs')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_expense')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssestMaintenanceLogs'
+        verbose_name_plural = 'AssestExpense'
 
-class FA_Asset_Transfer_Logs(models.Model):
+class FA_Transfer_Logs(models.Model):
     transfer_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
     transfer_date = models.DateField(null=True, blank=True)
-    from_department_id = models.CharField(max_length=100, null=True, blank=True)  # Department transferring the asset
-    to_department_id = models.CharField(max_length=100, null=True, blank=True)  # Department receiving the asset
-    from_location = models.CharField(max_length=100, null=True, blank=True)  # Location transferring from
-    to_location = models.CharField(max_length=100, null=True, blank=True)  # Location transferring to
+    from_location_id = models.ForeignKey(FA_Location, null=True, blank=True, related_name='transfer_from_location', on_delete=models.CASCADE)
+    to_location_id = models.ForeignKey(FA_Location, null=True, blank=True, related_name='transfer_to_location', on_delete=models.CASCADE)
     transfer_reason = models.TextField(null=True, blank=True)
-    transfer_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Cost associated with the transfer
-    condition_before = models.TextField(null=True, blank=True)  # Condition of the asset before transfer
-    condition_after = models.TextField(null=True, blank=True)  # Condition of the asset after transfer
-    transport_method = models.CharField(max_length=100, null=True, blank=True)  # e.g., Truck, Courier
-    requested_by = models.CharField(max_length=100, null=True, blank=True)  # Person requesting the transfer
-    approved_by = models.CharField(max_length=100, null=True, blank=True)  # Person approving the transfer
-    received_by = models.CharField(max_length=100, null=True, blank=True)  # Person receiving the asset
-    handover_date = models.DateField(null=True, blank=True)  # Date when the asset was handed over
-    received_date = models.DateField(null=True, blank=True)  # Date when the asset was received
-    status = models.CharField(max_length=50, null=True, blank=True, default='Pending')  # e.g., Pending, Completed
-    transaction_id = models.ForeignKey(FA_Asset_Transaction, null=True, blank=True, on_delete=models.CASCADE)
-    notes = models.TextField(null=True, blank=True)  # Additional notes or comments
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_transfer_logs')
+    transfer_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    condition_before = models.TextField(null=True, blank=True)  
+    condition_after = models.TextField(null=True, blank=True)  
+    transport_method = models.CharField(max_length=100, null=True, blank=True) 
+    requested_by = models.IntegerField(null=True, blank=True)
+    approved_by = models.IntegerField(null=True, blank=True)  
+    received_by = models.IntegerField(null=True, blank=True)  
+    handover_date = models.DateField(null=True, blank=True)  
+    received_date = models.DateField(null=True, blank=True) 
+    status = models.CharField(max_length=50, null=True, blank=True) 
+    insurance_covered = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    estimated_arrival = models.DateField(null=True, blank=True)  
+    actual_arrival = models.DateField(null=True, blank=True)  
+    notes = models.TextField(null=True, blank=True)  
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_transfer_logs')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_transfer_logs')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_transfer_logs')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssestTransferLogs'
+        verbose_name_plural = 'TransferLogs'
+
+class FA_Asset_Photos(models.Model):
+    ap_id = models.AutoField(primary_key=True)
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    photo_type = models.CharField(max_length=50, null=True, blank=True)  
+    file_name = models.CharField(max_length=255, null=True, blank=True)  
+    file_path = models.TextField(null=True, blank=True)  
+    file_size = models.IntegerField(null=True, blank=True) 
+    mime_type = models.CharField(max_length=100, null=True, blank=True) 
+    description = models.TextField(null=True, blank=True)  
+    taken_date = models.DateField(null=True, blank=True) 
+    taken_by = models.IntegerField(null=True, blank=True)  
+    is_primary = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    display_order = models.IntegerField(null=True, blank=True)   
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_photos')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_photos')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'AssetPhotos'
+
+
+class FA_Maintenance_Logs(models.Model):
+    maintenance_id = models.AutoField(primary_key=True)
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    maintenance_date = models.DateField(null=True, blank=True)
+    maintenance_type = models.CharField(max_length=20, null=True, blank=True) 
+    description = models.TextField(null=True, blank=True)
+    cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    currency_id = models.CharField(max_length=5, null=True, blank=True, default='LAK')  
+    technician = models.CharField(max_length=100, null=True, blank=True)  
+    supplier_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)  
+    next_maintenance_date = models.DateField(null=True, blank=True,  default='MEDIUM')  
+    downtime_hours = models.IntegerField(null=True, blank=True) 
+    severity_level = models.CharField(max_length=20, null=True, blank=True) 
+    warranty_claim = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    status = models.CharField(max_length=50, null=True, blank=True, default='SCHEDULED') 
+    completed_by = models.IntegerField(null=True, blank=True)  
+    completed_date = models.DateField(null=True, blank=True)  
+    notes = models.TextField(null=True, blank=True) 
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_maintenance_logs')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_maintenance_logs')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'MaintenanceLogs'
+
+class FA_Accounting_Method(models.Model):
+    mapping_id = models.AutoField(primary_key=True)
+    ref_id = models.IntegerField(null=True, blank=True) 
+    acc_type = models.CharField(max_length=50, null=True, blank=True)  
+    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)  
+    debit_account_id = models.CharField(max_length=50, null=True, blank=True) 
+    credit_account_id = models.CharField(max_length=50, null=True, blank=True) 
+    amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    transaction_date = models.DateField(null=True, blank=True)  
+    description = models.TextField(null=True, blank=True)  
+    journal_entry_id = models.CharField(max_length=50, null=True, blank=True)  
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_accounting_method')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_accounting_method')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'AccountingMethod'
