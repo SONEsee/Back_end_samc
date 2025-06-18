@@ -643,8 +643,7 @@ from .serializers import RoleDetailSerializer
 
 class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     """
-    CRUD for Role_Detail records, with comprehensive filtering by Module, MainMenu, SubMenu, and RoleMaster.
-    Supports proper ordering across the hierarchy.
+    CRUD for Role_Detail records, with optional filtering by role_id and/or sub_menu_id via query params.
     """
     serializer_class = RoleDetailSerializer
 
@@ -671,13 +670,9 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            obj = MTTB_Role_Detail.objects.select_related(
-                'role_id', 
-                'sub_menu_id', 
-                'sub_menu_id__menu_id', 
-                'sub_menu_id__menu_id__module_Id'
-            ).get(role_id=role_id, sub_menu_id=sub_menu_id)
-            
+            obj = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').get(
+                role_id=role_id, sub_menu_id=sub_menu_id
+            )
             serializer = self.get_serializer(obj)
             return Response(serializer.data)
         except MTTB_Role_Detail.DoesNotExist:
@@ -691,105 +686,22 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['get'], url_path='by-role')
-    def get_by_role(self, request):
-        """Get all role details for a specific role with hierarchical data"""
-        role_id = request.query_params.get('role_id')
-        
-        if not role_id:
-            return Response(
-                {'detail': 'role_id parameter is required.'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            role_details = self.get_queryset().filter(role_id=role_id)
-            serializer = self.get_serializer(role_details, many=True)
-            
-            # Group by module and menu for better organization
-            organized_data = self._organize_role_data(serializer.data)
-            
-            return Response({
-                'role_id': role_id,
-                'total_permissions': len(serializer.data),
-                'organized_data': organized_data,
-                'raw_data': serializer.data
-            })
-        except Exception as e:
-            return Response(
-                {'detail': f'Error retrieving role details: {str(e)}'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=['get'], url_path='by-module')
-    def get_by_module(self, request):
-        """Get all role details filtered by module"""
-        module_id = request.query_params.get('module_id') or request.query_params.get('module_Id')
-        
-        if not module_id:
-            return Response(
-                {'detail': 'module_id parameter is required.'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            role_details = self.get_queryset().filter(
-                sub_menu_id__menu_id__module_Id_id=module_id
-            )
-            serializer = self.get_serializer(role_details, many=True)
-            
-            return Response({
-                'module_id': module_id,
-                'total_records': len(serializer.data),
-                'data': serializer.data
-            })
-        except Exception as e:
-            return Response(
-                {'detail': f'Error retrieving module role details: {str(e)}'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
     def get_permissions(self):
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        # Enhanced select_related for optimal query performance
-        qs = MTTB_Role_Detail.objects.select_related(
-            'role_id',
-            'sub_menu_id', 
-            'sub_menu_id__menu_id', 
-            'sub_menu_id__menu_id__module_Id'
-        ).all()
-        
+        qs = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').all().order_by('role_id', 'sub_menu_id')
         params = self.request.query_params
         
-        # Basic filter parameters
+        # Filter parameters
         role_id = params.get('role_id')
         sub_menu_id = params.get('sub_menu_id')
-        menu_id = params.get('menu_id')
-        module_id = params.get('module_id') or params.get('module_Id')
+        menu_id = params.get('menu_id')  # Filter by main menu
+        module_id = params.get('module_Id')  # Filter by module
         
-        # Status filter parameters
-        auth_status = params.get('Auth_Status')
-        record_status = params.get('Record_Status')
-        role_record_status = params.get('role_record_status')
-        
-        # Permission filter parameters
-        new_detail = params.get('new_detail')
-        edit_detail = params.get('edit_detail')
-        del_detail = params.get('del_detail')
-        auth_detail = params.get('auth_detail')
-        view_detail = params.get('view_detail')
-        
-        # Search parameters
-        role_name = params.get('role_name')
-        menu_name = params.get('menu_name')
-        sub_menu_name = params.get('sub_menu_name')
-        module_name = params.get('module_name')
-
-        # Apply basic filters
+        # Apply filters
         if role_id and sub_menu_id:
             qs = qs.filter(role_id=role_id, sub_menu_id=sub_menu_id)
         elif role_id:
@@ -801,165 +713,9 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
             qs = qs.filter(sub_menu_id__menu_id_id=menu_id)
         if module_id:
             qs = qs.filter(sub_menu_id__menu_id__module_Id_id=module_id)
-            
-        # Apply status filters
-        if auth_status:
-            qs = qs.filter(sub_menu_id__Auth_Status=auth_status)
-        if record_status:
-            qs = qs.filter(Record_Status=record_status)
-        if role_record_status:
-            qs = qs.filter(role_id__record_Status=role_record_status)
-
-        # Apply permission filters (1 = allowed, 0 = not allowed)
-        if new_detail is not None:
-            qs = qs.filter(New_Detail=int(new_detail))
-        if edit_detail is not None:
-            qs = qs.filter(Edit_Detail=int(edit_detail))
-        if del_detail is not None:
-            qs = qs.filter(Del_Detail=int(del_detail))
-        if auth_detail is not None:
-            qs = qs.filter(Auth_Detail=int(auth_detail))
-        if view_detail is not None:
-            qs = qs.filter(View_Detail=int(view_detail))
-
-        # Apply search filters (case-insensitive contains)
-        if role_name:
-            qs = qs.filter(
-                Q(role_id__role_name_la__icontains=role_name) |
-                Q(role_id__role_name_en__icontains=role_name)
-            )
-        if menu_name:
-            qs = qs.filter(
-                Q(sub_menu_id__menu_id__menu_name_la__icontains=menu_name) |
-                Q(sub_menu_id__menu_id__menu_name_en__icontains=menu_name)
-            )
-        if sub_menu_name:
-            qs = qs.filter(
-                Q(sub_menu_id__sub_menu_name_la__icontains=sub_menu_name) |
-                Q(sub_menu_id__sub_menu_name_en__icontains=sub_menu_name)
-            )
-        if module_name:
-            qs = qs.filter(
-                Q(sub_menu_id__menu_id__module_Id__module_name_la__icontains=module_name) |
-                Q(sub_menu_id__menu_id__module_Id__module_name_en__icontains=module_name)
-            )
-
-        # Enhanced ordering with proper hierarchy
-        ordering = self._get_ordering(params)
-        qs = qs.order_by(*ordering)
 
         return qs
 
-    def _get_ordering(self, params):
-        """Determine ordering based on parameters or use default hierarchical ordering"""
-        order_by = params.get('ordering', '').split(',')
-        order_by = [field.strip() for field in order_by if field.strip()]
-        
-        valid_fields = [
-            'role_id', '-role_id',
-            'sub_menu_id', '-sub_menu_id',
-            'Record_Status', '-Record_Status',
-            'module_order', '-module_order',
-            'menu_order', '-menu_order', 
-            'sub_menu_order', '-sub_menu_order',
-            'role_name', '-role_name'
-        ]
-        
-        # Filter out invalid ordering fields
-        valid_ordering = [field for field in order_by if field in valid_fields]
-        
-        # Default hierarchical ordering if no valid ordering specified
-        if not valid_ordering:
-            valid_ordering = [
-                'sub_menu_id__menu_id__module_Id__module_order',  # Module order
-                'sub_menu_id__menu_id__menu_order',              # Main menu order
-                'sub_menu_id__sub_menu_order',                   # Sub menu order
-                'role_id__role_id'                               # Role ID
-            ]
-        
-        # Map some friendly field names to actual field paths
-        field_mapping = {
-            'module_order': 'sub_menu_id__menu_id__module_Id__module_order',
-            '-module_order': '-sub_menu_id__menu_id__module_Id__module_order',
-            'menu_order': 'sub_menu_id__menu_id__menu_order',
-            '-menu_order': '-sub_menu_id__menu_id__menu_order',
-            'sub_menu_order': 'sub_menu_id__sub_menu_order',
-            '-sub_menu_order': '-sub_menu_id__sub_menu_order',
-            'role_name': 'role_id__role_name_en',
-            '-role_name': '-role_id__role_name_en'
-        }
-        
-        # Apply field mapping
-        mapped_ordering = []
-        for field in valid_ordering:
-            mapped_ordering.append(field_mapping.get(field, field))
-        
-        return mapped_ordering
-
-    def _organize_role_data(self, data):
-        """Organize role data by module -> menu -> submenu hierarchy"""
-        organized = {}
-        
-        for item in data:
-            # Extract hierarchy information
-            if item.get('sub_menu_id') and hasattr(item['sub_menu_id'], 'menu_id'):
-                menu = item['sub_menu_id']['menu_id']
-                module = menu.get('module_Id') if menu else None
-                
-                module_id = module.get('module_Id') if module else 'Unknown'
-                menu_id = menu.get('menu_id') if menu else 'Unknown'
-                sub_menu_id = item['sub_menu_id'].get('sub_menu_id', 'Unknown')
-                
-                # Initialize nested structure
-                if module_id not in organized:
-                    organized[module_id] = {
-                        'module_info': module,
-                        'menus': {}
-                    }
-                
-                if menu_id not in organized[module_id]['menus']:
-                    organized[module_id]['menus'][menu_id] = {
-                        'menu_info': menu,
-                        'sub_menus': {}
-                    }
-                
-                if sub_menu_id not in organized[module_id]['menus'][menu_id]['sub_menus']:
-                    organized[module_id]['menus'][menu_id]['sub_menus'][sub_menu_id] = {
-                        'sub_menu_info': item['sub_menu_id'],
-                        'role_details': []
-                    }
-                
-                # Add role detail to the appropriate sub_menu
-                organized[module_id]['menus'][menu_id]['sub_menus'][sub_menu_id]['role_details'].append(item)
-        
-        return organized
-
-    def list(self, request, *args, **kwargs):
-        """Enhanced list method with additional metadata"""
-        queryset = self.get_queryset()
-        page = self.paginate_queryset(queryset)
-        
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        
-        # Add summary statistics
-        total_records = len(serializer.data)
-        unique_roles = len(set(item['role_id']['role_id'] for item in serializer.data if item.get('role_id')))
-        unique_modules = len(set(
-            item['sub_menu_id']['menu_id']['module_Id']['module_Id'] 
-            for item in serializer.data 
-            if item.get('sub_menu_id', {}).get('menu_id', {}).get('module_Id')
-        ))
-        
-        return Response({
-            'total_records': total_records,
-            'unique_roles': unique_roles,
-            'unique_modules': unique_modules,
-            'data': serializer.data
-        })
     @action(detail=False, methods=['put'], url_path='update')
     def update_role_detail(self, request):
         role_id = request.query_params.get('role_id')
@@ -1479,7 +1235,7 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
     def set_stt_menu(self, request, pk=None):
         approve = self.get_object()
 
-        if approve.Record_Status == 'N':
+        if approve.Record_Status == 'C':
             return Response({'detail': 'Already unauthorized'}, status=status.HTTP_406_NOT_ACCEPTABLE)
 
         current_user = request.user
@@ -1596,27 +1352,6 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_stt_menu(self, request, pk=None):
-        approve = self.get_object()
-
-        if approve.Record_Status == 'N':
-            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        current_user = request.user
-        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
-
-        serializer = self.get_serializer(approve, data={
-            'Record_Status': 'U',
-            'Checker_Id': user_id,
-            'Checker_DT_Stamp': timezone.now()
-        }, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_406_NOT_ACCEPTABLE)
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
@@ -1717,27 +1452,6 @@ class SubMenuViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_stt_menu(self, request, pk=None):
-        approve = self.get_object()
-
-        if approve.Record_Status == 'N':
-            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        current_user = request.user
-        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
-
-        serializer = self.get_serializer(approve, data={
-            'Record_Status': 'U',
-            'Checker_Id': user_id,
-            'Checker_DT_Stamp': timezone.now()
-        }, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_406_NOT_ACCEPTABLE)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
@@ -1876,27 +1590,6 @@ class CcyDefnViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_stt_menu(self, request, pk=None):
-        approve = self.get_object()
-
-        if approve.Record_Status == 'N':
-            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        current_user = request.user
-        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
-
-        serializer = self.get_serializer(approve, data={
-            'Record_Status': 'U',
-            'Checker_Id': user_id,
-            'Checker_DT_Stamp': timezone.now()
-        }, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_406_NOT_ACCEPTABLE)
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
@@ -4037,8 +3730,9 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     addl_text = first.Addl_text
 
                     # Sum Fcy_Amount and Lcy_Amount for this batch
-                    total_fcy = sum(e.Fcy_Amount for e in created_entries)
-                    total_lcy = sum(e.Lcy_Amount for e in created_entries)
+                    total_fcy = sum(e.fcy_dr - e.fcy_cr for e in created_entries)
+                    total_lcy = sum(e.lcy_dr - e.lcy_cr for e in created_entries)
+                
 
                     master_entry = DETB_JRNL_LOG_MASTER.objects.create(
                         module_id=module_id,
