@@ -244,7 +244,7 @@ class Meta:
     
 class STTB_Dates(models.Model):
     date_id = models.AutoField(primary_key=True)
-    insertToday = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    Start_Date = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     prev_Wroking_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     next_working_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     eod_time = models.CharField(max_length=1)
@@ -295,6 +295,7 @@ class MTTB_Role_Detail(models.Model):
     Edit_Detail = models.IntegerField(default=0)
     Auth_Detail = models.IntegerField(default=0)
     View_Detail = models.IntegerField(default=0)
+    Record_Status = models.CharField(max_length=1, null=True, blank=True, default='C')
     class Meta:
         verbose_name_plural='Role_Detail'
         unique_together = ('role_id', 'sub_menu_id')
@@ -518,7 +519,7 @@ class DETB_JRNL_LOG_MASTER(models.Model):
 class DETB_JRNL_LOG(models.Model):
     JRNLLog_id = models.AutoField(primary_key=True)
     module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
-    Reference_No = models.CharField(max_length=20, null=True, blank=True)
+    Reference_No = models.CharField(max_length=30, null=True, blank=True)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Fcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
@@ -555,10 +556,49 @@ class DETB_JRNL_LOG(models.Model):
                 name='unique_journal_entry'
             )
         ]
-        
 
-class DETB_JRNL_LOG_HISTORY(models.Model):
-    JRNLLog_id_his = models.CharField(primary_key=True, max_length=20)
+class ACTB_DAIRY_LOG(models.Model):
+    ac_entry_sr_no = models.AutoField(primary_key=True)
+    module = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
+    trn_ref_no = models.ForeignKey(DETB_JRNL_LOG,null=True,blank=True,on_delete=models.CASCADE)
+    event_sr_no = models.BigIntegerField(default=0, null=True, blank=True)
+    event = models.CharField(max_length=4, null=True, blank=True)
+    ac_no = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
+    ac_no_full = models.CharField(max_length=40, null=True, blank=True)
+    ac_relative = models.CharField(max_length=50, null=True, blank=True)
+    ac_ccy = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
+    drcr_ind = models.CharField(max_length=1)
+    trn_code = models.ForeignKey(MTTB_TRN_Code,null=True,blank=True,on_delete=models.CASCADE)
+    fcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    exch_rate = models.DecimalField(max_digits=24, decimal_places=1, null=True, blank=True)
+    lcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    fcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    fcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    lcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    lcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
+    external_ref_no = models.CharField(max_length=30, null=True, blank=True)
+    addl_text = models.CharField(max_length=255, null=True, blank=True)
+    addl_sub_text = models.CharField(max_length=255, null=True, blank=True)
+    trn_dt = models.DateField(null=True, blank=True)
+    glid = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    category = models.CharField(max_length=1, null=True, blank=True)
+    value_dt = models.DateField(null=True, blank=True)
+    financial_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
+    period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
+    user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_DAILY_LOG')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    auth_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checker_DAILY_LOG')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+    product = models.CharField(max_length=4, null=True, blank=True)
+    entry_seq_no = models.IntegerField(null=True, blank=True)
+    delete_stat = models.CharField(max_length=1, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'DAILY_LOG'
+
+class DETB_JRNL_LOG_HIST(models.Model):
+    JRNLLog_id_his = models.AutoField(primary_key=True)
     Reference_No = models.CharField(max_length=20, null=True, blank=True)
     module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
@@ -587,44 +627,6 @@ class DETB_JRNL_LOG_HISTORY(models.Model):
     class Meta:
         verbose_name_plural = 'JRNL_LOG_HIST'
 
-class ACTB_DAIRY_LOG(models.Model):
-    ac_entry_sr_no = models.AutoField(primary_key=True)
-    module = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
-    trn_ref_no = models.ForeignKey(DETB_JRNL_LOG,null=True,blank=True,on_delete=models.CASCADE)
-    event_sr_no = models.BigIntegerField(default=0, null=True, blank=True)
-    event = models.CharField(max_length=4, null=True, blank=True)
-    ac_no = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
-    ac_relative = models.CharField(max_length=50, null=True, blank=True)
-    ac_ccy = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
-    drcr_ind = models.CharField(max_length=1)
-    trn_code = models.ForeignKey(MTTB_TRN_Code,null=True,blank=True,on_delete=models.CASCADE)
-    fcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
-    exch_rate = models.DecimalField(max_digits=24, decimal_places=1, null=True, blank=True)
-    lcy_amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
-    fcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
-    fcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
-    lcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
-    lcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
-    external_ref_no = models.CharField(max_length=16, null=True, blank=True)
-    addl_text = models.CharField(max_length=255, null=True, blank=True)
-    trn_dt = models.DateField(null=True, blank=True)
-    type = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
-    category = models.CharField(max_length=1, null=True, blank=True)
-    value_dt = models.DateField(null=True, blank=True)
-    financial_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
-    period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
-    user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_DAILY_LOG')
-    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    auth_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checker_DAILY_LOG')
-    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
-    product = models.CharField(max_length=4, null=True, blank=True)
-    entry_seq_no = models.IntegerField(null=True, blank=True)
-    delete_stat = models.CharField(max_length=1, null=True, blank=True)
-
-    class Meta:
-        verbose_name_plural = 'DAILY_LOG'
-
 class ACTB_DAIRY_LOG_HISTORY(models.Model):
     ac_entry_sr_no = models.AutoField(primary_key=True)
     module = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
@@ -632,6 +634,7 @@ class ACTB_DAIRY_LOG_HISTORY(models.Model):
     event_sr_no = models.BigIntegerField(default=0, null=True, blank=True)
     event = models.CharField(max_length=4, null=True, blank=True)
     ac_no = models.ForeignKey(MTTB_GLSub,null=True,blank=True,on_delete=models.CASCADE)
+    ac_no_full = models.CharField(max_length=40, null=True, blank=True)
     ac_relative = models.CharField(max_length=50, null=True, blank=True)
     ac_ccy = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     drcr_ind = models.CharField(max_length=1)
@@ -643,10 +646,12 @@ class ACTB_DAIRY_LOG_HISTORY(models.Model):
     fcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     lcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     lcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
-    external_ref_no = models.CharField(max_length=16, null=True, blank=True)
+    external_ref_no = models.CharField(max_length=30, null=True, blank=True)
     addl_text = models.CharField(max_length=255, null=True, blank=True)
+    addl_sub_text = models.CharField(max_length=255, null=True, blank=True)
     trn_dt = models.DateField(null=True, blank=True)
-    type = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    glid = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
+    glType = models.CharField(max_length=1, null=True, blank=True)
     category = models.CharField(max_length=1, null=True, blank=True)
     value_dt = models.DateField(null=True, blank=True)
     financial_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)

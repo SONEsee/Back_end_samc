@@ -46,7 +46,8 @@ from .views import (
     GLTreeAPIView,
     GLTreeAll,
     JRNLLogViewSet,
-    DETB_JRNL_LOG_MASTER_ViewSet
+    DETB_JRNL_LOG_MASTER_ViewSet,
+    submit_eod_journal
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -108,9 +109,8 @@ urlpatterns = [
     path('api/villages_list/', list_villages, name='list_villages'),
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
+    path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
     
-
-
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
