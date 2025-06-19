@@ -5,7 +5,7 @@ from .models import MTTB_Users, MTTB_Divisions, MTTB_Role_Master,STTB_ModulesInf
 class DivisionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Divisions
-        fields = ['div_id', 'division_name_la', 'division_name_en', 'record_Status']
+        fields = ['div_id', 'division_name_la', 'division_name_en', 'Record_Status']
 
 class RoleMasterSerializer(serializers.ModelSerializer):
     class Meta:

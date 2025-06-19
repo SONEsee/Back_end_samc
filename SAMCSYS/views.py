@@ -1127,32 +1127,7 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
     )
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-<<<<<<< HEAD
-    def set_stt_menu(self, request, pk=None):
-        approve = self.get_object()
-
-        if approve.Record_Status == 'C':
-            return Response({'detail': 'Already unauthorized'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        current_user = request.user
-        user_id = getattr(current_user, 'user_id', None) or getattr(current_user, 'id', None) or str(current_user)
-
-        serializer = self.get_serializer(approve, data={
-            'Record_Status': 'U',
-            'Checker_Id': user_id,
-            'Checker_DT_Stamp': timezone.now()
-        }, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_406_NOT_ACCEPTABLE)
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-=======
->>>>>>> c0fedd719b975097957a84f07e4d94372bcc272b
     def set_open(self, request, pk=None):
-        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
@@ -1249,10 +1224,6 @@ class MainMenuViewSet(viewsets.ModelViewSet):
             Checker_Id=user_id,
             Checker_DT_Stamp=timezone.now()
         )
-<<<<<<< HEAD
-=======
-
->>>>>>> c0fedd719b975097957a84f07e4d94372bcc272b
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
@@ -1492,10 +1463,6 @@ class CcyDefnViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
-<<<<<<< HEAD
-=======
-
->>>>>>> c0fedd719b975097957a84f07e4d94372bcc272b
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
