@@ -655,3 +655,11 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
     class Meta:
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
+
+from rest_framework import serializers
+from .models import FA_Asset_Type
+
+class FAAssetTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Type
+        fields = '__all__'
