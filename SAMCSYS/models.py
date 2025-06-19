@@ -135,7 +135,98 @@ class MTTB_Function_Desc(models.Model):
 #     # ────────────────────────────────────────────
 
 
-class MTTB_Users(models.Model):
+# class MTTB_Users(models.Model):
+#     STATUS_CHOICES = [
+#         ('E', 'Enabled'),
+#         ('D', 'Disabled'),
+#     ]
+
+#     user_id = models.CharField(primary_key=True, max_length=20)
+#     div_id = models.ForeignKey(
+#         'MTTB_Divisions', null=True, blank=True, on_delete=models.CASCADE
+#     )
+#     Role_ID = models.ForeignKey(
+#         'MTTB_Role_Master', null=True, blank=True, on_delete=models.CASCADE
+#     )
+#     user_name = models.CharField(max_length=250, unique=True)
+#     user_password = models.CharField(max_length=250)
+#     user_email = models.CharField(max_length=250, null=True, blank=True)
+#     user_mobile = models.CharField(max_length=15, null=True, blank=True)
+
+#     # New field to upload a profile picture
+#     profile_picture = models.ImageField(
+#         upload_to='profile_pictures/', null=True, blank=True
+#     )
+
+#     User_Status = models.CharField(
+#         max_length=1,
+#         choices=STATUS_CHOICES,
+#         default='E',
+#     )
+
+#     pwd_changed_on = models.DateField(null=True, blank=True)
+#     InsertDate = models.DateTimeField(auto_now_add=True)
+#     UpdateDate = models.DateTimeField(auto_now=True)
+#     Maker_Id = models.ForeignKey(
+#         'self', null=True, blank=True,
+#         on_delete=models.CASCADE,
+#         related_name='created_userss'
+#     )
+#     Maker_DT_Stamp = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+#     Checker_Id = models.ForeignKey(
+#         'self', null=True, blank=True,
+#         on_delete=models.CASCADE,
+#         related_name='checked_userss'
+#     )
+#     Checker_DT_Stamp = models.DateTimeField(null=True, blank=True)
+#     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+#     Once_Auth = models.CharField(max_length=1, null=True, blank=True, default='N')
+
+#     class Meta:
+#         verbose_name_plural = 'UsersRgith'
+#         db_table = 'SAMCSYS_mttb_users'
+
+#     def __str__(self):
+#         return self.user_name
+
+#     @property
+#     def is_authenticated(self):
+#         return True
+
+#     @property
+#     def is_anonymous(self):
+#         return False
+
+#     def get_full_name(self):
+#         return self.user_name or self.user_id
+
+#     def get_short_name(self):
+#         return self.user_name or self.user_id
+
+#     def has_perm(self, perm, obj=None):
+#         return True
+
+#     def has_module_perms(self, app_label):
+#         return True
+
+
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.db import models
+
+class MTTB_UserManager(BaseUserManager):
+    def create_user(self, user_id, user_name, password=None, **extra_fields):
+        if not user_id:
+            raise ValueError('The User ID must be set')
+        user = self.model(user_id=user_id, user_name=user_name, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, user_id, user_name, password=None, **extra_fields):
+        extra_fields.setdefault('is_superuser', True)
+        return self.create_user(user_id, user_name, password, **extra_fields)
+
+class MTTB_Users(AbstractBaseUser, PermissionsMixin):
     STATUS_CHOICES = [
         ('E', 'Enabled'),
         ('D', 'Disabled'),
@@ -182,8 +273,12 @@ class MTTB_Users(models.Model):
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Once_Auth = models.CharField(max_length=1, null=True, blank=True, default='N')
 
+    USERNAME_FIELD = 'user_name'
+    REQUIRED_FIELDS = ['user_id']
+    objects = MTTB_UserManager()
     class Meta:
         verbose_name_plural = 'UsersRgith'
+        db_table = 'SAMCSYS_mttb_users'
 
     def __str__(self):
         return self.user_name
@@ -208,8 +303,22 @@ class MTTB_Users(models.Model):
     def has_module_perms(self, app_label):
         return True
 
+# class MTTB_USER_ACCESS_LOG(models.Model):
+#     log_id = models.AutoField(primary_key=True)  
+#     user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE)   
+#     login_datetime = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+#     logout_datetime = models.DateTimeField(null=True, blank=True)
+#     session_id = models.CharField(max_length=100, null=True, blank=True)
+#     ip_address = models.CharField(max_length=45,null=True, blank=True)
+#     user_agent = models.CharField(max_length=255, null=True, blank=True)
+#     login_status = models.CharField(max_length=1)
+#     logout_type = models.CharField(max_length=1, null=True, blank=True)
+#     remarks = models.CharField(max_length=255, null=True, blank=True)
 
+#     class Meta:
+#         verbose_name_plural='USER_ACCESS_LOG'
 class MTTB_USER_ACCESS_LOG(models.Model):
+    # Your existing fields...
     log_id = models.AutoField(primary_key=True)  
     user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE)   
     login_datetime = models.DateTimeField(auto_now_add=True, null=True, blank=True)
@@ -217,12 +326,35 @@ class MTTB_USER_ACCESS_LOG(models.Model):
     session_id = models.CharField(max_length=100, null=True, blank=True)
     ip_address = models.CharField(max_length=45,null=True, blank=True)
     user_agent = models.CharField(max_length=255, null=True, blank=True)
-    login_status = models.CharField(max_length=1)
-    logout_type = models.CharField(max_length=1, null=True, blank=True)
+    login_status = models.CharField(
+        max_length=1,
+        choices=[
+            ('S', 'Success'),
+            ('F', 'Failed'),
+            ('A', 'Admin Action'),
+        ]
+    )
+    logout_type = models.CharField(
+        max_length=1, 
+        null=True, 
+        blank=True,
+        choices=[
+            ('U', 'User Initiated'),
+            ('F', 'Force Logout'),
+            ('T', 'Timeout'),
+            ('S', 'System'),
+        ]
+    )
     remarks = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         verbose_name_plural='USER_ACCESS_LOG'
+        db_table = 'mttb_user_access_log'
+        indexes = [
+            models.Index(fields=['user_id', 'logout_datetime']),
+            models.Index(fields=['session_id']),
+            models.Index(fields=['login_datetime']),
+        ]
 
 class MTTB_USER_ACTIVITY_LOG(models.Model):
     activity_id = models.AutoField(primary_key=True) 
@@ -1240,3 +1372,27 @@ class FA_Accounting_Method(models.Model):
 
     class Meta:
         verbose_name_plural = 'AccountingMethod'
+
+
+class MTTB_REVOKED_SESSIONS(models.Model):
+    """Track revoked JWT sessions for force logout functionality"""
+    id = models.AutoField(primary_key=True)
+    jti = models.CharField(max_length=255, unique=True, db_index=True)
+    user_id = models.ForeignKey(MTTB_Users, on_delete=models.CASCADE)
+    revoked_at = models.DateTimeField(auto_now_add=True)
+    revoked_by = models.ForeignKey(
+        MTTB_Users, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='revoked_sessions'
+    )
+    reason = models.CharField(max_length=255, null=True, blank=True)
+    
+    class Meta:
+        db_table = 'mttb_revoked_sessions'
+        verbose_name_plural = 'Revoked Sessions'
+        indexes = [
+            models.Index(fields=['jti']),
+            models.Index(fields=['user_id']),
+            models.Index(fields=['revoked_at']),
+        ]
