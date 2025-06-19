@@ -129,7 +129,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "SAMCApp.urls"
-
+AUTH_USER_MODEL = 'SAMCSYS.MTTB_Users'
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",

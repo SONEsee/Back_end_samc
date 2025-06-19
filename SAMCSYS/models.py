@@ -135,7 +135,98 @@ class MTTB_Function_Desc(models.Model):
 #     # ────────────────────────────────────────────
 
 
-class MTTB_Users(models.Model):
+# class MTTB_Users(models.Model):
+#     STATUS_CHOICES = [
+#         ('E', 'Enabled'),
+#         ('D', 'Disabled'),
+#     ]
+
+#     user_id = models.CharField(primary_key=True, max_length=20)
+#     div_id = models.ForeignKey(
+#         'MTTB_Divisions', null=True, blank=True, on_delete=models.CASCADE
+#     )
+#     Role_ID = models.ForeignKey(
+#         'MTTB_Role_Master', null=True, blank=True, on_delete=models.CASCADE
+#     )
+#     user_name = models.CharField(max_length=250, unique=True)
+#     user_password = models.CharField(max_length=250)
+#     user_email = models.CharField(max_length=250, null=True, blank=True)
+#     user_mobile = models.CharField(max_length=15, null=True, blank=True)
+
+#     # New field to upload a profile picture
+#     profile_picture = models.ImageField(
+#         upload_to='profile_pictures/', null=True, blank=True
+#     )
+
+#     User_Status = models.CharField(
+#         max_length=1,
+#         choices=STATUS_CHOICES,
+#         default='E',
+#     )
+
+#     pwd_changed_on = models.DateField(null=True, blank=True)
+#     InsertDate = models.DateTimeField(auto_now_add=True)
+#     UpdateDate = models.DateTimeField(auto_now=True)
+#     Maker_Id = models.ForeignKey(
+#         'self', null=True, blank=True,
+#         on_delete=models.CASCADE,
+#         related_name='created_userss'
+#     )
+#     Maker_DT_Stamp = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+#     Checker_Id = models.ForeignKey(
+#         'self', null=True, blank=True,
+#         on_delete=models.CASCADE,
+#         related_name='checked_userss'
+#     )
+#     Checker_DT_Stamp = models.DateTimeField(null=True, blank=True)
+#     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
+#     Once_Auth = models.CharField(max_length=1, null=True, blank=True, default='N')
+
+#     class Meta:
+#         verbose_name_plural = 'UsersRgith'
+#         db_table = 'SAMCSYS_mttb_users'
+
+#     def __str__(self):
+#         return self.user_name
+
+#     @property
+#     def is_authenticated(self):
+#         return True
+
+#     @property
+#     def is_anonymous(self):
+#         return False
+
+#     def get_full_name(self):
+#         return self.user_name or self.user_id
+
+#     def get_short_name(self):
+#         return self.user_name or self.user_id
+
+#     def has_perm(self, perm, obj=None):
+#         return True
+
+#     def has_module_perms(self, app_label):
+#         return True
+
+
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.db import models
+
+class MTTB_UserManager(BaseUserManager):
+    def create_user(self, user_id, user_name, password=None, **extra_fields):
+        if not user_id:
+            raise ValueError('The User ID must be set')
+        user = self.model(user_id=user_id, user_name=user_name, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, user_id, user_name, password=None, **extra_fields):
+        extra_fields.setdefault('is_superuser', True)
+        return self.create_user(user_id, user_name, password, **extra_fields)
+
+class MTTB_Users(AbstractBaseUser, PermissionsMixin):
     STATUS_CHOICES = [
         ('E', 'Enabled'),
         ('D', 'Disabled'),
@@ -182,6 +273,9 @@ class MTTB_Users(models.Model):
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Once_Auth = models.CharField(max_length=1, null=True, blank=True, default='N')
 
+    USERNAME_FIELD = 'user_name'
+    REQUIRED_FIELDS = ['user_id']
+    objects = MTTB_UserManager()
     class Meta:
         verbose_name_plural = 'UsersRgith'
         db_table = 'SAMCSYS_mttb_users'
@@ -208,7 +302,6 @@ class MTTB_Users(models.Model):
 
     def has_module_perms(self, app_label):
         return True
-
 
 # class MTTB_USER_ACCESS_LOG(models.Model):
 #     log_id = models.AutoField(primary_key=True)  

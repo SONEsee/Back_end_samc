@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
-from yourapp.models import MTTB_REVOKED_SESSIONS
+from SAMCSYS.models import MTTB_REVOKED_SESSIONS
 
 class Command(BaseCommand):
     help = 'Clean up expired revoked sessions'
