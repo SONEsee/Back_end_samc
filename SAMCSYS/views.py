@@ -3489,7 +3489,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         # Filter by Reference_No
         Reference_No = self.request.query_params.get('Reference_No')
         if Reference_No:
-            queryset = queryset.filter(Reference_No=Reference_No)
+            queryset = queryset.filter(Reference_No=Reference_No).order_by('JRNLLog_id')
             
 
         return queryset
@@ -3730,8 +3730,8 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     addl_text = first.Addl_text
 
                     # Sum Fcy_Amount and Lcy_Amount for this batch
-                    total_fcy = sum(e.fcy_dr - e.fcy_cr for e in created_entries)
-                    total_lcy = sum(e.lcy_dr - e.lcy_cr for e in created_entries)
+                    total_fcy = sum(e.fcy_dr  for e in created_entries)
+                    total_lcy = sum(e.lcy_dr for e in created_entries)
                 
 
                     master_entry = DETB_JRNL_LOG_MASTER.objects.create(
