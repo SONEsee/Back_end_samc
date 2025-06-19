@@ -124,10 +124,93 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             'entry': serializer.data
         })
 
-from rest_framework_simplejwt.tokens import RefreshToken
-from .models import MTTB_USER_ACCESS_LOG
+# from rest_framework_simplejwt.tokens import RefreshToken
+# from .models import MTTB_USER_ACCESS_LOG
+# from rest_framework_simplejwt.settings import api_settings
+# from django.utils import timezone
+
+# def get_client_ip(request):
+#     xff = request.META.get('HTTP_X_FORWARDED_FOR')
+#     if xff:
+#         return xff.split(',')[0].strip()
+#     return request.META.get('REMOTE_ADDR')
+
+# @api_view(["POST"])
+# @permission_classes([AllowAny])
+# def login_view(request):
+#     uid = request.data.get("user_name")
+#     pwd = request.data.get("user_password")
+#     if not uid or not pwd:
+#         # log failure
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=None,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='F',        # F = failed
+#             remarks='Missing credentials'
+#         )
+#         return Response(
+#             {"error": "User_Name and User_Password required"},
+#             status=status.HTTP_400_BAD_REQUEST,
+#         )
+
+#     hashed = _hash(pwd)
+#     try:
+#         user = MTTB_Users.objects.get(
+#             user_name=uid, user_password=hashed
+#         )
+#     except MTTB_Users.DoesNotExist:
+#         # log failure
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=None,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='F',
+#             remarks='Invalid credentials'
+#         )
+#         return Response(
+#             {"error": "Invalid credentials"},
+#             status=status.HTTP_401_UNAUTHORIZED,
+#         )
+
+#     # 1) Create tokens
+#     refresh = RefreshToken.for_user(user)
+#     access  = refresh.access_token
+
+#     # 2) Log the successful login
+#     # Grab the JTI (unique token ID) for session tracking
+#     jti = refresh.get(api_settings.JTI_CLAIM)
+#     MTTB_USER_ACCESS_LOG.objects.create(
+#         user_id=user,
+#         session_id=jti,
+#         ip_address=get_client_ip(request),
+#         user_agent=request.META.get('HTTP_USER_AGENT'),
+#         login_status='S'   # S = success
+#     )
+
+#     # 3) Serialize your user data
+#     data = MTTBUserSerializer(user).data
+
+#     # 4) Return tokens + user info
+#     return Response({
+#         "message": "Login successful",
+#         "refresh": str(refresh),
+#         "access": str(access),
+#         "user": data
+#     })
+
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from .models import MTTB_USER_ACCESS_LOG, MTTB_Users
+from .serializers import MTTBUserSerializer
+from .tokens import CustomRefreshToken
 from rest_framework_simplejwt.settings import api_settings
-from django.utils import timezone
 
 def get_client_ip(request):
     xff = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -175,13 +258,13 @@ def login_view(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    # 1) Create tokens
+    # 1) Create tokens using CustomRefreshToken
     refresh = RefreshToken.for_user(user)
     access  = refresh.access_token
 
     # 2) Log the successful login
     # Grab the JTI (unique token ID) for session tracking
-    jti = refresh.get(api_settings.JTI_CLAIM)
+    jti = refresh[api_settings.JTI_CLAIM]
     MTTB_USER_ACCESS_LOG.objects.create(
         user_id=user,
         session_id=jti,
@@ -256,6 +339,8 @@ def logout_view(request):
         pass
 
     return Response({"message": "Logged out"}, status=status.HTTP_200_OK)
+
+
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
@@ -4124,3 +4209,471 @@ class FAAssetTypeViewSet(viewsets.ModelViewSet):
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+
+
+# Function Get User Login Session
+
+# ---------------------------------------------------------------------------------------------------
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from django.utils import timezone
+from django.db import transaction
+from .models import MTTB_USER_ACCESS_LOG, MTTB_Users
+from datetime import datetime
+
+# @api_view(["POST"])
+# @permission_classes([IsAuthenticated])
+# def force_logout_user(request):
+#     """
+#     Force logout a user by their user_id.
+#     Only admins should be able to use this endpoint.
+    
+#     POST /api/force-logout/
+#     Body: { "user_id": "<user_id_to_logout>" }
+#     """
+#     # Optional: Check if the requesting user has admin privileges
+#     # if not request.user.Role_ID or request.user.Role_ID.role_name != 'Admin':
+#     #     return Response(
+#     #         {"error": "Permission denied. Admin access required."},
+#     #         status=status.HTTP_403_FORBIDDEN
+#     #     )
+    
+#     target_user_id = request.data.get("user_id")
+#     if not target_user_id:
+#         return Response(
+#             {"error": "user_id is required"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # Check if the target user exists
+#     try:
+#         target_user = MTTB_Users.objects.get(user_id=target_user_id)
+#     except MTTB_Users.DoesNotExist:
+#         return Response(
+#             {"error": f"User with id {target_user_id} not found"},
+#             status=status.HTTP_404_NOT_FOUND
+#         )
+    
+#     # Prevent users from force logging out themselves
+#     if request.user.user_id == target_user_id:
+#         return Response(
+#             {"error": "Cannot force logout yourself. Use normal logout instead."},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     with transaction.atomic():
+#         # 1. Find all active sessions for this user
+#         active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+#             user_id=target_user,
+#             logout_datetime__isnull=True,
+#             login_status='S'  # Only successful logins
+#         )
+        
+#         session_count = active_sessions.count()
+        
+#         # 2. Blacklist all outstanding tokens for this user
+#         blacklisted_count = 0
+#         try:
+#             # Get all outstanding tokens for this user
+#             outstanding_tokens = OutstandingToken.objects.filter(
+#                 user__user_id=target_user_id
+#             )
+            
+#             for token in outstanding_tokens:
+#                 # Check if already blacklisted
+#                 if not BlacklistedToken.objects.filter(token=token).exists():
+#                     BlacklistedToken.objects.create(token=token)
+#                     blacklisted_count += 1
+                    
+#         except Exception as e:
+#             # If blacklisting fails, still continue with logging out sessions
+#             print(f"Error blacklisting tokens: {str(e)}")
+        
+#         # 3. Update all active sessions to mark them as force logged out
+#         current_time = timezone.now()
+#         active_sessions.update(
+#             logout_datetime=current_time,
+#             logout_type='F',  # F = Force logout
+#             remarks=f'Force logged out by {request.user.user_id}'
+#         )
+        
+#         # 4. Optional: Create a new log entry for the force logout action
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=request.user,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='A',  # A = Admin action
+#             remarks=f'Force logged out user {target_user_id}'
+#         )
+    
+#     return Response({
+#         "message": f"Successfully force logged out user {target_user_id}",
+#         "sessions_terminated": session_count,
+#         "tokens_blacklisted": blacklisted_count
+#     }, status=status.HTTP_200_OK)
+
+# views.py - Add these views to your existing views
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, BasePermission
+from rest_framework.response import Response
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from django.utils import timezone
+from django.db import transaction
+from django.db.models import Q
+from .models import MTTB_USER_ACCESS_LOG, MTTB_Users, MTTB_REVOKED_SESSIONS
+from .serializers import UserAccessLogSerializer
+from SAMCSYS.authentication import get_jti_from_request
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# Helper function
+def get_client_ip(request):
+    """Extract client IP from request"""
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '')
+
+
+# Custom permission class for admin-only endpoints
+class IsAdminUser(BasePermission):
+    """
+    Custom permission to only allow admin users.
+    """
+    message = "Only administrators can perform this action."
+    
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Check if user has admin role
+        if hasattr(request.user, 'Role_ID') and request.user.Role_ID:
+            # Adjust this condition based on your role structure
+            role_name = getattr(request.user.Role_ID, 'role_name', '')
+            return role_name.lower() in ['admin', 'administrator', 'superuser']
+        
+        return False
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def force_logout_user(request):
+    """
+    Force logout a user by their user_id.
+    Revokes all their active sessions and tokens.
+    
+    POST /api/force-logout/
+    Body: { "user_id": "<user_id_to_logout>" }
+    """
+    target_user_id = request.data.get("user_id")
+    
+    # Validation
+    if not target_user_id:
+        return Response(
+            {"error": "user_id is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if the target user exists
+    try:
+        target_user = MTTB_Users.objects.get(user_id=target_user_id)
+    except MTTB_Users.DoesNotExist:
+        return Response(
+            {"error": f"User with id {target_user_id} not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Prevent users from force logging out themselves
+    if request.user.user_id == target_user_id:
+        return Response(
+            {"error": "Cannot force logout yourself. Use normal logout instead."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    with transaction.atomic():
+        # Find all active sessions for this user
+        active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+            user_id=target_user,
+            logout_datetime__isnull=True,
+            login_status='S'  # Only successful logins
+        )
+        
+        session_count = active_sessions.count()
+        revoked_count = 0
+        
+        # Revoke all active sessions
+        for session in active_sessions:
+            if session.session_id:  # session_id contains the JTI
+                try:
+                    # Create revoked session entry
+                    MTTB_REVOKED_SESSIONS.objects.get_or_create(
+                        jti=session.session_id,
+                        defaults={
+                            'user_id': target_user,
+                            'revoked_by': request.user,
+                            'reason': f'Force logged out by {request.user.user_name}',
+                            'ip_address': get_client_ip(request)
+                        }
+                    )
+                    revoked_count += 1
+                except Exception as e:
+                    logger.error(f"Error revoking session {session.session_id}: {str(e)}")
+        
+        # Update all active sessions to mark them as force logged out
+        current_time = timezone.now()
+        active_sessions.update(
+            logout_datetime=current_time,
+            logout_type='F',  # F = Force logout
+            remarks=f'Force logged out by {request.user.user_name} ({request.user.user_id})'
+        )
+        
+        # Log the admin action
+        MTTB_USER_ACCESS_LOG.objects.create(
+            user_id=request.user,
+            session_id=get_jti_from_request(request),
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+            login_status='A',  # A = Admin action
+            remarks=f'Force logged out user {target_user.user_name} ({target_user_id})'
+        )
+    
+    logger.info(f"Admin {request.user.user_id} force logged out user {target_user_id}")
+    
+    return Response({
+        "success": True,
+        "message": f"Successfully force logged out user {target_user_id}",
+        "details": {
+            "user_id": target_user_id,
+            "user_name": target_user.user_name,
+            "sessions_terminated": session_count,
+            "tokens_revoked": revoked_count
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_active_sessions(request):
+    """
+    Get all active sessions (users currently logged in).
+    Regular users can only see their own sessions.
+    Admins can see all sessions.
+    
+    GET /api/active-sessions/
+    Optional query params:
+    - user_id: Filter by specific user (admin only)
+    - include_details: Include detailed session info
+    """
+    # Check if user is admin
+    is_admin = IsAdminUser().has_permission(request, None)
+    
+    # Base query for active sessions
+    query = MTTB_USER_ACCESS_LOG.objects.filter(
+        logout_datetime__isnull=True,
+        login_status='S'
+    ).select_related('user_id')
+    
+    # Non-admins can only see their own sessions
+    if not is_admin:
+        query = query.filter(user_id=request.user)
+    else:
+        # Admins can filter by user_id if provided
+        filter_user_id = request.query_params.get('user_id')
+        if filter_user_id:
+            query = query.filter(user_id__user_id=filter_user_id)
+    
+    # Order by login time (most recent first)
+    query = query.order_by('-login_datetime')
+    
+    # Prepare response data
+    sessions_data = []
+    for session in query:
+        session_info = {
+            'log_id': session.log_id,
+            'user_id': session.user_id.user_id if session.user_id else None,
+            'user_name': session.user_id.user_name if session.user_id else None,
+            'login_datetime': session.login_datetime,
+            'session_duration': str(timezone.now() - session.login_datetime) if session.login_datetime else None,
+            'ip_address': session.ip_address,
+        }
+        
+        # Include additional details if requested
+        if request.query_params.get('include_details') == 'true':
+            session_info.update({
+                'user_agent': session.user_agent,
+                'session_id': session.session_id[:10] + '...' if session.session_id else None,  # Partial JTI for security
+                'user_email': session.user_id.user_email if session.user_id else None,
+                'user_status': session.user_id.User_Status if session.user_id else None,
+            })
+        
+        sessions_data.append(session_info)
+    
+    return Response({
+        "success": True,
+        "active_sessions": sessions_data,
+        "total_count": len(sessions_data),
+        "is_admin_view": is_admin,
+        "current_time": timezone.now()
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def force_logout_all_users(request):
+    """
+    Force logout all users except the requesting admin.
+    Requires explicit confirmation.
+    
+    POST /api/force-logout-all/
+    Body: { "confirm": true, "reason": "optional reason" }
+    """
+    # Require explicit confirmation
+    if not request.data.get("confirm"):
+        return Response(
+            {"error": "Confirmation required. Set 'confirm': true in request body."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    reason = request.data.get("reason", "Mass force logout by administrator")
+    
+    # Get current user's JTI to exclude it
+    current_jti = get_jti_from_request(request)
+    
+    with transaction.atomic():
+        # Get all active sessions except current user's
+        active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+            logout_datetime__isnull=True,
+            login_status='S'
+        ).exclude(
+            Q(user_id=request.user) | Q(session_id=current_jti)
+        ).select_related('user_id')
+        
+        session_count = active_sessions.count()
+        revoked_count = 0
+        affected_users = set()
+        
+        # Revoke all sessions
+        for session in active_sessions:
+            if session.session_id:
+                try:
+                    MTTB_REVOKED_SESSIONS.objects.get_or_create(
+                        jti=session.session_id,
+                        defaults={
+                            'user_id': session.user_id,
+                            'revoked_by': request.user,
+                            'reason': reason,
+                            'ip_address': get_client_ip(request)
+                        }
+                    )
+                    revoked_count += 1
+                    if session.user_id:
+                        affected_users.add(session.user_id.user_name)
+                except Exception as e:
+                    logger.error(f"Error revoking session in mass logout: {str(e)}")
+        
+        # Mark all sessions as logged out
+        current_time = timezone.now()
+        active_sessions.update(
+            logout_datetime=current_time,
+            logout_type='F',
+            remarks=f'{reason} by {request.user.user_name}'
+        )
+        
+        # Log the mass logout action
+        MTTB_USER_ACCESS_LOG.objects.create(
+            user_id=request.user,
+            session_id=current_jti,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+            login_status='A',
+            remarks=f'Performed mass force logout: {reason}'
+        )
+    
+    logger.warning(f"Admin {request.user.user_id} performed mass force logout. Affected {len(affected_users)} users.")
+    
+    return Response({
+        "success": True,
+        "message": "Successfully force logged out all users",
+        "details": {
+            "sessions_terminated": session_count,
+            "tokens_revoked": revoked_count,
+            "users_affected": len(affected_users),
+            "reason": reason
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def verify_token(request):
+    """
+    Simple endpoint to verify if a token is still valid.
+    Used by frontend to check authentication status.
+    
+    GET /api/verify-token/
+    """
+    return Response({
+        "valid": True,
+        "user_id": request.user.user_id,
+        "user_name": request.user.user_name,
+        "jti": get_jti_from_request(request),
+        "timestamp": timezone.now()
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def get_revoked_sessions(request):
+    """
+    Get list of revoked sessions (admin only).
+    Useful for audit purposes.
+    
+    GET /api/revoked-sessions/
+    Query params:
+    - user_id: Filter by specific user
+    - days: Number of days to look back (default: 7)
+    """
+    days = int(request.query_params.get('days', 7))
+    cutoff_date = timezone.now() - timezone.timedelta(days=days)
+    
+    query = MTTB_REVOKED_SESSIONS.objects.filter(
+        revoked_at__gte=cutoff_date
+    ).select_related('user_id', 'revoked_by')
+    
+    # Filter by user if specified
+    user_id_filter = request.query_params.get('user_id')
+    if user_id_filter:
+        query = query.filter(user_id__user_id=user_id_filter)
+    
+    revoked_sessions = []
+    for session in query.order_by('-revoked_at')[:100]:  # Limit to 100 most recent
+        revoked_sessions.append({
+            'id': session.id,
+            'user_id': session.user_id.user_id if session.user_id else None,
+            'user_name': session.user_id.user_name if session.user_id else None,
+            'revoked_at': session.revoked_at,
+            'revoked_by': session.revoked_by.user_name if session.revoked_by else 'System',
+            'reason': session.reason,
+            'ip_address': session.ip_address
+        })
+    
+    return Response({
+        "success": True,
+        "revoked_sessions": revoked_sessions,
+        "total_count": len(revoked_sessions),
+        "date_range": {
+            "from": cutoff_date,
+            "to": timezone.now()
+        }
+    }, status=status.HTTP_200_OK)

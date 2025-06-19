@@ -48,7 +48,12 @@ from .views import (
     JRNLLogViewSet,
     DETB_JRNL_LOG_MASTER_ViewSet,
     submit_eod_journal,
-    FAAssetTypeViewSet
+    FAAssetTypeViewSet,
+    verify_token,
+    force_logout_user,
+    get_active_sessions,
+    force_logout_all_users,
+    get_revoked_sessions
 
 )
 from rest_framework_simplejwt.views import (
@@ -88,7 +93,7 @@ router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
 router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
 router.register(r'journal-log-master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
 router.register(r'asset_types', FAAssetTypeViewSet , basename='asset_type')
-
+# router.register(r'access-logs', UserAccessLogViewSet, basename='user-access-log')
 
 
 urlpatterns = [
@@ -113,6 +118,15 @@ urlpatterns = [
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
+    
+    
+    # Force logout endpoints (standalone)
+    path('api/verify-token/',verify_token, name='verify-token'),
+
+    path('api/force-logout/',force_logout_user, name='force-logout'),
+    path('api/active-sessions/',get_active_sessions, name='active-sessions'),
+    path('api/force-logout-all/',force_logout_all_users, name='force-logout-all'),
+    path('api/revoked-sessions/',get_revoked_sessions, name='revoked-sessions'),
     
 ]
 if settings.DEBUG:

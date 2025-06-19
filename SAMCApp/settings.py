@@ -51,19 +51,42 @@ REST_FRAMEWORK = {
     ),
 }
 
+# SIMPLE_JWT = {
+#     'USER_ID_FIELD': 'user_id',
+#     'USER_ID_CLAIM': 'user_id',
+#     # Access tokens will expire after 1 day
+#     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+
+#     # If you’re using refresh tokens and want them to also last 1 day:
+#     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+
+#     # (Optional) adjust other settings as needed:
+#     'ROTATE_REFRESH_TOKENS': True,
+#     'BLACKLIST_AFTER_ROTATION': True,
+#     # ... any other SIMPLE_JWT settings ...
+# }
+
 SIMPLE_JWT = {
     'USER_ID_FIELD': 'user_id',
     'USER_ID_CLAIM': 'user_id',
-    # Access tokens will expire after 1 day
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
-
-    # If you’re using refresh tokens and want them to also last 1 day:
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-
-    # (Optional) adjust other settings as needed:
     'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    # ... any other SIMPLE_JWT settings ...
+    'BLACKLIST_AFTER_ROTATION': False,  # We're not using blacklist
+    'UPDATE_LAST_LOGIN': False,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    'JWK_URL': None,
+    'LEEWAY': 0,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti',
 }
 
 INSTALLED_APPS = [
@@ -76,7 +99,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "rest_framework_simplejwt",
-    # 'rest_framework_simplejwt.token_blacklist',
+    'rest_framework_simplejwt.token_blacklist',
     # "SAMCSYS.apps.SamcsysConfig"
     "SAMCSYS",
   
@@ -102,6 +125,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "SAMCSYS.middleware.ForceLogoutMiddleware", # pherm
 ]
 
 ROOT_URLCONF = "SAMCApp.urls"
@@ -124,7 +148,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "SAMCApp.wsgi.application"
 
-
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'token_revocation_cache',
+    }
+}
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
@@ -199,3 +228,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+

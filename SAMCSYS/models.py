@@ -184,6 +184,7 @@ class MTTB_Users(models.Model):
 
     class Meta:
         verbose_name_plural = 'UsersRgith'
+        db_table = 'SAMCSYS_mttb_users'
 
     def __str__(self):
         return self.user_name
@@ -209,7 +210,22 @@ class MTTB_Users(models.Model):
         return True
 
 
+# class MTTB_USER_ACCESS_LOG(models.Model):
+#     log_id = models.AutoField(primary_key=True)  
+#     user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE)   
+#     login_datetime = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+#     logout_datetime = models.DateTimeField(null=True, blank=True)
+#     session_id = models.CharField(max_length=100, null=True, blank=True)
+#     ip_address = models.CharField(max_length=45,null=True, blank=True)
+#     user_agent = models.CharField(max_length=255, null=True, blank=True)
+#     login_status = models.CharField(max_length=1)
+#     logout_type = models.CharField(max_length=1, null=True, blank=True)
+#     remarks = models.CharField(max_length=255, null=True, blank=True)
+
+#     class Meta:
+#         verbose_name_plural='USER_ACCESS_LOG'
 class MTTB_USER_ACCESS_LOG(models.Model):
+    # Your existing fields...
     log_id = models.AutoField(primary_key=True)  
     user_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE)   
     login_datetime = models.DateTimeField(auto_now_add=True, null=True, blank=True)
@@ -217,12 +233,35 @@ class MTTB_USER_ACCESS_LOG(models.Model):
     session_id = models.CharField(max_length=100, null=True, blank=True)
     ip_address = models.CharField(max_length=45,null=True, blank=True)
     user_agent = models.CharField(max_length=255, null=True, blank=True)
-    login_status = models.CharField(max_length=1)
-    logout_type = models.CharField(max_length=1, null=True, blank=True)
+    login_status = models.CharField(
+        max_length=1,
+        choices=[
+            ('S', 'Success'),
+            ('F', 'Failed'),
+            ('A', 'Admin Action'),
+        ]
+    )
+    logout_type = models.CharField(
+        max_length=1, 
+        null=True, 
+        blank=True,
+        choices=[
+            ('U', 'User Initiated'),
+            ('F', 'Force Logout'),
+            ('T', 'Timeout'),
+            ('S', 'System'),
+        ]
+    )
     remarks = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         verbose_name_plural='USER_ACCESS_LOG'
+        db_table = 'mttb_user_access_log'
+        indexes = [
+            models.Index(fields=['user_id', 'logout_datetime']),
+            models.Index(fields=['session_id']),
+            models.Index(fields=['login_datetime']),
+        ]
 
 class MTTB_USER_ACTIVITY_LOG(models.Model):
     activity_id = models.AutoField(primary_key=True) 
@@ -1240,3 +1279,27 @@ class FA_Accounting_Method(models.Model):
 
     class Meta:
         verbose_name_plural = 'AccountingMethod'
+
+
+class MTTB_REVOKED_SESSIONS(models.Model):
+    """Track revoked JWT sessions for force logout functionality"""
+    id = models.AutoField(primary_key=True)
+    jti = models.CharField(max_length=255, unique=True, db_index=True)
+    user_id = models.ForeignKey(MTTB_Users, on_delete=models.CASCADE)
+    revoked_at = models.DateTimeField(auto_now_add=True)
+    revoked_by = models.ForeignKey(
+        MTTB_Users, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='revoked_sessions'
+    )
+    reason = models.CharField(max_length=255, null=True, blank=True)
+    
+    class Meta:
+        db_table = 'mttb_revoked_sessions'
+        verbose_name_plural = 'Revoked Sessions'
+        indexes = [
+            models.Index(fields=['jti']),
+            models.Index(fields=['user_id']),
+            models.Index(fields=['revoked_at']),
+        ]
