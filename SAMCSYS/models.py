@@ -1115,7 +1115,7 @@ class FA_Expense_Category (models.Model):
         verbose_name_plural = 'ExpenseCategory'
 
 class FA_Asset_List(models.Model):
-    al_id = models.AutoField(primary_key=True)
+    asset_list_id = models.AutoField(primary_key=True)
     asset_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
     asset_serial_no = models.CharField(max_length=50, null=True, blank=True)
     asset_tag = models.CharField(max_length=50, null=True, blank=True)
