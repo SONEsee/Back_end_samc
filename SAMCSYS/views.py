@@ -4124,3 +4124,32 @@ class FAAssetTypeViewSet(viewsets.ModelViewSet):
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
+    # @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    # def set_open_tangible(self, request, pk=None):
+    #     """Set is_tangible = 'Y' (Open) """
+    #     obj = self.get_object()
+    #     user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+    #     if obj.is_tangible == 'Y':
+    #         return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+    #     obj.is_tangible = 'Y'
+    #     obj.Checker_Id = user_obj
+    #     obj.Checker_DT_Stamp = timezone.now()
+    #     obj.save()
+    #     serializer = self.get_serializer(obj)
+    #     return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    # @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    # def set_close_tangible(self, request, pk=None):
+    #     """Set is_tangible = 'Y' (Close)"""
+    #     obj = self.get_object()
+    #     user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+    #     if obj.is_tangible == 'Y':
+    #         return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+    #     obj.is_tangible = 'Y'
+    #     obj.Checker_Id = user_obj
+    #     obj.Checker_DT_Stamp = timezone.now()
+    #     obj.save()
+    #     serializer = self.get_serializer(obj)
+    #     return Response({'message': 'Set to Close.', 'entry': serializer.data})
