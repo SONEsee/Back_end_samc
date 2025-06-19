@@ -4152,8 +4152,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
-from .models import FA_Asset_Type
-from .serializers import FAAssetTypeSerializer
+from .models import FA_Asset_Type,FA_Chart_Of_Asset
+from .serializers import FAAssetTypeSerializer,FAChartOfAssetSerializer
 from django.utils import timezone
 
 class FAAssetTypeViewSet(viewsets.ModelViewSet):
@@ -4209,38 +4209,80 @@ class FAAssetTypeViewSet(viewsets.ModelViewSet):
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
-<<<<<<< HEAD
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_tangible(self, request, pk=None):
+        """Allow updating only the is_tangible field"""
+        obj = self.get_object()
+        new_status = request.data.get('is_tangible')
+
+        if not new_status:
+            return Response({'detail': 'is_tangible is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        obj.is_tangible = new_status
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': f'Status updated to "{new_status}".',
+            'entry': serializer.data
+        })
+
+class FAChartOfAssetViewSet(viewsets.ModelViewSet):
+    serializer_class = FAChartOfAssetSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Chart_Of_Asset.objects.all().order_by('coa_id')
+        asset_code = self.request.query_params.get('asset_code')
+        if asset_code:
+            queryset = queryset.filter(asset_code=asset_code)
+        return queryset
     
-    # @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    # def set_open_tangible(self, request, pk=None):
-    #     """Set is_tangible = 'Y' (Open) """
-    #     obj = self.get_object()
-    #     user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
-    #     if obj.is_tangible == 'Y':
-    #         return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
         
-    #     obj.is_tangible = 'Y'
-    #     obj.Checker_Id = user_obj
-    #     obj.Checker_DT_Stamp = timezone.now()
-    #     obj.save()
-    #     serializer = self.get_serializer(obj)
-    #     return Response({'message': 'Set to Open.', 'entry': serializer.data})
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
 
-    # @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    # def set_close_tangible(self, request, pk=None):
-    #     """Set is_tangible = 'Y' (Close)"""
-    #     obj = self.get_object()
-    #     user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
-    #     if obj.is_tangible == 'Y':
-    #         return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-    #     obj.is_tangible = 'Y'
-    #     obj.Checker_Id = user_obj
-    #     obj.Checker_DT_Stamp = timezone.now()
-    #     obj.save()
-    #     serializer = self.get_serializer(obj)
-    #     return Response({'message': 'Set to Close.', 'entry': serializer.data})
-=======
-
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
 
 # Function Get User Login Session
@@ -4708,4 +4750,3 @@ def get_revoked_sessions(request):
             "to": timezone.now()
         }
     }, status=status.HTTP_200_OK)
->>>>>>> c0a7860fa63d034cda81239c69af03e6b52ca1df

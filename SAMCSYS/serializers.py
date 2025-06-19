@@ -656,10 +656,16 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
 
+#----------------------Asset---------------------------------------- 
 from rest_framework import serializers
-from .models import FA_Asset_Type
+from .models import FA_Asset_Type,FA_Chart_Of_Asset
 
 class FAAssetTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Asset_Type
+        fields = '__all__'
+
+class FAChartOfAssetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Chart_Of_Asset
         fields = '__all__'

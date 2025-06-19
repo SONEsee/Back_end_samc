@@ -53,7 +53,8 @@ from .views import (
     force_logout_user,
     get_active_sessions,
     force_logout_all_users,
-    get_revoked_sessions
+    get_revoked_sessions,
+    FAChartOfAssetViewSet
 
 )
 from rest_framework_simplejwt.views import (
@@ -94,6 +95,7 @@ router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
 router.register(r'journal-log-master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
 router.register(r'asset_types', FAAssetTypeViewSet , basename='asset_type')
 # router.register(r'access-logs', UserAccessLogViewSet, basename='user-access-log')
+router.register(r'chart_of_asset', FAChartOfAssetViewSet , basename='chart_of_asset')
 
 
 urlpatterns = [
