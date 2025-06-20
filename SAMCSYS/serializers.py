@@ -662,20 +662,42 @@ from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA
     FA_Depreciation_Sub,FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
     FA_Accounting_Method)
 
+class AssetTypeDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Type
+        fields = ['type_id', 'type_code', 'type_name_en', 'type_name_la']
+
 class FAAssetTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Asset_Type
         fields = '__all__'
 
+class ChartOfAssetDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Chart_Of_Asset
+        fields = ['coa_id', 'asset_code', 'asset_name_en', 'asset_name_la']
+
 class FAChartOfAssetSerializer(serializers.ModelSerializer):
+    asset_type_detail = AssetTypeDetailSerializer(source='asset_type_id', read_only=True)
+
     class Meta:
         model = FA_Chart_Of_Asset
         fields = '__all__'
+
+class SuppliersDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Suppliers
+        fields = ['supplier_id', 'supplier_code', 'supplier_name']
 
 class FASuppliersSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Suppliers
         fields = '__all__'
+
+class LocationDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Location
+        fields = ['location_id', 'location_code', 'location_name_en', 'location_name_la']
 
 class FALocationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -688,6 +710,9 @@ class FAExpenseCategorySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FAAssetListSerializer(serializers.ModelSerializer):
+    asset_id_detail = ChartOfAssetDetailSerializer(source='asset_id', read_only=True)
+    location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
+    supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
     class Meta:
         model = FA_Asset_List
         fields = '__all__'
