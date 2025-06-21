@@ -4487,9 +4487,9 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = FA_Asset_List.objects.all().order_by('asset_list_id')
-        asset_id = self.request.query_params.get('asset_id')
-        if asset_id:
-            queryset = queryset.filter(asset_id=asset_id)
+        asset_type_id = self.request.query_params.get('asset_type_id')
+        if asset_type_id:
+            queryset = queryset.filter(asset_type_id=asset_type_id)
         return queryset
     
     def perform_create(self, serializer):

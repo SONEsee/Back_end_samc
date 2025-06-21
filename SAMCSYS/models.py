@@ -1116,7 +1116,8 @@ class FA_Expense_Category (models.Model):
 
 class FA_Asset_List(models.Model):
     asset_list_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_code = models.CharField(max_length=20, null=True, blank=True, unique=True)
+    asset_type_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
     asset_serial_no = models.CharField(max_length=50, null=True, blank=True, unique=True)
     asset_tag = models.CharField(max_length=50, null=True, blank=True, unique=True)
     asset_location_id = models.ForeignKey(FA_Location, null=True, blank=True, on_delete=models.CASCADE)
