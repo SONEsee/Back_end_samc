@@ -1387,7 +1387,7 @@ class MTTB_REVOKED_SESSIONS(models.Model):
         related_name='revoked_sessions'
     )
     reason = models.CharField(max_length=255, null=True, blank=True)
-    
+    ip_address = models.CharField(max_length=45, null=True, blank=True)
     class Meta:
         db_table = 'mttb_revoked_sessions'
         verbose_name_plural = 'Revoked Sessions'
