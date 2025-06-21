@@ -761,3 +761,29 @@ class FAAccountingMethodSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Accounting_Method
         fields = '__all__'
+
+
+from rest_framework import serializers
+from .models import MTTB_EOC_MAINTAIN, STTB_ModulesInfo, MTTB_Function_Desc, MTTB_Users
+
+class EOCMaintainSerializer(serializers.ModelSerializer):
+    # Read-only fields for user information
+    maker_name = serializers.CharField(source='Maker_Id.username', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.username', read_only=True)
+    module_name = serializers.CharField(source='module_id.module_name', read_only=True)
+    function_name = serializers.CharField(source='function_id.function_name', read_only=True)
+    
+    class Meta:
+        model = MTTB_EOC_MAINTAIN
+        fields = '__all__'
+        read_only_fields = ('eoc_id', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp')
+
+    def validate(self, data):
+        """Custom validation logic"""
+        if data.get('eoc_type') and len(data['eoc_type']) > 3:
+            raise serializers.ValidationError("eoc_type ບໍ່ສາມາດເກີນ 3 ຕົວອັກສອນ")
+        
+        if data.get('record_stat') and data['record_stat'] not in ['C', 'O']:
+            raise serializers.ValidationError("record_stat ຕ້ອງເປັນ 'C' ຫຼື 'O' ເທົ່ານັ້ນ")
+            
+        return data

@@ -1491,10 +1491,10 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
-        sub_menu_id = self.request.query_params.get('sub_menu_id')
-        if sub_menu_id:
-            queryset = queryset.filter(sub_menu_id=sub_menu_id) 
+        queryset = MTTB_Function_Desc.objects.all().order_by('function_order')
+        Record_Status = self.request.query_params.get('Record_Status')
+        if Record_Status:
+            queryset = queryset.filter(Record_Status=Record_Status) 
         return queryset
     
     def perform_create(self, serializer):
@@ -1512,6 +1512,90 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
             Checker_Id=user_id,
             Checker_DT_Stamp=timezone.now()
         )
+    def perform_destroy(self, instance):
+        return super().perform_destroy(instance)
+
+    def get_permissions(self):
+        # Allow unauthenticated creation
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
+
+    
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -4244,6 +4328,9 @@ class FAChartOfAssetViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = FA_Chart_Of_Asset.objects.all().order_by('coa_id')
         asset_code = self.request.query_params.get('asset_code')
+        asset_type_id = self.request.query_params.get('asset_type_id')
+        if asset_type_id:
+            queryset = queryset.filter(asset_type_id=asset_type_id)
         if asset_code:
             queryset = queryset.filter(asset_code=asset_code)
         return queryset
@@ -5229,3 +5316,201 @@ def get_revoked_sessions(request):
             "to": timezone.now()
         }
     }, status=status.HTTP_200_OK)
+
+
+from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from django.db.models import Q
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from .models import MTTB_EOC_MAINTAIN
+from .serializers import EOCMaintainSerializer
+
+class EOCMaintainViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet ສໍາລັບການຈັດການ EOC Maintain
+    ປະກອບດ້ວຍ CRUD operations ແລະ custom actions
+    """
+    queryset = MTTB_EOC_MAINTAIN.objects.all()
+    serializer_class = EOCMaintainSerializer
+    permission_classes = [IsAuthenticated]
+    
+    # Filtering and searching
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['eoc_type', 'Record_Status', 'Auth_Status', 'Once_Auth', 'module_id', 'function_id']
+    search_fields = ['eoc_type', 'module_id__module_name', 'function_id__function_name']
+    ordering_fields = ['eoc_id', 'eoc_seq_no', 'Maker_DT_Stamp', 'Checker_DT_Stamp']
+    ordering = ['-eoc_id']
+
+    def get_queryset(self):
+        """Custom queryset with optimized joins"""
+        return MTTB_EOC_MAINTAIN.objects.select_related(
+            'module_id', 'function_id', 'Maker_Id', 'Checker_Id'
+        ).all()
+
+    def perform_create(self, serializer):
+        """ກໍານົດຄ່າເມື່ອສ້າງ record ໃໝ່"""
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        
+        serializer.save(
+            Maker_Id_id=user_id,  # Use _id for foreign key
+            Maker_DT_Stamp=timezone.now(),
+            Record_Status='C',  # Default to closed
+            Auth_Status='U',  # Default to unauthorized
+            Once_Auth='N'     # Default to not authorized once
+        )
+
+    def perform_update(self, serializer):
+        """ກໍານົດຄ່າເມື່ອອັບເດດ record"""
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        
+        serializer.save(
+            Checker_Id_id=user_id,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+    def create(self, request, *args, **kwargs):
+        """Override create to add custom response"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response({
+            'message': 'ສ້າງ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        }, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """Override update to add custom response"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Check if record can be updated
+        if instance.Auth_Status == 'A' and instance.Record_Status == 'C':
+            return Response({
+                'error': 'ບໍ່ສາມາດແກ້ໄຂ record ທີ່ຖືກອະນຸມັດແລ້ວ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            'message': 'ອັບເດດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to add validation"""
+        instance = self.get_object()
+        
+        # Check if record can be deleted
+        if instance.Auth_Status == 'A':
+            return Response({
+                'error': 'ບໍ່ສາມາດລຶບ record ທີ່ຖືກອະນຸມັດແລ້ວ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        self.perform_destroy(instance)
+        return Response({
+            'message': 'ລຶບ EOC Maintain ສໍາເລັດແລ້ວ'
+        }, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """ເປີດ record (record_stat = 'O')"""
+        obj = self.get_object()
+        
+        if obj.Record_Status == 'O':
+            return Response({
+                'detail': 'Record ເປີດຢູ່ແລ້ວ'
+            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        if obj.Auth_Status != 'A':
+            return Response({
+                'detail': 'ບໍ່ສາມາດເປີດໄດ້. ສາມາດເປີດໄດ້ເລີມີ record ທີ່ຖືກອະນຸມັດແລ້ວເທົ່ານັ້ນ (Auth_Status = "A")'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        obj.Record_Status = 'O'
+        obj.Checker_Id_id = getattr(request.user, 'user_id', None)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': 'ເປີດ record ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """ປິດ record (record_stat = 'C')"""
+        obj = self.get_object()
+
+        if obj.Record_Status == 'C':
+            return Response({
+                'detail': 'Record ປິດຢູ່ແລ້ວ'
+            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        obj.Record_Status = 'C'
+        obj.Checker_Id_id = getattr(request.user, 'user_id', None)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': 'ປິດ record ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, pk=None):
+        """ອະນຸມັດ EOC Maintain"""
+        eoc_entry = self.get_object()
+
+        if eoc_entry.Auth_Status == 'A':
+            return Response({
+                'error': 'Record ຖືກອະນຸມັດແລ້ວ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Auth = 'Y', record_stat = 'C'
+        eoc_entry.Auth_Status = 'A'
+        eoc_entry.Once_Auth = 'Y'
+        eoc_entry.record_stat = 'C'
+        eoc_entry.Checker_Id_id = getattr(request.user, 'user_id', None)
+        eoc_entry.Checker_DT_Stamp = timezone.now()
+        eoc_entry.save()
+
+        serializer = self.get_serializer(eoc_entry)
+        return Response({
+            'message': 'ອະນຸມັດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unauthorize(self, request, pk=None):
+        """ຍົກເລີກການອະນຸມັດ EOC Maintain"""
+        eoc_entry = self.get_object()
+
+        if eoc_entry.Auth_Status == 'U':
+            return Response({
+                'error': 'Record ຍັງບໍ່ໄດ້ຮັບການອະນຸມັດ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', record_stat = 'C'
+        eoc_entry.Auth_Status = 'U'
+        eoc_entry.Record_Status = 'C'
+        eoc_entry.Checker_Id_id = getattr(request.user, 'user_id', None)
+        eoc_entry.Checker_DT_Stamp = timezone.now()
+        eoc_entry.save()
+
+        serializer = self.get_serializer(eoc_entry)
+        return Response({
+            'message': 'ຍົກເລີກການອະນຸມັດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })

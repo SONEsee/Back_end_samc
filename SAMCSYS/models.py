@@ -56,17 +56,17 @@ class MTTB_SUB_MENU(models.Model):
     
 class MTTB_Function_Desc(models.Model):
     function_id = models.CharField(primary_key=True, max_length=20, verbose_name='Function_Id')
-    sub_menu_id = models.ForeignKey('MTTB_SUB_MENU', null=True, blank=True, on_delete=models.CASCADE)
+    # sub_menu_id = models.ForeignKey('MTTB_SUB_MENU', null=True, blank=True, on_delete=models.CASCADE)
     description_la = models.CharField(max_length=200)
     description_en = models.CharField(max_length=200, null=True, blank=True)
     # all_link = models.CharField(max_length=200, null=True, blank=True)
     eod_function = models.CharField(max_length=1, null=True, blank=True, default='N')
     function_order = models.IntegerField(null=True, blank=True)
-    is_active = models.CharField(max_length=1, null=True, blank=True, default='Y')
-    created_by = models.CharField(max_length=30, null=True, blank=True)
-    created_date = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    modified_by = models.CharField(max_length=30, null=True, blank=True)
-    modified_date = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1, null=True, blank=True, default='Y')
+    Maker_Id = models.CharField(max_length=30, null=True, blank=True)
+    Maker_DT_Stamp = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    Checker_Id = models.CharField(max_length=30, null=True, blank=True)
+    Checker_DT_Stamp = models.DateTimeField(auto_now=True, null=True, blank=True)
     class Meta:
         ordering=['function_id']
         verbose_name_plural = 'Function_Description'
@@ -806,7 +806,7 @@ class MTTB_EOC_MAINTAIN(models.Model):
     function_id = models.ForeignKey('MTTB_Function_Desc', null=True, blank=True, on_delete=models.CASCADE)
     eoc_seq_no = models.IntegerField(default=0)                
     eoc_type = models.CharField(max_length=3)          
-    record_stat = models.CharField(max_length=1, default='C')  
+    Record_Status = models.CharField(max_length=1, default='C')  
     mod_no = models.IntegerField(null=True, blank=True)    
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_EOC_MAINTAIN')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)

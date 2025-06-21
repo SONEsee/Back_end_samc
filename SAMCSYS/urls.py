@@ -54,6 +54,7 @@ from .views import (
     get_active_sessions,
     force_logout_all_users,
     get_revoked_sessions,
+    EOCMaintainViewSet,
     FAChartOfAssetViewSet,
     FASuppliersViewSet,
     FALocationViewSet,
@@ -90,7 +91,7 @@ router.register(r'exc-rate', ExcRateViewSet, basename='exc-rate')
 router.register(r'exc-rate-history', ExcRateHistoryViewSet, basename='exc-rate-history')
 router.register(r'gl-master', GLMasterViewSet, basename='gl-master')
 router.register(r'gl-sub', GLSubViewSet, basename='gl-sub')
-router.register(r'functions', FunctionDescViewSet, basename='function-desc')
+router.register(r'function-desc', FunctionDescViewSet, basename='function-desc')
 router.register(r'employees', EmployeeViewSet, basename='employee')
 # router.register(r'lcl_holiday', HolidayViewSet, basename='holiday')
 router.register(r'lcl_holiday', MTTB_LCL_HolidayViewSet, basename='holiday')
@@ -123,6 +124,7 @@ router.register(r'asset_transfer', FATransferLogsViewSet , basename='asset_trans
 router.register(r'asset_photo', FAAssetPhotosViewSet , basename='asset_photo')
 router.register(r'asset_mainten_log', FAMaintenanceLogsViewSet , basename='asset_mainten_log')
 router.register(r'asset_account', FAAccountingMethodViewSet , basename='asset_account')
+router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
 
 
 urlpatterns = [
