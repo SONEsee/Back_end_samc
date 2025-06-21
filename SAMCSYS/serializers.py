@@ -656,10 +656,108 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
 
+#----------------------Asset---------------------------------------- 
 from rest_framework import serializers
-from .models import FA_Asset_Type
+from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_List,FA_Depreciation_Main,
+    FA_Depreciation_Sub,FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
+    FA_Accounting_Method)
+
+class AssetTypeDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Type
+        fields = ['type_id', 'type_code', 'type_name_en', 'type_name_la']
 
 class FAAssetTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Asset_Type
+        fields = '__all__'
+
+class ChartOfAssetDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Chart_Of_Asset
+        fields = ['coa_id', 'asset_code', 'asset_name_en', 'asset_name_la']
+
+class FAChartOfAssetSerializer(serializers.ModelSerializer):
+    asset_type_detail = AssetTypeDetailSerializer(source='asset_type_id', read_only=True)
+
+    class Meta:
+        model = FA_Chart_Of_Asset
+        fields = '__all__'
+
+class SuppliersDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Suppliers
+        fields = ['supplier_id', 'supplier_code', 'supplier_name']
+
+class FASuppliersSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Suppliers
+        fields = '__all__'
+
+class LocationDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Location
+        fields = ['location_id', 'location_code', 'location_name_en', 'location_name_la']
+
+class FALocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Location
+        fields = '__all__'
+
+class FAExpenseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Expense_Category
+        fields = '__all__'
+
+class FAAssetListSerializer(serializers.ModelSerializer):
+    asset_id_detail = ChartOfAssetDetailSerializer(source='asset_id', read_only=True)
+    location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
+    supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
+    class Meta:
+        model = FA_Asset_List
+        fields = '__all__'
+
+class FADepreciationMainSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Depreciation_Main
+        fields = '__all__'
+
+class FADepreciationSubSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Depreciation_Sub
+        fields = '__all__'
+
+class FAAssetListDepreciationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_List_Depreciation
+        fields = '__all__'
+
+class FAAssetListDisposalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_List_Disposal
+        fields = '__all__'
+
+class FAAssetExpenseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Expense
+        fields = '__all__'
+
+class FATransferLogsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Transfer_Logs
+        fields = '__all__'
+
+class FAAssetPhotosSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Photos
+        fields = '__all__'
+
+class FAMaintenanceLogsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Maintenance_Logs
+        fields = '__all__'
+
+class FAAccountingMethodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Accounting_Method
         fields = '__all__'

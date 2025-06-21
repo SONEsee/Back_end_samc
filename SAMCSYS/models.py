@@ -802,8 +802,8 @@ class ACTB_DAIRY_LOG_HISTORY(models.Model):
 
 class MTTB_EOC_MAINTAIN(models.Model):
     eoc_id = models.AutoField(primary_key=True)
-    module_id = models.CharField(max_length=2)         
-    function_id = models.CharField(max_length=8)      
+    module_id = models.ForeignKey('STTB_ModulesInfo', null=True, blank=True, on_delete=models.CASCADE)
+    function_id = models.ForeignKey('MTTB_Function_Desc', null=True, blank=True, on_delete=models.CASCADE)
     eoc_seq_no = models.IntegerField(default=0)                
     eoc_type = models.CharField(max_length=3)          
     record_stat = models.CharField(max_length=1, default='C')  
@@ -821,9 +821,9 @@ class MTTB_EOC_MAINTAIN(models.Model):
 class STTB_EOC_STATUS(models.Model):
     eoc_stt_id = models.AutoField(primary_key=True)
     eoc_seq_no = models.IntegerField(null=True, blank=True)        
-    module_id = models.CharField(max_length=2)                   
-    function_id = models.CharField(max_length=8)                   
-    eoc_type = models.CharField(max_length=3)                     
+    module_id = models.ForeignKey('STTB_ModulesInfo', null=True, blank=True, on_delete=models.CASCADE)
+    function_id = models.ForeignKey('MTTB_Function_Desc', null=True, blank=True, on_delete=models.CASCADE)
+    eoc_type = models.CharField(max_length=3)
     eod_date = models.DateTimeField(auto_now=False, null=True, blank=True)         
     eoc_status = models.CharField(max_length=1)                   
     error = models.CharField(max_length=550, null=True, blank=True)       
@@ -1026,7 +1026,7 @@ class MTTB_VillageInfo(models.Model):
 class FA_Asset_Type(models.Model):
     type_id = models.AutoField(primary_key=True)
     is_tangible = models.CharField(max_length=1, null=True, blank=True, default='N')
-    type_code = models.CharField(max_length=10,null=True, blank=True)
+    type_code = models.CharField(max_length=10,null=True, blank=True, unique=True)
     type_name_la = models.CharField(max_length=100, null=True, blank=True)
     type_name_en = models.CharField(max_length=100, null=True, blank=True)
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
@@ -1040,7 +1040,7 @@ class FA_Asset_Type(models.Model):
 
 class FA_Chart_Of_Asset(models.Model):
     coa_id = models.AutoField(primary_key=True)
-    asset_code = models.CharField(max_length=50,null=True, blank=True)
+    asset_code = models.CharField(max_length=50,null=True, blank=True, unique=True)
     asset_name_la = models.CharField(max_length=255, null=True, blank=True)
     asset_name_en = models.CharField(max_length=255, null=True, blank=True)
     asset_type_id = models.ForeignKey(FA_Asset_Type, null=True, blank=True, on_delete=models.CASCADE)
@@ -1055,7 +1055,7 @@ class FA_Chart_Of_Asset(models.Model):
 
 class FA_Suppliers(models.Model):
     supplier_id = models.AutoField(primary_key=True)
-    supplier_code = models.CharField(max_length=20,null=True, blank=True)
+    supplier_code = models.CharField(max_length=20,null=True, blank=True, unique=True)
     supplier_name = models.CharField(max_length=100, null=True, blank=True)
     contact_person = models.CharField(max_length=100, null=True, blank=True)
     phone = models.CharField(max_length=20, null=True, blank=True)
@@ -1078,7 +1078,7 @@ class FA_Suppliers(models.Model):
 
 class FA_Location(models.Model):
     location_id = models.AutoField(primary_key=True)
-    location_code = models.CharField(max_length=20,null=True, blank=True)
+    location_code = models.CharField(max_length=20,null=True, blank=True, unique=True)
     location_name_la = models.CharField(max_length=255, null=True, blank=True)
     location_name_en = models.CharField(max_length=255, null=True, blank=True)
     parent_location_id = models.IntegerField(null=True, blank=True) 
@@ -1098,7 +1098,7 @@ class FA_Location(models.Model):
 
 class FA_Expense_Category (models.Model):
     ec_id = models.AutoField(primary_key=True)
-    category_code = models.CharField(max_length=20,null=True, blank=True)
+    category_code = models.CharField(max_length=20,null=True, blank=True, unique=True)
     category_name_la = models.CharField(max_length=255, null=True, blank=True)
     category_name_en = models.CharField(max_length=255, null=True, blank=True)
     is_capitalized_default = models.CharField(max_length=1, null=True, blank=True, default='N') 
@@ -1115,10 +1115,10 @@ class FA_Expense_Category (models.Model):
         verbose_name_plural = 'ExpenseCategory'
 
 class FA_Asset_List(models.Model):
-    al_id = models.AutoField(primary_key=True)
+    asset_list_id = models.AutoField(primary_key=True)
     asset_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
-    asset_serial_no = models.CharField(max_length=50, null=True, blank=True)
-    asset_tag = models.CharField(max_length=50, null=True, blank=True)
+    asset_serial_no = models.CharField(max_length=50, null=True, blank=True, unique=True)
+    asset_tag = models.CharField(max_length=50, null=True, blank=True, unique=True)
     asset_location_id = models.ForeignKey(FA_Location, null=True, blank=True, on_delete=models.CASCADE)
     asset_spec = models.TextField(null=True, blank=True)
     asset_date = models.DateField(null=True, blank=True)

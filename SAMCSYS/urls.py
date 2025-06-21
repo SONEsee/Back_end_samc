@@ -53,7 +53,22 @@ from .views import (
     force_logout_user,
     get_active_sessions,
     force_logout_all_users,
-    get_revoked_sessions
+    get_revoked_sessions,
+    FAChartOfAssetViewSet,
+    FASuppliersViewSet,
+    FALocationViewSet,
+    FAExpenseCategoryViewSet,
+    FAAssetListViewSet,
+    FADepreciationMainViewSet,
+    FADepreciationSubViewSet,
+    FAAssetListDepreciationViewSet,
+    FAAssetListDisposalViewSet,
+    FAAssetExpenseViewSet,
+    FATransferLogsViewSet,
+    FAAssetPhotosViewSet,
+    FAMaintenanceLogsViewSet,
+    FAMaintenanceLogsViewSet,
+    FAAccountingMethodViewSet
 
 )
 from rest_framework_simplejwt.views import (
@@ -94,6 +109,20 @@ router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
 router.register(r'journal-log-master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
 router.register(r'asset_types', FAAssetTypeViewSet , basename='asset_type')
 # router.register(r'access-logs', UserAccessLogViewSet, basename='user-access-log')
+router.register(r'chart_of_asset', FAChartOfAssetViewSet , basename='chart_of_asset')
+router.register(r'asset_suppliers', FASuppliersViewSet , basename='asset_suppliers')
+router.register(r'asset_location', FALocationViewSet , basename='asset_location')
+router.register(r'asset_category', FAExpenseCategoryViewSet , basename='asset_category')
+router.register(r'asset_list', FAAssetListViewSet , basename='asset_list')
+router.register(r'asset_dpca_main', FADepreciationMainViewSet , basename='asset_dpca_main')
+router.register(r'asset_dpca_sub', FADepreciationSubViewSet , basename='asset_dpca_sub')
+router.register(r'asset_list_dpca', FAAssetListDepreciationViewSet , basename='asset_list_dpca')
+router.register(r'asset_list_diposal', FAAssetListDisposalViewSet , basename='asset_list_diposal')
+router.register(r'asset_expense', FAAssetExpenseViewSet , basename='asset_expense')
+router.register(r'asset_transfer', FATransferLogsViewSet , basename='asset_transfer')
+router.register(r'asset_photo', FAAssetPhotosViewSet , basename='asset_photo')
+router.register(r'asset_mainten_log', FAMaintenanceLogsViewSet , basename='asset_mainten_log')
+router.register(r'asset_account', FAAccountingMethodViewSet , basename='asset_account')
 
 
 urlpatterns = [
