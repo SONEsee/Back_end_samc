@@ -259,8 +259,10 @@ def login_view(request):
         )
 
     # 1) Create tokens using CustomRefreshToken
-    refresh = RefreshToken.for_user(user)
-    access  = refresh.access_token
+    # refresh = RefreshToken.for_user(user)
+    # access  = refresh.access_token
+    refresh = CustomRefreshToken.for_user(user)
+    access = refresh.access_token
 
     # 2) Log the successful login
     # Grab the JTI (unique token ID) for session tracking
@@ -4897,23 +4899,23 @@ def get_client_ip(request):
 
 
 # Custom permission class for admin-only endpoints
-# class IsAdminUser(BasePermission):
-#     """
-#     Custom permission to only allow admin users.
-#     """
-#     message = "Only administrators can perform this action."
+class IsAdminUser(BasePermission):
+    """
+    Custom permission to only allow admin users.
+    """
+    message = "Only administrators can perform this action."
     
-#     def has_permission(self, request, view):
-#         if not request.user or not request.user.is_authenticated:
-#             return False
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
         
-#         # Check if user has admin role
-#         if hasattr(request.user, 'Role_ID') and request.user.Role_ID:
-#             # Adjust this condition based on your role structure
-#             role_name = getattr(request.user.Role_ID, 'role_name', '')
-#             return role_name.lower() in ['SYA', 'SYS']
+        # Check if user has admin role
+        if hasattr(request.user, 'Role_ID') and request.user.Role_ID:
+            # Adjust this condition based on your role structure
+            role_name = getattr(request.user.Role_ID, 'role_name', '')
+            return role_name.lower() in ['SYA', 'SYS']
         
-#         return False
+        return False
 
 
 @api_view(["POST"])
@@ -5183,7 +5185,7 @@ def verify_token(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsAdminUser])
 def get_revoked_sessions(request):
     """
     Get list of revoked sessions (admin only).
