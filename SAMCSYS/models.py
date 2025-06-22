@@ -63,13 +63,23 @@ class MTTB_Function_Desc(models.Model):
     eod_function = models.CharField(max_length=1, null=True, blank=True, default='N')
     function_order = models.IntegerField(null=True, blank=True)
     Record_Status = models.CharField(max_length=1, null=True, blank=True, default='Y')
-    Maker_Id = models.CharField(max_length=30, null=True, blank=True)
+    Maker_Id = models.ForeignKey(
+        'MTTB_Users', null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='created_functions'
+    )
     Maker_DT_Stamp = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    Checker_Id = models.CharField(max_length=30, null=True, blank=True)
-    Checker_DT_Stamp = models.DateTimeField(auto_now=True, null=True, blank=True)
+    Checker_Id = models.ForeignKey(
+        'MTTB_Users', null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='checked_functions'
+    )
+    Checker_DT_Stamp = models.DateTimeField(null=True, blank=True)
+
     class Meta:
-        ordering=['function_id']
+        ordering = ['function_id']
         verbose_name_plural = 'Function_Description'
+
     def __str__(self):
         return self.function_id
 

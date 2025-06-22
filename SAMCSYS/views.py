@@ -1493,23 +1493,26 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = MTTB_Function_Desc.objects.all().order_by('function_order')
         Record_Status = self.request.query_params.get('Record_Status')
+        eod_function = self.request.query_params.get('eod_function')
+        if eod_function:
+            queryset = queryset.filter(eod_function=eod_function)
         if Record_Status:
             queryset = queryset.filter(Record_Status=Record_Status) 
         return queryset
     
     def perform_create(self, serializer):
-        user = self.request.user
-        user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
+        maker = None
+        if self.request.user and self.request.user.is_authenticated:
+            maker = self.request.user  # Always assign the user instance
         serializer.save(
-            Maker_Id=user_id,
+            Maker_Id=maker,
             Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
-        user = self.request.user
-        user_id = getattr(user, 'user_id', None)
+        user = self.request.user if self.request.user and self.request.user.is_authenticated else None
         serializer.save(
-            Checker_Id=user_id,
+            Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
     def perform_destroy(self, instance):
@@ -1527,10 +1530,8 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
         obj = self.get_object()
         if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-        if getattr(obj, 'Auth_Status', None) != 'A':
-            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
         obj.Record_Status = 'O'
-        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_Id = request.user  # Assign the user instance directly
         obj.Checker_DT_Stamp = timezone.now()
         obj.save()
         serializer = self.get_serializer(obj)
@@ -1542,60 +1543,43 @@ class FunctionDescViewSet(viewsets.ModelViewSet):
         obj = self.get_object()
         if obj.Record_Status == 'C':
             return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.eod_function = 'N'  # Ensure eod_function is set to 'N' when closing
         obj.Record_Status = 'C'
-        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_Id = request.user
         obj.Checker_DT_Stamp = timezone.now()
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
-    @action(detail=True, methods=['post'])
-    def authorize(self, request, pk=None):
-        """Authorize a journal entry"""
-        journal_entry = self.get_object()
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_enable_eoc(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.eod_function == 'Y':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Record_Status', None) != 'O':
+            return Response({'detail': 'Cannot set to Open. Only Record_Status = "O" records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.eod_function = 'Y'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Enable.', 'entry': serializer.data})
 
-        if journal_entry.Auth_Status == 'A':
-            return Response({'error': 'Entry is already authorized'}, 
-                          status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
-        journal_entry.Auth_Status = 'A'
-        journal_entry.Once_Status = 'Y'
-        journal_entry.Record_Status = 'C'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
-
-        serializer = self.get_serializer(journal_entry)
-        return Response({
-            'message': 'Entry authorized successfully',
-            'entry': serializer.data
-        })
-
-    @action(detail=True, methods=['post'])
-    def unauthorize(self, request, pk=None):
-        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
-        journal_entry = self.get_object()
-
-        if journal_entry.Auth_Status == 'U':
-            return Response({'error': 'Entry is already unauthorized'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-
-        # Set Auth_Status = 'U', Record_Status = 'C'
-        journal_entry.Auth_Status = 'U'
-        journal_entry.Record_Status = 'C'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
-
-        serializer = self.get_serializer(journal_entry)
-        return Response({
-            'message': 'Entry unauthorized successfully',
-            'entry': serializer.data
-        })
-
-
-    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_disable_eoc(self, request, pk=None): #set_enable_eoc(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.eod_function == 'N':
+            return Response({'detail': 'Already Disable.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Record_Status', None) != 'C':
+            return Response({'detail': 'Cannot set to Open. Only Record_Status = "C" records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.eod_function = 'N'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Disable.', 'entry': serializer.data})
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
