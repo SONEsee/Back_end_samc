@@ -4497,6 +4497,7 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
         serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now()
+            # aaset_ac_by=user.user_id
         )
 
     def perform_update(self, serializer):
