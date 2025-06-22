@@ -984,7 +984,7 @@ class MonthlyReport(models.Model):
     Cl_CR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
     InsertDate = models.DateTimeField(auto_now_add=True,null=True, blank=True)
     UpdateDate = models.DateTimeField(auto_now=True,null=True, blank=True)
-    UserID = models.IntegerField(null=True, blank=True)
+    UserID = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_monthlyreport')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
 
     class Meta:
