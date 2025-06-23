@@ -4567,8 +4567,9 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
         user = self.request.user
         serializer.save(
             Maker_Id=user,
-            Maker_DT_Stamp=timezone.now()
-            # aaset_ac_by=user.user_id
+            Maker_DT_Stamp=timezone.now(),
+            asset_ac_by=user,
+            asset_ac_datetime=timezone.now()
         )
 
     def perform_update(self, serializer):

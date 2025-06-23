@@ -1193,7 +1193,7 @@ class FA_Asset_Lists(models.Model):
     asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
     asset_ac_date = models.DateField(null=True, blank=True) 
     asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
-    aaset_ac_by = models.IntegerField(null=True, blank=True)
+    asset_ac_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='ac_asset_lists')
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
