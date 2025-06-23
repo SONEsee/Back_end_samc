@@ -771,7 +771,7 @@ class EOCMaintainSerializer(serializers.ModelSerializer):
     maker_name = serializers.CharField(source='Maker_Id.username', read_only=True)
     checker_name = serializers.CharField(source='Checker_Id.username', read_only=True)
     module_name = serializers.CharField(source='module_id.module_name', read_only=True)
-    function_name = serializers.CharField(source='function_id.function_name', read_only=True)
+    function_name = serializers.CharField(source='function_id.description_la', read_only=True)
     
     class Meta:
         model = MTTB_EOC_MAINTAIN
