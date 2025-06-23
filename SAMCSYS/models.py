@@ -573,6 +573,9 @@ class MTTB_GLMaster(models.Model):
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
+    mod_no = models.IntegerField(null=True, blank=True)
+    outstanding = models.CharField(max_length=20,null=True,blank=True)
+    post_side = models.CharField(max_length=20,null=True,blank=True)
     class Meta:
         verbose_name_plural ='GLMaster'
         
