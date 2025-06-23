@@ -573,6 +573,9 @@ class MTTB_GLMaster(models.Model):
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Once_Auth = models.CharField(max_length=1,null=True,blank=True, default='N')
+    mod_no = models.IntegerField(null=True, blank=True)
+    outstanding = models.CharField(max_length=20,null=True,blank=True)
+    post_side = models.CharField(max_length=20,null=True,blank=True)
     class Meta:
         verbose_name_plural ='GLMaster'
         
@@ -984,7 +987,7 @@ class MonthlyReport(models.Model):
     Cl_CR_lcy = models.DecimalField(max_digits=25, decimal_places=2, null=True, blank=True)
     InsertDate = models.DateTimeField(auto_now_add=True,null=True, blank=True)
     UpdateDate = models.DateTimeField(auto_now=True,null=True, blank=True)
-    UserID = models.IntegerField(null=True, blank=True)
+    UserID = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_monthlyreport')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
 
     class Meta:
@@ -1368,7 +1371,7 @@ class FA_Accounting_Method(models.Model):
     mapping_id = models.AutoField(primary_key=True)
     ref_id = models.IntegerField(null=True, blank=True) 
     acc_type = models.CharField(max_length=50, null=True, blank=True)  
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)  
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)  
     debit_account_id = models.CharField(max_length=50, null=True, blank=True) 
     credit_account_id = models.CharField(max_length=50, null=True, blank=True) 
     amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
