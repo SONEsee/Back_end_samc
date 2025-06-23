@@ -1368,7 +1368,7 @@ class FA_Accounting_Method(models.Model):
     mapping_id = models.AutoField(primary_key=True)
     ref_id = models.IntegerField(null=True, blank=True) 
     acc_type = models.CharField(max_length=50, null=True, blank=True)  
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)  
+    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)  
     debit_account_id = models.CharField(max_length=50, null=True, blank=True) 
     credit_account_id = models.CharField(max_length=50, null=True, blank=True) 
     amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
