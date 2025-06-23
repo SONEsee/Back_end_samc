@@ -4815,9 +4815,9 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = FA_Accounting_Method.objects.all().order_by('mapping_id')
-        ref_id = self.request.query_params.get('ref_id')
-        if ref_id:
-            queryset = queryset.filter(ref_id=ref_id)
+        acc_type = self.request.query_params.get('acc_type')
+        if acc_type:
+            queryset = queryset.filter(acc_type=acc_type)
         return queryset
     
     def perform_create(self, serializer):
