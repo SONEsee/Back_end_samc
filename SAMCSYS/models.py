@@ -1127,8 +1127,46 @@ class FA_Expense_Category (models.Model):
     class Meta:
         verbose_name_plural = 'ExpenseCategory'
 
-class FA_Asset_List(models.Model):
-    asset_list_id = models.AutoField(primary_key=True)
+# class FA_Asset_List(models.Model):
+#     asset_list_id = models.AutoField(primary_key=True)
+#     asset_list_code = models.CharField(max_length=20, null=True, blank=True, unique=True)
+#     asset_type_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
+#     asset_serial_no = models.CharField(max_length=50, null=True, blank=True, unique=True)
+#     asset_tag = models.CharField(max_length=50, null=True, blank=True, unique=True)
+#     asset_location_id = models.ForeignKey(FA_Location, null=True, blank=True, on_delete=models.CASCADE)
+#     asset_spec = models.TextField(null=True, blank=True)
+#     asset_date = models.DateField(null=True, blank=True)
+#     asset_currency = models.CharField(max_length=5, null=True, blank=True)
+#     asset_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+#     asset_status  = models.CharField(max_length=20, null=True, blank=True, default='ACTIVE')  
+#     warranty_end_date = models.DateField(null=True, blank=True)
+#     supplier_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
+#     has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')  # Y or N
+#     dpca_type = models.CharField(max_length=20, null=True, blank=True)
+#     dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  
+#     asset_useful_life = models.IntegerField(null=True, blank=True)  
+#     asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+#     dpca_start_date = models.DateField(null=True, blank=True)  
+#     dpca_end_date = models.DateField(null=True, blank=True) 
+#     asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+#     asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+#     asset_latest_date_dpca = models.DateField(null=True, blank=True)  
+#     asset_disposal_date = models.DateField(null=True, blank=True)  
+#     asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
+#     asset_ac_date = models.DateField(null=True, blank=True) 
+#     asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
+#     aaset_ac_by = models.IntegerField(null=True, blank=True)
+#     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+#     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list')
+#     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+#     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_list')
+#     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+#     class Meta:
+#         verbose_name_plural = 'AssestList'
+
+class FA_Asset_Lists(models.Model):
+    asset_list_id = models.CharField(primary_key=True, max_length=30)
     asset_list_code = models.CharField(max_length=20, null=True, blank=True, unique=True)
     asset_type_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
     asset_serial_no = models.CharField(max_length=50, null=True, blank=True, unique=True)
@@ -1157,17 +1195,17 @@ class FA_Asset_List(models.Model):
     asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
     aaset_ac_by = models.IntegerField(null=True, blank=True)
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_list')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_lists')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'AssestList'
+        verbose_name_plural = 'AssestLists'
 
 class FA_Depreciation_Main (models.Model):
     dm_id = models.AutoField(primary_key=True)
-    asset_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
     dpca_type = models.CharField(max_length=20, null=True, blank=True) 
     dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  
     dpca_useful_life = models.IntegerField(null=True, blank=True)  
@@ -1207,7 +1245,7 @@ class FA_Depreciation_Sub (models.Model):
 
 class FA_Asset_List_Depreciation (models.Model):
     ald_id = models.AutoField(primary_key=True)
-    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
     dpca_date = models.DateField(null=True, blank=True)  
     dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
     dpca_no_of_days = models.IntegerField(null=True, blank=True) 
@@ -1229,7 +1267,7 @@ class FA_Asset_List_Depreciation (models.Model):
 
 class FA_Asset_List_Disposal(models.Model):
     alds_id = models.AutoField(primary_key=True)
-    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
     disposal_date = models.DateField(null=True, blank=True)  
     disposal_type = models.CharField(max_length=20, null=True, blank=True)  
     disposal_by = models.IntegerField(null=True, blank=True) 
@@ -1255,7 +1293,7 @@ class FA_Asset_List_Disposal(models.Model):
 
 class FA_Asset_Expense(models.Model):
     ae_id = models.AutoField(primary_key=True)
-    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
     expense_type = models.CharField(max_length=50, null=True, blank=True)  
     expense_date = models.DateField(null=True, blank=True)  
     expense_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
@@ -1289,7 +1327,7 @@ class FA_Asset_Expense(models.Model):
 
 class FA_Transfer_Logs(models.Model):
     transfer_id = models.AutoField(primary_key=True)
-    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
     transfer_date = models.DateField(null=True, blank=True)
     from_location_id = models.ForeignKey(FA_Location, null=True, blank=True, related_name='transfer_from_location', on_delete=models.CASCADE)
     to_location_id = models.ForeignKey(FA_Location, null=True, blank=True, related_name='transfer_to_location', on_delete=models.CASCADE)
@@ -1319,7 +1357,7 @@ class FA_Transfer_Logs(models.Model):
 
 class FA_Asset_Photos(models.Model):
     ap_id = models.AutoField(primary_key=True)
-    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
     photo_type = models.CharField(max_length=50, null=True, blank=True)  
     file_name = models.CharField(max_length=255, null=True, blank=True)  
     file_path = models.TextField(null=True, blank=True)  
@@ -1342,7 +1380,7 @@ class FA_Asset_Photos(models.Model):
 
 class FA_Maintenance_Logs(models.Model):
     maintenance_id = models.AutoField(primary_key=True)
-    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
     maintenance_date = models.DateField(null=True, blank=True)
     maintenance_type = models.CharField(max_length=20, null=True, blank=True) 
     description = models.TextField(null=True, blank=True)
@@ -1371,7 +1409,7 @@ class FA_Accounting_Method(models.Model):
     mapping_id = models.AutoField(primary_key=True)
     ref_id = models.IntegerField(null=True, blank=True) 
     acc_type = models.CharField(max_length=50, null=True, blank=True)  
-    asset_list_id = models.ForeignKey(FA_Asset_List, null=True, blank=True, on_delete=models.CASCADE)  
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)  
     debit_account_id = models.CharField(max_length=50, null=True, blank=True) 
     credit_account_id = models.CharField(max_length=50, null=True, blank=True) 
     amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  

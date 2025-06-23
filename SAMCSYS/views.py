@@ -4223,7 +4223,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
-from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_List,FA_Depreciation_Main,FA_Depreciation_Sub,
+from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,FA_Depreciation_Sub,
                      FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
                      FA_Accounting_Method)
 from .serializers import (FAAssetTypeSerializer,FAChartOfAssetSerializer,FASuppliersSerializer,FALocationSerializer,FAExpenseCategorySerializer,
@@ -4557,7 +4557,7 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = FA_Asset_List.objects.all().order_by('asset_list_id')
+        queryset = FA_Asset_Lists.objects.all().order_by('asset_list_id')
         asset_type_id = self.request.query_params.get('asset_type_id')
         if asset_type_id:
             queryset = queryset.filter(asset_type_id=asset_type_id)
