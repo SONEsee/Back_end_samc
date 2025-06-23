@@ -1191,6 +1191,7 @@ class FA_Asset_Lists(models.Model):
     asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainBegin = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainLast = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    acc_no = models.CharField(max_length=30, null=True, blank=True)
     asset_latest_date_dpca = models.DateField(null=True, blank=True)  
     asset_disposal_date = models.DateField(null=True, blank=True)  
     asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
