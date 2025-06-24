@@ -1192,6 +1192,7 @@ class FA_Asset_Lists(models.Model):
     asset_value_remainBegin = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainLast = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     acc_no = models.CharField(max_length=30, null=True, blank=True)
+    type_of_pay = models.CharField(max_length=30, null=True, blank=True)
     asset_latest_date_dpca = models.DateField(null=True, blank=True)  
     asset_disposal_date = models.DateField(null=True, blank=True)  
     asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
@@ -1452,3 +1453,26 @@ class MTTB_REVOKED_SESSIONS(models.Model):
             models.Index(fields=['user_id']),
             models.Index(fields=['revoked_at']),
         ]
+
+class MasterType(models.Model):
+    M_id = models.AutoField(primary_key=True)
+    M_code = models.CharField(max_length=50, null=True, blank=True) 
+    M_name_la = models.CharField(max_length=255, null=True, blank=True) 
+    M_name_en = models.CharField(max_length=255, null=True, blank=True) 
+    M_detail = models.TextField(null=True, blank=True)
+    Status = models.CharField(max_length=20, null=True, blank=True)
+    class Meta:
+        verbose_name_plural = 'MasterType'
+
+class MasterCode(models.Model):
+    MC_id = models.AutoField(primary_key=True)
+    M_id = models.ForeignKey(MasterType, null=True, blank=True, on_delete=models.CASCADE) 
+    MC_code = models.CharField(max_length=50, null=True, blank=True) 
+    MC_name_la = models.CharField(max_length=255, null=True, blank=True) 
+    MC_name_en = models.CharField(max_length=255, null=True, blank=True) 
+    MC_detail = models.TextField(null=True, blank=True)
+    Status = models.CharField(max_length=20, null=True, blank=True)
+    BOL_code = models.CharField(max_length=50, null=True, blank=True)
+    BOL_name = models.CharField(max_length=255, null=True, blank=True)
+    class Meta:
+        verbose_name_plural = 'MasterCode'
