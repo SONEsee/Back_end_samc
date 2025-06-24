@@ -525,7 +525,13 @@ class GLSubSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_GLSub
         fields = '__all__'
-
+class TransactionSerializer(serializers.Serializer):
+    glsub_code = serializers.CharField(max_length=20)
+    transaction_side = serializers.CharField(max_length=2)
+    
+    def validate(self, data):
+        validate_glsub_selection(data['glsub_code'], data['transaction_side'])
+        return data
 class TrnCodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_TRN_Code

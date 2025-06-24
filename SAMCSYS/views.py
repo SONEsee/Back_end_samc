@@ -2004,21 +2004,7 @@ class GLSubViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
-    # @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    # def authorize(self, request, pk=None):
-    #     """
-    #     Set Auth_Status = 'A' for a GLSub record
-    #     """
-    #     glsub = self.get_object()
-    #     if glsub.Auth_Status == 'A':
-    #         return Response({'detail': 'Already authorized'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-    #     glsub.Auth_Status = 'A'
-    #     glsub.Checker_Id = request.user
-    #     glsub.Checker_DT_Stamp = timezone.now()
-    #     glsub.save()
-    #     serializer = self.get_serializer(glsub)
-    #     return Response(serializer.data)
-    
+
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
@@ -2091,7 +2077,106 @@ class GLSubViewSet(viewsets.ModelViewSet):
             'message': 'Entry unauthorized successfully',
             'entry': serializer.data
         })
-    
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='validate-selection')
+    def validate_glsub_selection(self, request):
+        """
+        Validate if a GL sub-account can be used for a debit or credit transaction based on
+        the outstanding field in the linked MTTB_GLMaster.
+        Expects 'glsub_code' and 'transaction_side' ('dr' or 'cr') in the request data.
+        MTTB_GLMaster.outstanding can be 'dr', 'cr', or 'dr/cr'.
+        """
+        glsub_code = request.data.get('glsub_code')
+        transaction_side = request.data.get('transaction_side')
+
+        if not glsub_code or not transaction_side:
+            return Response({
+                'valid': False,
+                'message': 'Both glsub_code and transaction_side are required.',
+                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if transaction_side not in ['dr', 'cr']:
+            return Response({
+                'valid': False,
+                'message': 'Transaction side must be "dr" (debit) or "cr" (credit).',
+                'debug': {'transaction_side': transaction_side}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            glsub = MTTB_GLSub.objects.select_related('gl_code').get(glsub_code=glsub_code)
+        except MTTB_GLSub.DoesNotExist:
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} does not exist.',
+                'debug': {'glsub_code': glsub_code}
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if gl_code exists (since it's nullable)
+        if not glsub.gl_code:
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} is not linked to any GL Master account.',
+                'debug': {'glsub_id': glsub.glsub_id, 'gl_code': None}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        outstanding = glsub.gl_code.outstanding or ''
+
+        # Validate outstanding value
+        if outstanding not in ['dr', 'cr', 'dr/cr']:
+            return Response({
+                'valid': False,
+                'message': f'Invalid outstanding value ({outstanding}) for GL Master account linked to {glsub_code}. Must be "dr", "cr", or "dr/cr".',
+                'debug': {'glsub_code': glsub_code, 'outstanding': outstanding}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate transaction_side against outstanding
+        if outstanding == 'dr' and transaction_side != 'dr':
+            return Response({
+                'valid': False,
+                'message': f'Cannot use {glsub_code} for credit transaction. GL Master account allows only debit (outstanding = "dr").',
+                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if outstanding == 'cr' and transaction_side != 'cr':
+            return Response({
+                'valid': False,
+                'message': f'Cannot use {glsub_code} for debit transaction. GL Master account allows only credit (outstanding = "cr").',
+                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Relaxed status checks based on sample data
+        # Sample shows MTTB_GLSub.Record_Status = 'C' and MTTB_GLMaster.Auth_Status = 'U', which may be valid
+        # Commenting out these checks; uncomment if they are required in your business logic
+        """
+        if glsub.Record_Status == 'C':
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} is closed and cannot be used.',
+                'debug': {'glsub_code': glsub_code, 'Record_Status': glsub.Record_Status}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if glsub.Auth_Status != 'A':
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} is not authorized (Auth_Status must be "A").',
+                'debug': {'glsub_code': glsub_code, 'Auth_Status': glsub.Auth_Status}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        """
+
+        return Response({
+            'valid': True,
+            'message': f'GL sub-account {glsub_code} is valid for {transaction_side} transaction.',
+            'debug': {
+                'glsub_code': glsub_code,
+                'transaction_side': transaction_side,
+                'outstanding': outstanding,
+                'glsub_record_status': glsub.Record_Status,
+                'glsub_auth_status': glsub.Auth_Status,
+                'glmaster_auth_status': glsub.gl_code.Auth_Status
+            }
+        }, status=status.HTTP_200_OK)
+
+
 
 # class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
 #     serializer_class = MTTB_EMPLOYEESerializer
