@@ -5585,3 +5585,33 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
             'message': 'ຍົກເລີກການອະນຸມັດ EOC Maintain ສໍາເລັດແລ້ວ',
             'data': serializer.data
         })
+    
+from rest_framework import viewsets, permissions
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import MasterType, MasterCode
+from .serializers import MasterTypeSerializer, MasterCodeSerializer
+
+class MasterTypeViewSet(viewsets.ModelViewSet):
+    queryset = MasterType.objects.all()
+    serializer_class = MasterTypeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
+
+    def get_permissions(self):
+        # Allow unauthenticated POST, require auth otherwise
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+class MasterCodeViewSet(viewsets.ModelViewSet):
+    queryset = MasterCode.objects.all()
+    serializer_class = MasterCodeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
+
+    def get_permissions(self):
+        # Allow unauthenticated POST, require auth otherwise
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]

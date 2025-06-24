@@ -69,7 +69,9 @@ from .views import (
     FAAssetPhotosViewSet,
     FAMaintenanceLogsViewSet,
     FAMaintenanceLogsViewSet,
-    FAAccountingMethodViewSet
+    FAAccountingMethodViewSet,
+    MasterTypeViewSet,
+    MasterCodeViewSet
 
 )
 from rest_framework_simplejwt.views import (
@@ -125,6 +127,8 @@ router.register(r'asset_photo', FAAssetPhotosViewSet , basename='asset_photo')
 router.register(r'asset_mainten_log', FAMaintenanceLogsViewSet , basename='asset_mainten_log')
 router.register(r'asset_account', FAAccountingMethodViewSet , basename='asset_account')
 router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
+router.register(r'master-types', MasterTypeViewSet)
+router.register(r'master-codes', MasterCodeViewSet)
 
 
 urlpatterns = [

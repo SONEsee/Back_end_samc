@@ -529,9 +529,9 @@ class TransactionSerializer(serializers.Serializer):
     glsub_code = serializers.CharField(max_length=20)
     transaction_side = serializers.CharField(max_length=2)
     
-    def validate(self, data):
-        validate_glsub_selection(data['glsub_code'], data['transaction_side'])
-        return data
+    # def validate(self, data):
+    #     validate_glsub_selection(data['glsub_code'], data['transaction_side'])
+        # return data
 class TrnCodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_TRN_Code
@@ -793,3 +793,16 @@ class EOCMaintainSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("record_stat ຕ້ອງເປັນ 'C' ຫຼື 'O' ເທົ່ານັ້ນ")
             
         return data
+    
+from rest_framework import serializers
+from .models import MasterType, MasterCode
+
+class MasterTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MasterType
+        fields = ['M_id', 'M_code', 'M_name_la', 'M_name_en', 'M_detail', 'Status']
+
+class MasterCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MasterCode
+        fields = ['MC_id', 'M_id', 'MC_code', 'MC_name_la', 'MC_name_en', 'MC_detail', 'Status', 'BOL_code', 'BOL_name']
