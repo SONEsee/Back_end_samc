@@ -3520,6 +3520,138 @@ def GLTreeAPIView(request, gl_code_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
+# from rest_framework import status
+# from rest_framework.decorators import api_view
+# from rest_framework.response import Response
+# from django.shortcuts import get_object_or_404
+# from .models import MTTB_GLMaster, MTTB_GLSub
+# from .serializers import GLSubSerializer
+# from collections import defaultdict
+
+# @api_view(['GET'])
+# def GLTreeAll(request, gl_code_id=None):
+#     """
+#     Get GLSub details by GL code ID, or get all GLSub records grouped by GL Master
+    
+#     Args:
+#         gl_code_id: Optional - The primary key (glid) of MTTB_GLMaster
+#                    If provided, returns GLSub records for that specific GL Master
+#                    If None, returns all GLSub records grouped by their GL Master
+    
+#     Returns:
+#         JSON response with GLSub details grouped by GLMaster info
+#     """
+#     try:
+#         if gl_code_id is not None:
+#             # Get GLSub records for specific GL Master (existing functionality)
+#             gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
+            
+#             glsub_records = MTTB_GLSub.objects.filter(
+#                 gl_code=gl_master,
+#             ).select_related('gl_code')
+            
+#             if not glsub_records.exists():
+#                 return Response({
+#                     'success': False,
+#                     'message': f'No GLSub records found for GL code ID: {gl_code_id}',
+#                     'data': []
+#                 }, status=status.HTTP_404_NOT_FOUND)
+            
+#             # Serialize the data
+#             serializer = GLSubSerializer(glsub_records, many=True)
+            
+#             return Response({
+#                 'success': True,
+#                 'message': f'Found {glsub_records.count()} GLSub record(s)',
+#                 'gl_master_info': {
+#                     'glid': gl_master.glid,
+#                     'gl_code': gl_master.gl_code,
+#                     'gl_Desc_en': gl_master.gl_Desc_en,
+#                     'gl_Desc_la': gl_master.gl_Desc_la,
+#                     'glType': gl_master.glType,
+#                     'category': gl_master.category,
+#                     'retal': gl_master.retal,
+#                     'ccy_Res': gl_master.ccy_Res,
+#                     'Res_ccy': gl_master.Res_ccy,
+#                     'Record_Status': gl_master.Record_Status,
+#                     'Auth_Status': gl_master.Auth_Status
+#                 },
+#                 'data': serializer.data
+#             }, status=status.HTTP_200_OK)
+            
+#         else:
+#             # CORRECTED LOGIC: Find all GLSub records and group by GL Master
+            
+#             # Step 1: Get all GLSub records with their GL Master info
+#             glsub_records = MTTB_GLSub.objects.all().select_related('gl_code')
+            
+#             if not glsub_records.exists():
+#                 return Response({
+#                     'success': False,
+#                     'message': 'No GLSub records found in the system',
+#                     'data': []
+#                 }, status=status.HTTP_404_NOT_FOUND)
+            
+#             # Step 2: Group GLSub records by GL Master
+#             gl_master_groups = defaultdict(list)
+            
+#             for glsub in glsub_records:
+#                 if glsub.gl_code:  # Make sure gl_code exists
+#                     gl_master_groups[glsub.gl_code].append(glsub)
+            
+#             # Step 3: Build the tree structure
+#             tree_data = []
+#             total_glsub_count = 0
+            
+#             for gl_master, glsub_list in gl_master_groups.items():
+#                 # Serialize GLSub records for this GL Master
+#                 glsub_serializer = GLSubSerializer(glsub_list, many=True)
+                
+#                 # Build GL Master node with children
+#                 gl_master_node = {
+#                     'gl_master_info': {
+#                         'glid': gl_master.glid,
+#                         'gl_code': gl_master.gl_code,
+#                         'gl_Desc_en': gl_master.gl_Desc_en,
+#                         'gl_Desc_la': gl_master.gl_Desc_la,
+#                         'glType': gl_master.glType,
+#                         'category': gl_master.category,
+#                         'Record_Status': gl_master.Record_Status,
+#                         'Auth_Status': gl_master.Auth_Status
+#                     },
+#                     'children_count': len(glsub_list),
+#                     'children': glsub_serializer.data
+#                 }
+                
+#                 tree_data.append(gl_master_node)
+#                 total_glsub_count += len(glsub_list)
+            
+#             # Sort by GL Master glid for consistent ordering
+#             tree_data.sort(key=lambda x: x['gl_master_info']['glid'])
+            
+#             return Response({
+#                 'success': True,
+#                 'message': f'Found {len(tree_data)} GL Master(s) with {total_glsub_count} total GLSub record(s)',
+#                 'total_gl_masters': len(tree_data),
+#                 'total_glsub_records': total_glsub_count,
+#                 'data': tree_data
+#             }, status=status.HTTP_200_OK)
+        
+#     except MTTB_GLMaster.DoesNotExist:
+#         return Response({
+#             'success': False,
+#             'message': f'GL Master with ID {gl_code_id} not found',
+#             'data': []
+#         }, status=status.HTTP_404_NOT_FOUND)
+    
+#     except Exception as e:
+#         return Response({
+#             'success': False,
+#             'message': f'An error occurred: {str(e)}',
+#             'data': []
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -3531,35 +3663,45 @@ from collections import defaultdict
 @api_view(['GET'])
 def GLTreeAll(request, gl_code_id=None):
     """
-    Get GLSub details by GL code ID, or get all GLSub records grouped by GL Master
+    Get GLSub details by GL code ID (glid) or gl_code string, or return all GLSub grouped by GLMaster.
     
-    Args:
-        gl_code_id: Optional - The primary key (glid) of MTTB_GLMaster
-                   If provided, returns GLSub records for that specific GL Master
-                   If None, returns all GLSub records grouped by their GL Master
-    
-    Returns:
-        JSON response with GLSub details grouped by GLMaster info
+    Query Parameters:
+    - gl_code_id (int): Primary key of MTTB_GLMaster
+    - gl_code (str or int): gl_code field of MTTB_GLMaster
     """
     try:
-        if gl_code_id is not None:
-            # Get GLSub records for specific GL Master (existing functionality)
+        gl_code_param = request.GET.get('gl_code', None)
+
+        # If both gl_code_id and gl_code are provided, return an error
+        if gl_code_id and gl_code_param:
+            return Response({
+                'success': False,
+                'message': 'Please provide only one of gl_code_id or gl_code',
+                'data': []
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        gl_master = None
+
+        if gl_code_id:
             gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
-            
+        elif gl_code_param:
+            gl_master = get_object_or_404(MTTB_GLMaster, gl_code=str(gl_code_param))
+
+        # If either gl_code_id or gl_code was used, return filtered GLSub
+        if gl_master:
             glsub_records = MTTB_GLSub.objects.filter(
-                gl_code=gl_master,
+                gl_code=gl_master
             ).select_related('gl_code')
-            
+
             if not glsub_records.exists():
                 return Response({
                     'success': False,
-                    'message': f'No GLSub records found for GL code ID: {gl_code_id}',
+                    'message': 'No GLSub records found for the provided GL code.',
                     'data': []
                 }, status=status.HTTP_404_NOT_FOUND)
-            
-            # Serialize the data
+
             serializer = GLSubSerializer(glsub_records, many=True)
-            
+
             return Response({
                 'success': True,
                 'message': f'Found {glsub_records.count()} GLSub record(s)',
@@ -3571,100 +3713,74 @@ def GLTreeAll(request, gl_code_id=None):
                     'glType': gl_master.glType,
                     'category': gl_master.category,
                     'retal': gl_master.retal,
-                    'ccy_Res': gl_master.ccy_Res,
-                    'Res_ccy': gl_master.Res_ccy,
+                    'ccy_Res': getattr(gl_master.ccy_Res, 'ccy_code', gl_master.ccy_Res),
+                    'Res_ccy': getattr(gl_master.Res_ccy, 'ccy_code', gl_master.Res_ccy),
                     'Record_Status': gl_master.Record_Status,
                     'Auth_Status': gl_master.Auth_Status
                 },
                 'data': serializer.data
             }, status=status.HTTP_200_OK)
-            
-        else:
-            # CORRECTED LOGIC: Find all GLSub records and group by GL Master
-            
-            # Step 1: Get all GLSub records with their GL Master info
-            glsub_records = MTTB_GLSub.objects.all().select_related('gl_code')
-            
-            if not glsub_records.exists():
-                return Response({
-                    'success': False,
-                    'message': 'No GLSub records found in the system',
-                    'data': []
-                }, status=status.HTTP_404_NOT_FOUND)
-            
-            # Step 2: Group GLSub records by GL Master
-            gl_master_groups = defaultdict(list)
-            
-            for glsub in glsub_records:
-                if glsub.gl_code:  # Make sure gl_code exists
-                    gl_master_groups[glsub.gl_code].append(glsub)
-            
-            # Step 3: Build the tree structure
-            tree_data = []
-            total_glsub_count = 0
-            
-            for gl_master, glsub_list in gl_master_groups.items():
-                # Serialize GLSub records for this GL Master
-                glsub_serializer = GLSubSerializer(glsub_list, many=True)
-                
-                # Build GL Master node with children
-                gl_master_node = {
-                    'gl_master_info': {
-                        'glid': gl_master.glid,
-                        'gl_code': gl_master.gl_code,
-                        'gl_Desc_en': gl_master.gl_Desc_en,
-                        'gl_Desc_la': gl_master.gl_Desc_la,
-                        'glType': gl_master.glType,
-                        'category': gl_master.category,
-                        'Record_Status': gl_master.Record_Status,
-                        'Auth_Status': gl_master.Auth_Status
-                    },
-                    'children_count': len(glsub_list),
-                    'children': glsub_serializer.data
-                }
-                
-                tree_data.append(gl_master_node)
-                total_glsub_count += len(glsub_list)
-            
-            # Sort by GL Master glid for consistent ordering
-            tree_data.sort(key=lambda x: x['gl_master_info']['glid'])
-            
+
+        # If no filtering, return full GL tree
+        glsub_records = MTTB_GLSub.objects.all().select_related('gl_code')
+
+        if not glsub_records.exists():
             return Response({
-                'success': True,
-                'message': f'Found {len(tree_data)} GL Master(s) with {total_glsub_count} total GLSub record(s)',
-                'total_gl_masters': len(tree_data),
-                'total_glsub_records': total_glsub_count,
-                'data': tree_data
-            }, status=status.HTTP_200_OK)
-        
+                'success': False,
+                'message': 'No GLSub records found in the system',
+                'data': []
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        gl_master_groups = defaultdict(list)
+        for glsub in glsub_records:
+            if glsub.gl_code:
+                gl_master_groups[glsub.gl_code].append(glsub)
+
+        tree_data = []
+        total_glsub_count = 0
+
+        for gl_master, glsub_list in gl_master_groups.items():
+            glsub_serializer = GLSubSerializer(glsub_list, many=True)
+            gl_master_node = {
+                'gl_master_info': {
+                    'glid': gl_master.glid,
+                    'gl_code': gl_master.gl_code,
+                    'gl_Desc_en': gl_master.gl_Desc_en,
+                    'gl_Desc_la': gl_master.gl_Desc_la,
+                    'glType': gl_master.glType,
+                    'category': gl_master.category,
+                    'Record_Status': gl_master.Record_Status,
+                    'Auth_Status': gl_master.Auth_Status
+                },
+                'children_count': len(glsub_list),
+                'children': glsub_serializer.data
+            }
+            tree_data.append(gl_master_node)
+            total_glsub_count += len(glsub_list)
+
+        tree_data.sort(key=lambda x: x['gl_master_info']['glid'])
+
+        return Response({
+            'success': True,
+            'message': f'Found {len(tree_data)} GL Master(s) with {total_glsub_count} total GLSub record(s)',
+            'total_gl_masters': len(tree_data),
+            'total_glsub_records': total_glsub_count,
+            'data': tree_data
+        }, status=status.HTTP_200_OK)
+
     except MTTB_GLMaster.DoesNotExist:
         return Response({
             'success': False,
-            'message': f'GL Master with ID {gl_code_id} not found',
+            'message': 'GL Master not found',
             'data': []
         }, status=status.HTTP_404_NOT_FOUND)
-    
+
     except Exception as e:
         return Response({
             'success': False,
             'message': f'An error occurred: {str(e)}',
             'data': []
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-
-# from rest_framework import viewsets
-# from .models import DETB_JRNL_LOG
-# from .serializers import JRNLLogSerializer
-# from rest_framework.permissions import IsAuthenticated
-
-# class JRNLLogViewSet(viewsets.ModelViewSet):
-#     queryset = DETB_JRNL_LOG.objects.select_related(
-#     'Ccy_cd', 'Account', 'Txn_code', 'fin_cycle', 'Period_code',
-#     'Maker_Id', 'Checker_Id'
-# ).all().order_by('-Maker_DT_Stamp')
-
-#     serializer_class = JRNLLogSerializer
-#     permission_classes = [IsAuthenticated]  # optional, add/remove based on your needs
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -5586,7 +5702,40 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         })
     
+# from rest_framework import viewsets, permissions
+# from rest_framework.permissions import AllowAny, IsAuthenticated
+# from django_filters.rest_framework import DjangoFilterBackend
+# from .models import MasterType, MasterCode
+# from .serializers import MasterTypeSerializer, MasterCodeSerializer
+
+# class MasterTypeViewSet(viewsets.ModelViewSet):
+#     queryset = MasterType.objects.all()
+#     serializer_class = MasterTypeSerializer
+#     filter_backends = [DjangoFilterBackend]
+#     filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
+
+#     def get_permissions(self):
+#         # Allow unauthenticated POST, require auth otherwise
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+
+# class MasterCodeViewSet(viewsets.ModelViewSet):
+#     queryset = MasterCode.objects.all()
+#     serializer_class = MasterCodeSerializer
+#     filter_backends = [DjangoFilterBackend]
+#     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
+
+#     def get_permissions(self):
+#         # Allow unauthenticated POST, require auth otherwise
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+    
+
 from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import MasterType, MasterCode
@@ -5597,21 +5746,47 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
     serializer_class = MasterTypeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
+    lookup_field = 'M_id'  # Use M_id for standard CRUD operations
 
     def get_permissions(self):
-        # Allow unauthenticated POST, require auth otherwise
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
+
+    @action(detail=True, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
+    def get_tree(self, request, m_code=None):
+        """
+        Retrieve MasterType with related MasterCode entries in a tree structure.
+        :param m_code: M_code of the MasterType
+        """
+        try:
+            master_type = MasterType.objects.get(M_code=m_code)  # Fetch by M_code
+            master_codes = MasterCode.objects.filter(M_id=master_type)
+
+            # Serialize MasterType
+            type_serializer = MasterTypeSerializer(master_type)
+            
+            # Serialize related MasterCodes
+            code_serializer = MasterCodeSerializer(master_codes, many=True)
+
+            # Construct tree response
+            tree_data = {
+                'MasterType': type_serializer.data,
+                'MasterCodes': code_serializer.data
+            }
+
+            return Response(tree_data)
+        except MasterType.DoesNotExist:
+            return Response({'error': 'MasterType not found'}, status=404)
 
 class MasterCodeViewSet(viewsets.ModelViewSet):
     queryset = MasterCode.objects.all()
     serializer_class = MasterCodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
+    lookup_field = 'MC_id'  # Use MC_id for MasterCode CRUD operations
 
     def get_permissions(self):
-        # Allow unauthenticated POST, require auth otherwise
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]

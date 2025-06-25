@@ -252,12 +252,6 @@ class ExcRateHistorySerializer(serializers.ModelSerializer):
 
 from rest_framework import serializers
 from .models import MTTB_GLMaster
-
-# class GLMasterSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = MTTB_GLMaster
-#         fields = '__all__'
-#         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 from rest_framework import serializers
 from .models import MTTB_GLSub
 class GLSubSerializer(serializers.ModelSerializer):
