@@ -2081,9 +2081,12 @@ class GLSubViewSet(viewsets.ModelViewSet):
     def validate_glsub_selection(self, request):
         """
         Validate if a GL sub-account can be used for a debit or credit transaction based on
-        the outstanding field in the linked MTTB_GLMaster.
+        the post_side and category fields in the linked MTTB_GLMaster.
         Expects 'glsub_code' and 'transaction_side' ('dr' or 'cr') in the request data.
-        MTTB_GLMaster.outstanding can be 'dr', 'cr', or 'dr/cr'.
+        - If post_side = '2', allow both dr and cr transactions.
+        - If post_side = '1', allow based on category:
+          - Assets (1), Expenses (5): Allow dr to increase, cr to decrease.
+          - Liabilities (2), Equity (3), Income (4): Allow cr to increase, dr to decrease.
         """
         glsub_code = request.data.get('glsub_code')
         transaction_side = request.data.get('transaction_side')
@@ -2119,34 +2122,48 @@ class GLSubViewSet(viewsets.ModelViewSet):
                 'debug': {'glsub_id': glsub.glsub_id, 'gl_code': None}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        outstanding = glsub.gl_code.outstanding or ''
+        post_side = glsub.gl_code.post_side or ''
+        category = glsub.gl_code.category or ''
 
-        # Validate outstanding value
-        if outstanding not in ['dr', 'cr', 'dr/cr']:
+        # Validate post_side value
+        if post_side not in ['1', '2']:
             return Response({
                 'valid': False,
-                'message': f'Invalid outstanding value ({outstanding}) for GL Master account linked to {glsub_code}. Must be "dr", "cr", or "dr/cr".',
-                'debug': {'glsub_code': glsub_code, 'outstanding': outstanding}
+                'message': f'Invalid post_side value ({post_side}) for GL Master account linked to {glsub_code}. Must be "1" or "2".',
+                'debug': {'glsub_code': glsub_code, 'post_side': post_side}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate transaction_side against outstanding
-        if outstanding == 'dr' and transaction_side != 'dr':
+        # Validate category value
+        if category not in ['1', '2', '3', '4', '5']:
             return Response({
                 'valid': False,
-                'message': f'Cannot use {glsub_code} for credit transaction. GL Master account allows only debit (outstanding = "dr").',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
+                'message': f'Invalid category value ({category}) for GL Master account linked to {glsub_code}. Must be "1", "2", "3", "4", or "5".',
+                'debug': {'glsub_code': glsub_code, 'category': category}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if outstanding == 'cr' and transaction_side != 'cr':
-            return Response({
-                'valid': False,
-                'message': f'Cannot use {glsub_code} for debit transaction. GL Master account allows only credit (outstanding = "cr").',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # If post_side is '2', allow both dr and cr transactions
+        if post_side == '2':
+            pass  # No further validation needed; both sides are allowed
+        else:
+            # If post_side is '1', validate based on category
+            if category in ['1', '5']:  # Assets, Expenses
+                if transaction_side not in ['dr', 'cr']:  # Allow both dr and cr
+                    return Response({
+                        'valid': False,
+                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Assets/Expenses accounts (category = {category}) allow both dr and cr with post_side = "1".',
+                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            elif category in ['2', '3', '4']:  # Liabilities, Equity, Income
+                if transaction_side not in ['cr', 'dr']:  # Allow both cr and dr
+                    return Response({
+                        'valid': False,
+                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Liabilities/Equity/Income accounts (category = {category}) allow both cr and dr with post_side = "1".',
+                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
         # Relaxed status checks based on sample data
         # Sample shows MTTB_GLSub.Record_Status = 'C' and MTTB_GLMaster.Auth_Status = 'U', which may be valid
-        # Commenting out these checks; uncomment if they are required in your business logic
+        # Uncomment these checks if required by your business logic
         """
         if glsub.Record_Status == 'C':
             return Response({
@@ -2169,70 +2186,14 @@ class GLSubViewSet(viewsets.ModelViewSet):
             'debug': {
                 'glsub_code': glsub_code,
                 'transaction_side': transaction_side,
-                'outstanding': outstanding,
+                'post_side': post_side,
+                'category': category,
                 'glsub_record_status': glsub.Record_Status,
                 'glsub_auth_status': glsub.Auth_Status,
                 'glmaster_auth_status': glsub.gl_code.Auth_Status
             }
         }, status=status.HTTP_200_OK)
 
-
-
-# class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
-#     serializer_class = MTTB_EMPLOYEESerializer
-#     permission_classes = [IsAuthenticated]
-#     lookup_field = 'employee_id'
-
-#     def get_queryset(self):
-#         queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
-#         div_id = self.request.query_params.get('div_id')
-#         if div_id:
-#             queryset = queryset.filter(division_id=div_id)
-#         return queryset
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         if serializer.is_valid():
-#             self.perform_create(serializer)
-#             return Response({
-#                 "status": "success",
-#                 "message": "Employee created successfully.",
-#                 "data": serializer.data
-#             }, status=status.HTTP_201_CREATED)
-#         else:
-#             return Response({
-#                 "status": "error",
-#                 "message": "Failed to create employee.",
-#                 "errors": serializer.errors
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#     def destroy(self, request, *args, **kwargs):
-#         try:
-#             instance = self.get_object()
-#             self.perform_destroy(instance)
-#             return Response({
-#                 "status": "success",
-#                 "message": "Employee deleted successfully."
-#             }, status=status.HTTP_204_NO_CONTENT)
-#         except Exception as e:
-#             return Response({
-#                 "status": "error",
-#                 "message": f"Failed to delete employee: {str(e)}"
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#     def perform_create(self, serializer):
-#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         serializer.save(
-#             Maker_Id=maker,
-#             Maker_DT_Stamp=timezone.now()
-#         )
-
-#     def perform_update(self, serializer):
-#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         serializer.save(
-#             Checker_Id=checker,
-#             Checker_DT_Stamp=timezone.now()
-#         )
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser

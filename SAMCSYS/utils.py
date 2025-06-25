@@ -13,7 +13,7 @@ class JournalEntryHelper:
         if date is None:
             date = timezone.now().date()
         
-        year = date.strftime('%y')
+        year = date.strftime('%Y')
         month = date.strftime('%m')
         day = date.strftime('%d')
         
