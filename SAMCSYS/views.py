@@ -5702,7 +5702,38 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         })
     
-from rest_framework import viewsets, permissions
+# from rest_framework import viewsets, permissions
+# from rest_framework.permissions import AllowAny, IsAuthenticated
+# from django_filters.rest_framework import DjangoFilterBackend
+# from .models import MasterType, MasterCode
+# from .serializers import MasterTypeSerializer, MasterCodeSerializer
+
+# class MasterTypeViewSet(viewsets.ModelViewSet):
+#     queryset = MasterType.objects.all()
+#     serializer_class = MasterTypeSerializer
+#     filter_backends = [DjangoFilterBackend]
+#     filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
+
+#     def get_permissions(self):
+#         # Allow unauthenticated POST, require auth otherwise
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+
+# class MasterCodeViewSet(viewsets.ModelViewSet):
+#     queryset = MasterCode.objects.all()
+#     serializer_class = MasterCodeSerializer
+#     filter_backends = [DjangoFilterBackend]
+#     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
+
+#     def get_permissions(self):
+#         # Allow unauthenticated POST, require auth otherwise
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+    
+
+from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import MasterType, MasterCode
@@ -5715,10 +5746,35 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
     filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
 
     def get_permissions(self):
-        # Allow unauthenticated POST, require auth otherwise
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
+
+    @action(detail=True, methods=['get'], url_path='tree')
+    def get_tree(self, request, pk=None):
+        """
+        Retrieve MasterType with related MasterCode entries in a tree structure.
+        :param pk: M_id of the MasterType
+        """
+        try:
+            master_type = self.get_object()  # Fetches MasterType by pk (M_id)
+            master_codes = MasterCode.objects.filter(M_id=master_type)
+
+            # Serialize MasterType
+            type_serializer = MasterTypeSerializer(master_type)
+            
+            # Serialize related MasterCodes
+            code_serializer = MasterCodeSerializer(master_codes, many=True)
+
+            # Construct tree response
+            tree_data = {
+                'MasterType': type_serializer.data,
+                'MasterCodes': code_serializer.data
+            }
+
+            return Response(tree_data)
+        except MasterType.DoesNotExist:
+            return Response({'error': 'MasterType not found'}, status=404)
 
 class MasterCodeViewSet(viewsets.ModelViewSet):
     queryset = MasterCode.objects.all()
@@ -5727,9 +5783,6 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
 
     def get_permissions(self):
-        # Allow unauthenticated POST, require auth otherwise
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
-    
-
