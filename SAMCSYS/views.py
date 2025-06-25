@@ -5746,21 +5746,21 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
     serializer_class = MasterTypeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
-    lookup_field = 'M_code'  # Use M_code for URL lookups
+    lookup_field = 'M_id'  # Use M_id for standard CRUD operations
 
     def get_permissions(self):
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=['get'], url_path='tree')
-    def get_tree(self, request, M_code=None):
+    @action(detail=True, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
+    def get_tree(self, request, m_code=None):
         """
         Retrieve MasterType with related MasterCode entries in a tree structure.
-        :param M_code: M_code of the MasterType
+        :param m_code: M_code of the MasterType
         """
         try:
-            master_type = self.get_object()  # Fetches MasterType by M_code
+            master_type = MasterType.objects.get(M_code=m_code)  # Fetch by M_code
             master_codes = MasterCode.objects.filter(M_id=master_type)
 
             # Serialize MasterType
@@ -5784,6 +5784,7 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
     serializer_class = MasterCodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
+    lookup_field = 'MC_id'  # Use MC_id for MasterCode CRUD operations
 
     def get_permissions(self):
         if self.request.method == 'POST':
