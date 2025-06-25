@@ -5733,6 +5733,8 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
 #         return [IsAuthenticated()]
     
 
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
@@ -5744,6 +5746,7 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
     serializer_class = MasterTypeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
+    lookup_field = 'M_code'  # Use M_code for URL lookups
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -5751,13 +5754,13 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     @action(detail=True, methods=['get'], url_path='tree')
-    def get_tree(self, request, pk=None):
+    def get_tree(self, request, M_code=None):
         """
         Retrieve MasterType with related MasterCode entries in a tree structure.
-        :param pk: M_id of the MasterType
+        :param M_code: M_code of the MasterType
         """
         try:
-            master_type = self.get_object()  # Fetches MasterType by pk (M_id)
+            master_type = self.get_object()  # Fetches MasterType by M_code
             master_codes = MasterCode.objects.filter(M_id=master_type)
 
             # Serialize MasterType
