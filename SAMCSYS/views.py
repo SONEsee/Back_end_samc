@@ -3954,82 +3954,82 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         logger.warning(f"GLSub account {entry_data['Account']} not found")
                         gl_master = None
                     
-                    # Create daily log entry
-                    daily_log_entry = ACTB_DAIRY_LOG.objects.create(
-                        module_id=data.get('module_id'),
-                        trn_ref_no=journal_entry,  # FK to the created journal entry
-                        event_sr_no=idx + 1,  # Sequential number for this batch
-                        event='JRNL',  # Journal event type
-                        ac_no_id=entry_data['Account'],
-                        ac_no_full=account_no,
-                        ac_relative=entry_data.get('Ac_relatives'),
-                        ac_ccy_id=data['Ccy_cd'],
-                        drcr_ind=entry_data['Dr_cr'],
-                        trn_code_id=data['Txn_code'],
-                        fcy_amount=fcy_amount,
-                        exch_rate=exchange_rate,
-                        lcy_amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        external_ref_no=data['Reference_No'][:16],  # Truncate to fit max length
-                        addl_text=data.get('Addl_text', ''),
-                        addl_sub_text=addl_sub_text,
-                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        glid=gl_master,  # GLMaster instance for type
-                        category=gl_master.category if gl_master else None,  # category from GLMaster
-                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        financial_cycle_id=data.get('fin_cycle'),
-                        period_code_id=data.get('Period_code'),
-                        user_id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        auth_id=None,  # Will be set during authorization
-                        Checker_DT_Stamp=None,  # Will be set during authorization
-                        Auth_Status='U',  # Unauthorized
-                        product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
-                        entry_seq_no=idx + 1,  # Sequential number in batch
-                        delete_stat=None  # Not deleted
-                    )
+                    # # Create daily log entry
+                    # daily_log_entry = ACTB_DAIRY_LOG.objects.create(
+                    #     module_id=data.get('module_id'),
+                    #     trn_ref_no=journal_entry,  # FK to the created journal entry
+                    #     event_sr_no=idx + 1,  # Sequential number for this batch
+                    #     event='JRNL',  # Journal event type
+                    #     ac_no_id=entry_data['Account'],
+                    #     ac_no_full=account_no,
+                    #     ac_relative=entry_data.get('Ac_relatives'),
+                    #     ac_ccy_id=data['Ccy_cd'],
+                    #     drcr_ind=entry_data['Dr_cr'],
+                    #     trn_code_id=data['Txn_code'],
+                    #     fcy_amount=fcy_amount,
+                    #     exch_rate=exchange_rate,
+                    #     lcy_amount=lcy_amount,
+                    #     fcy_dr=fcy_dr,
+                    #     fcy_cr=fcy_cr,
+                    #     lcy_dr=lcy_dr,
+                    #     lcy_cr=lcy_cr,
+                    #     external_ref_no=data['Reference_No'][:30],  # Truncate to fit max length
+                    #     addl_text=data.get('Addl_text', ''),
+                    #     addl_sub_text=addl_sub_text,
+                    #     trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     glid=gl_master,  # GLMaster instance for type
+                    #     category=gl_master.category if gl_master else None,  # category from GLMaster
+                    #     value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     financial_cycle_id=data.get('fin_cycle'),
+                    #     period_code_id=data.get('Period_code'),
+                    #     user_id=request.user,
+                    #     Maker_DT_Stamp=current_time,
+                    #     auth_id=None,  # Will be set during authorization
+                    #     Checker_DT_Stamp=None,  # Will be set during authorization
+                    #     Auth_Status='U',  # Unauthorized
+                    #     product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
+                    #     entry_seq_no=idx + 1,  # Sequential number in batch
+                    #     delete_stat=None  # Not deleted
+                    # )
                     
-                    daily_log_entries.append(daily_log_entry)
+                    # daily_log_entries.append(daily_log_entry)
 
-                    ACTB_DAIRY_LOG_HISTORY.objects.create(
-                        module_id=data.get('module_id'),
-                        trn_ref_no=journal_entry,  # FK to the created journal entry
-                        event_sr_no=idx + 1,
-                        event='JRNL',
-                        ac_no_id=entry_data['Account'],
-                        ac_no_full=account_no,
-                        ac_relative=entry_data.get('Ac_relatives'),
-                        ac_ccy_id=data['Ccy_cd'],
-                        drcr_ind=entry_data['Dr_cr'],
-                        trn_code_id=data['Txn_code'],
-                        fcy_amount=fcy_amount,
-                        exch_rate=exchange_rate,
-                        lcy_amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        external_ref_no=data['Reference_No'][:16],
-                        addl_text=data.get('Addl_text', ''),
-                        addl_sub_text=addl_sub_text,
-                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        glid=gl_master,
-                        category=gl_master.category if gl_master else None,
-                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        financial_cycle_id=data.get('fin_cycle'),
-                        period_code_id=data.get('Period_code'),
-                        user_id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        auth_id=None,
-                        Checker_DT_Stamp=None,
-                        Auth_Status='U',
-                        product=data.get('product_code', 'GL')[:4],
-                        entry_seq_no=idx + 1,
-                        delete_stat=None
-                    )
+                    # ACTB_DAIRY_LOG_HISTORY.objects.create(
+                    #     module_id=data.get('module_id'),
+                    #     trn_ref_no=journal_entry,  # FK to the created journal entry
+                    #     event_sr_no=idx + 1,
+                    #     event='JRNL',
+                    #     ac_no_id=entry_data['Account'],
+                    #     ac_no_full=account_no,
+                    #     ac_relative=entry_data.get('Ac_relatives'),
+                    #     ac_ccy_id=data['Ccy_cd'],
+                    #     drcr_ind=entry_data['Dr_cr'],
+                    #     trn_code_id=data['Txn_code'],
+                    #     fcy_amount=fcy_amount,
+                    #     exch_rate=exchange_rate,
+                    #     lcy_amount=lcy_amount,
+                    #     fcy_dr=fcy_dr,
+                    #     fcy_cr=fcy_cr,
+                    #     lcy_dr=lcy_dr,
+                    #     lcy_cr=lcy_cr,
+                    #     external_ref_no=data['Reference_No'][:30],
+                    #     addl_text=data.get('Addl_text', ''),
+                    #     addl_sub_text=addl_sub_text,
+                    #     trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     glid=gl_master,
+                    #     category=gl_master.category if gl_master else None,
+                    #     value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     financial_cycle_id=data.get('fin_cycle'),
+                    #     period_code_id=data.get('Period_code'),
+                    #     user_id=request.user,
+                    #     Maker_DT_Stamp=current_time,
+                    #     auth_id=None,
+                    #     Checker_DT_Stamp=None,
+                    #     Auth_Status='U',
+                    #     product=data.get('product_code', 'GL')[:4],
+                    #     entry_seq_no=idx + 1,
+                    #     delete_stat=None
+                    # )
 
                 if created_entries:
                     # Use the first entry as a reference for shared fields
@@ -5693,7 +5693,6 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
 #             return [AllowAny()]
 #         return [IsAuthenticated()]
     
-
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5714,7 +5713,7 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
+    @action(detail=False, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
     def get_tree(self, request, m_code=None):
         """
         Retrieve MasterType with related MasterCode entries in a tree structure.
@@ -5745,7 +5744,7 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
     serializer_class = MasterCodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
-    lookup_field = 'MC_id'  # Use MC_id for MasterCode CRUD operations
+    lookup_field = 'MC_code'  # Use MC_id for MasterCode CRUD operations
 
     def get_permissions(self):
         if self.request.method == 'POST':

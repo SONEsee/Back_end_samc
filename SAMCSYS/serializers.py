@@ -578,7 +578,7 @@ class JRNLLogSerializer(serializers.ModelSerializer):
         """
         # You can add other validation logic here if needed
         # For example, check format or length
-        if len(value) > 20:
+        if len(value) > 30:
             raise serializers.ValidationError("Reference number too long.")
         
         return value
@@ -603,7 +603,7 @@ class JRNLLogSerializer(serializers.ModelSerializer):
 
 class JournalEntryBatchSerializer(serializers.Serializer):
     """Serializer for batch journal entry creation"""
-    Reference_No = serializers.CharField(max_length=20)
+    Reference_No = serializers.CharField(max_length=30)
     Ccy_cd = serializers.CharField(max_length=20)
     Txn_code = serializers.CharField(max_length=20)
     Value_date = serializers.DateTimeField()
