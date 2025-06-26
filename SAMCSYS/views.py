@@ -1,4 +1,5 @@
 # Create your views here.
+from decimal import Decimal
 import hashlib
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
@@ -30,16 +31,14 @@ def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
 class MTTBUserViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for users, supporting:
-      - file uploads via multipart/form-data
-      - filtering by ?div_id=... and ?Role_ID=...
-    """
     serializer_class = MTTBUserSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
@@ -80,11 +79,138 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        users = self.get_object()
 
-from rest_framework_simplejwt.tokens import RefreshToken
-from .models import MTTB_USER_ACCESS_LOG
+        if users.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        users.Auth_Status = 'A'
+        users.Once_Status = 'Y'
+        users.Record_Status = 'O'
+        users.Checker_Id = request.user
+        users.Checker_DT_Stamp = timezone.now()
+        users.save()
+
+        serializer = self.get_serializer(users)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        users = self.get_object()
+
+        if users.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        users.Auth_Status = 'U'
+        users.Record_Status = 'C'
+        users.Checker_Id = request.user
+        users.Checker_DT_Stamp = timezone.now()
+        users.save()
+
+        serializer = self.get_serializer(users)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
+# from rest_framework_simplejwt.tokens import RefreshToken
+# from .models import MTTB_USER_ACCESS_LOG
+# from rest_framework_simplejwt.settings import api_settings
+# from django.utils import timezone
+
+# def get_client_ip(request):
+#     xff = request.META.get('HTTP_X_FORWARDED_FOR')
+#     if xff:
+#         return xff.split(',')[0].strip()
+#     return request.META.get('REMOTE_ADDR')
+
+# @api_view(["POST"])
+# @permission_classes([AllowAny])
+# def login_view(request):
+#     uid = request.data.get("user_name")
+#     pwd = request.data.get("user_password")
+#     if not uid or not pwd:
+#         # log failure
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=None,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='F',        # F = failed
+#             remarks='Missing credentials'
+#         )
+#         return Response(
+#             {"error": "User_Name and User_Password required"},
+#             status=status.HTTP_400_BAD_REQUEST,
+#         )
+
+#     hashed = _hash(pwd)
+#     try:
+#         user = MTTB_Users.objects.get(
+#             user_name=uid, user_password=hashed
+#         )
+#     except MTTB_Users.DoesNotExist:
+#         # log failure
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=None,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='F',
+#             remarks='Invalid credentials'
+#         )
+#         return Response(
+#             {"error": "Invalid credentials"},
+#             status=status.HTTP_401_UNAUTHORIZED,
+#         )
+
+#     # 1) Create tokens
+#     refresh = RefreshToken.for_user(user)
+#     access  = refresh.access_token
+
+#     # 2) Log the successful login
+#     # Grab the JTI (unique token ID) for session tracking
+#     jti = refresh.get(api_settings.JTI_CLAIM)
+#     MTTB_USER_ACCESS_LOG.objects.create(
+#         user_id=user,
+#         session_id=jti,
+#         ip_address=get_client_ip(request),
+#         user_agent=request.META.get('HTTP_USER_AGENT'),
+#         login_status='S'   # S = success
+#     )
+
+#     # 3) Serialize your user data
+#     data = MTTBUserSerializer(user).data
+
+#     # 4) Return tokens + user info
+#     return Response({
+#         "message": "Login successful",
+#         "refresh": str(refresh),
+#         "access": str(access),
+#         "user": data
+#     })
+
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from .models import MTTB_USER_ACCESS_LOG, MTTB_Users
+from .serializers import MTTBUserSerializer
+from .tokens import CustomRefreshToken
 from rest_framework_simplejwt.settings import api_settings
-from django.utils import timezone
 
 def get_client_ip(request):
     xff = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -132,13 +258,15 @@ def login_view(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    # 1) Create tokens
-    refresh = RefreshToken.for_user(user)
-    access  = refresh.access_token
+    # 1) Create tokens using CustomRefreshToken
+    # refresh = RefreshToken.for_user(user)
+    # access  = refresh.access_token
+    refresh = CustomRefreshToken.for_user(user)
+    access = refresh.access_token
 
     # 2) Log the successful login
     # Grab the JTI (unique token ID) for session tracking
-    jti = refresh.get(api_settings.JTI_CLAIM)
+    jti = refresh[api_settings.JTI_CLAIM]
     MTTB_USER_ACCESS_LOG.objects.create(
         user_id=user,
         session_id=jti,
@@ -213,6 +341,8 @@ def logout_view(request):
         pass
 
     return Response({"message": "Logged out"}, status=status.HTTP_200_OK)
+
+
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from .models import MTTB_USER_ACCESS_LOG, MTTB_USER_ACTIVITY_LOG
@@ -233,59 +363,6 @@ class UserActivityLogViewSet(viewsets.ModelViewSet):
     queryset = MTTB_USER_ACTIVITY_LOG.objects.select_related('user_id').all().order_by('-activity_datetime')
     serializer_class = UserActivityLogSerializer
     permission_classes = [IsAuthenticated]
-# @api_view(["POST"])
-# @permission_classes([AllowAny])
-# def login_view(request):
-#     uid = request.data.get("user_name")
-#     pwd = request.data.get("user_password")
-#     if not uid or not pwd:
-#         return Response({"error": "User_Name and User_Password required"},
-#                         status=status.HTTP_400_BAD_REQUEST)
-
-#     hashed = _hash(pwd)
-#     try:
-#         user = MTTB_Users.objects.select_related('div_id', 'Role_ID').get(
-#             user_name=uid, user_password=hashed
-#         )
-#     except MTTB_Users.DoesNotExist:
-#         return Response({"error": "Invalid credentials"},
-#                         status=status.HTTP_401_UNAUTHORIZED)
-
-#     # 1) Create tokens
-#     refresh = RefreshToken.for_user(user)
-#     access  = refresh.access_token
-
-#     # 2) Serialize your user data
-#     data = MTTBUserSerializer(user).data
-
-#     # 3) Manually add full division & role info
-#     if user.div_id:
-#         data['division'] = {
-#             'div_id': user.Div_Id.Div_Id,
-#             'Div_NameL': user.Div_Id.Div_NameL,
-#             'Div_NameE': user.Div_Id.Div_NameE,
-#             'Record_Status': user.Div_Id.Record_Status,
-#         }
-#     else:
-#         data['division'] = None
-
-#     if user.Role_ID:
-#         data['role'] = {
-#             'role_id': user.Role_ID.role_id,
-#             'role_name_la': user.Role_ID.role_name_la,
-#             'role_name_en': user.Role_ID.role_name_en,
-#             'record_Status': user.Role_ID.record_Status,
-#         }
-#     else:
-#         data['role'] = None
-
-#     # 4) Return tokens + full payload
-#     return Response({
-#         "message": "Login successful",
-#         "refresh": str(refresh),
-#         "access": str(access),
-#         "user": data
-#     })
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -332,6 +409,81 @@ class MTTBDivisionViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        
+        if obj.record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
+    
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
@@ -367,48 +519,81 @@ class MTTBRoleViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
 
-# from rest_framework import viewsets
-# from rest_framework.permissions import IsAuthenticated, AllowAny
-# from .models import MTTB_Role_Detail
-# from .serializers import RoleDetailSerializer
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
-# class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
-#     """
-#     CRUD for Role_Detail records, with optional filtering by role_id and/or function_id via query params.
-#     """
-#     serializer_class = RoleDetailSerializer
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
 
 
-#     @action(detail=False, methods=['get'], url_path='single')
-#     def get_single(self, request):
-#         role_id = request.query_params.get('role_id')
-#         function_id = request.query_params.get('function_id')
 
-#         try:
-#             obj = MTTB_Role_Detail.objects.get(role_id=role_id, function_id=function_id)
-#             serializer = self.get_serializer(obj)
-#             return Response(serializer.data)
-#         except MTTB_Role_Detail.DoesNotExist:
-#             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-#     def get_permissions(self):
-#         # Allow open creation; require auth for read/update/delete
-#         if self.request.method == 'POST':
-#             return [AllowAny()]
-#         return [IsAuthenticated()]
-
-#     def get_queryset(self):
-#         qs = MTTB_Role_Detail.objects.select_related('role_id', 'function_id').all()
-#         params = self.request.query_params
-#         role = params.get('role_id')
-#         func = params.get('function_id')
-#         if role and func:
-#             qs = qs.filter(role_id__role_id=role, function_id__function_id=func)
-#         elif role:
-#             qs = qs.filter(role_id__role_id=role)
-#         elif func:
-#             qs = qs.filter(function_id__function_id=func)
-#         return qs
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -416,11 +601,110 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import MTTB_Role_Detail
 from .serializers import RoleDetailSerializer
 
+# class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
+#     """
+#     CRUD for Role_Detail records, with optional filtering by role_id and/or sub_menu_id via query params.
+#     """
+#     serializer_class = RoleDetailSerializer
+
+#     def create(self, request, *args, **kwargs):
+#         role_id = request.data.get('role_id')
+#         sub_menu_id = request.data.get('sub_menu_id')
+
+#         if MTTB_Role_Detail.objects.filter(role_id=role_id, sub_menu_id=sub_menu_id).exists():
+#             return Response(
+#                 {"detail": "This role_id and sub_menu_id combination already exists."},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+#         return super().create(request, *args, **kwargs)
+
+#     @action(detail=False, methods=['get'], url_path='single')
+#     def get_single(self, request):
+#         role_id = request.query_params.get('role_id')
+#         sub_menu_id = request.query_params.get('sub_menu_id')
+
+#         if not role_id or not sub_menu_id:
+#             return Response(
+#                 {'detail': 'Both role_id and sub_menu_id are required.'}, 
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         try:
+#             obj = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').get(
+#                 role_id=role_id, sub_menu_id=sub_menu_id
+#             )
+#             serializer = self.get_serializer(obj)
+#             return Response(serializer.data)
+#         except MTTB_Role_Detail.DoesNotExist:
+#             return Response(
+#                 {'detail': 'Role detail not found.'}, 
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
+#         except Exception as e:
+#             return Response(
+#                 {'detail': f'Error retrieving role detail: {str(e)}'}, 
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#             )
+
+#     def get_permissions(self):
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+
+#     def get_queryset(self):
+#         qs = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').all().order_by('role_id', 'sub_menu_id')
+#         params = self.request.query_params
+        
+#         # Filter parameters
+#         role_id = params.get('role_id')
+#         sub_menu_id = params.get('sub_menu_id')
+#         menu_id = params.get('menu_id')  # Filter by main menu
+#         module_id = params.get('module_id') or params.get('module_Id')  # Accept both 'module_id' and 'module_Id'
+#         auth_status = params.get('Auth_Status')
+#         record_status = params.get('Record_Status')
+
+#         # Apply filters
+#         if role_id and sub_menu_id:
+#             qs = qs.filter(role_id=role_id, sub_menu_id=sub_menu_id)
+#         elif role_id:
+#             qs = qs.filter(role_id=role_id)
+#         elif sub_menu_id:
+#             qs = qs.filter(sub_menu_id=sub_menu_id)
+        
+#         if menu_id:
+#             qs = qs.filter(sub_menu_id__menu_id_id=menu_id)
+#         if module_id:
+#             qs = qs.filter(sub_menu_id__menu_id__module_Id_id=module_id)
+#         if auth_status:
+#             qs = qs.filter(Auth_Status=auth_status)
+#         if record_status:
+#             qs = qs.filter(Record_Status=record_status)
+
+#         return qs
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.db.models import Q, F
+from .models import MTTB_Role_Detail, MTTB_Role_Master, STTB_ModulesInfo, MTTB_MAIN_MENU, MTTB_SUB_MENU
+from .serializers import RoleDetailSerializer
+
 class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
     """
-    CRUD for Role_Detail records, with optional filtering by role_id and/or function_id via query params.
+    CRUD for Role_Detail records, with optional filtering by role_id and/or sub_menu_id via query params.
     """
     serializer_class = RoleDetailSerializer
+
+    def create(self, request, *args, **kwargs):
+        role_id = request.data.get('role_id')
+        sub_menu_id = request.data.get('sub_menu_id')
+
+        if MTTB_Role_Detail.objects.filter(role_id=role_id, sub_menu_id=sub_menu_id).exists():
+            return Response(
+                {"detail": "This role_id and sub_menu_id combination already exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().create(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='single')
     def get_single(self, request):
@@ -429,12 +713,14 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
 
         if not role_id or not sub_menu_id:
             return Response(
-                {'detail': 'Both role_id and function_id are required.'}, 
+                {'detail': 'Both role_id and sub_menu_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
+            obj = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').get(
+                role_id=role_id, sub_menu_id=sub_menu_id
+            )
             serializer = self.get_serializer(obj)
             return Response(serializer.data)
         except MTTB_Role_Detail.DoesNotExist:
@@ -449,28 +735,35 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
             )
 
     def get_permissions(self):
-        # Allow open creation; require auth for read/update/delete
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        qs = MTTB_Role_Detail.objects.all()
+        qs = MTTB_Role_Detail.objects.select_related('sub_menu_id', 'sub_menu_id__menu_id').all().order_by('role_id', 'sub_menu_id')
         params = self.request.query_params
-        role = params.get('role_id')
-        func = params.get('sub_menu_id')
         
-        # If role_id and function_id are direct fields (not foreign keys)
-        if role and func:
-            qs = qs.filter(role_id=role, sub_menu_id=func)
-        elif role:
-            qs = qs.filter(role_id=role)
-        elif func:
-            qs = qs.filter(sub_menu_id=func)
-            
+        # Filter parameters
+        role_id = params.get('role_id')
+        sub_menu_id = params.get('sub_menu_id')
+        menu_id = params.get('menu_id')  # Filter by main menu
+        module_id = params.get('module_Id')  # Filter by module
+        
+        # Apply filters
+        if role_id and sub_menu_id:
+            qs = qs.filter(role_id=role_id, sub_menu_id=sub_menu_id)
+        elif role_id:
+            qs = qs.filter(role_id=role_id)
+        elif sub_menu_id:
+            qs = qs.filter(sub_menu_id=sub_menu_id)
+        
+        if menu_id:
+            qs = qs.filter(sub_menu_id__menu_id_id=menu_id)
+        if module_id:
+            qs = qs.filter(sub_menu_id__menu_id__module_Id_id=module_id)
+
         return qs
 
-    # Optional: Add custom update method for your frontend URL pattern
     @action(detail=False, methods=['put'], url_path='update')
     def update_role_detail(self, request):
         role_id = request.query_params.get('role_id')
@@ -478,7 +771,7 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
 
         if not role_id or not sub_menu_id:
             return Response(
-                {'detail': 'Both role_id and function_id are required.'}, 
+                {'detail': 'Both role_id and sub_menu_id are required.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -499,7 +792,48 @@ class MTTBRoleDetailViewSet(viewsets.ModelViewSet):
                 {'detail': f'Error updating role detail: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def roledetail_delete(request):
+    role_id = request.GET.get('role_id')
+    sub_menu_id = request.GET.get('sub_menu_id')
+    try:
+        obj = MTTB_Role_Detail.objects.get(role_id=role_id, sub_menu_id=sub_menu_id)
+        obj.delete()
+        return Response({"detail": "Role detail deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+    except MTTB_Role_Detail.DoesNotExist:
+        return Response({"detail": "Role detail not found."}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"detail": f"Error deleting role detail: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 # Function Loop Sidebar Menu
 
 from collections import OrderedDict
@@ -511,24 +845,21 @@ from django.shortcuts import get_object_or_404
 from .models import (
     MTTB_Users,
     MTTB_Role_Detail,
-    MTTB_Function_Desc,
     MTTB_SUB_MENU,
     MTTB_MAIN_MENU,
     STTB_ModulesInfo,
 )
-from .serializers import ModuleSerializer  # if you added them
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sidebar_for_user(request, user_id):
     """
     GET /api/users/{user_id}/sidebar/
-    Returns modules → main menus → sub menus → functions with permissions.
+    Returns modules → main menus → sub menus with permissions.
     """
     # 1) Load user & role
     user = get_object_or_404(MTTB_Users, user_id=user_id)
     role = user.Role_ID
-    # print("User:", user.user_id, "Role:", user.Role_ID)
 
     if not role:
         return Response([])  # no role, no sidebar
@@ -538,18 +869,16 @@ def sidebar_for_user(request, user_id):
         MTTB_Role_Detail.objects
           .filter(role_id=role)
           .select_related(
-              'function_id',
-              'function_id__sub_menu_id',
-              'function_id__sub_menu_id__menu_id',
-              'function_id__sub_menu_id__menu_id__module_Id'
+              'sub_menu_id',
+              'sub_menu_id__menu_id',
+              'sub_menu_id__menu_id__module_Id'
           )
     )
 
-    # 3) Build nested dict: module → main_menu → sub_menu → [functions]
+    # 3) Build nested dict: module → main_menu → sub_menu
     modules = OrderedDict()
     for det in details:
-        func  = det.function_id
-        sub   = func.sub_menu_id
+        sub   = det.sub_menu_id
         main  = sub.menu_id if sub else None
         mod   = main.module_Id if main else None
         if not (sub and main and mod):
@@ -564,7 +893,7 @@ def sidebar_for_user(request, user_id):
                 'module_name_en': mod.module_name_en,
                 'module_icon':    mod.module_icon,
                 'module_order':   mod.module_order,
-                'is_active':      mod.is_active,
+                'Record_Status': mod.Record_Status,
                 'main_menus':     OrderedDict()
             }
 
@@ -578,7 +907,7 @@ def sidebar_for_user(request, user_id):
                 'menu_name_en': main.menu_name_en,
                 'menu_icon':    main.menu_icon,
                 'menu_order':   main.menu_order,
-                'is_active':    main.is_active,
+                'Record_Status': main.Record_Status,
                 'sub_menus':    OrderedDict()
             }
 
@@ -587,28 +916,21 @@ def sidebar_for_user(request, user_id):
         sm_group = mm_group[mm_key]['sub_menus']
         if sm_key not in sm_group:
             sm_group[sm_key] = {
-                'sub_menu_id':    sub.sub_menu_id,
+                'sub_menu_id':      sub.sub_menu_id,
                 'sub_menu_name_la': sub.sub_menu_name_la,
                 'sub_menu_name_en': sub.sub_menu_name_en,
-                'sub_menu_icon':   sub.sub_menu_icon,
-                'sub_menu_order':  sub.sub_menu_order,
-                'sub_menu_urls':   sub.sub_menu_urls,
-                'is_active':       sub.is_active,
-                'functions':       []
+                'sub_menu_icon':    sub.sub_menu_icon,
+                'sub_menu_order':   sub.sub_menu_order,
+                'sub_menu_urls':    sub.sub_menu_urls,
+                'Record_Status':        sub.Record_Status,
+                'permissions': {
+                    'new':    det.New_Detail,
+                    'delete': det.Del_Detail,
+                    'edit':   det.Edit_Detail,
+                    'auth':   det.Auth_Detail,
+                    'view':   det.View_Detail,
+                }
             }
-
-        # Finally, append the function + its permission flags
-        sm_group[sm_key]['functions'].append({
-            'function_id':    func.function_id,
-            'description_la': func.description_la,
-            'description_en': func.description_en,
-            'permissions': {
-                'new':    det.New_Detail,
-                'delete': det.Del_Detail,
-                'edit':   det.Edit_Detail,
-                'auth':   det.Auth_Detail,
-            }  
-        })
 
     # 4) Convert sub-dicts to lists
     result = []
@@ -621,132 +943,7 @@ def sidebar_for_user(request, user_id):
         mod['main_menus'] = mm_list
         result.append(mod)
 
-    # 5) (Optional) validate with serializer
-    # serialized = ModuleSerializer(result, many=True)
-    # return Response(serialized.data)
-
     return Response(result)
-
-
-# from collections import OrderedDict
-# from rest_framework.decorators import api_view, permission_classes
-# from rest_framework.permissions import IsAuthenticated
-# from rest_framework.response import Response
-# from rest_framework import status
-# from django.shortcuts import get_object_or_404
-
-# from .models import (
-#     MTTB_Role_Master,
-#     MTTB_Role_Detail,
-#     MTTB_Function_Desc,
-#     MTTB_SUB_MENU,
-#     MTTB_MAIN_MENU,
-#     STTB_ModulesInfo,
-# )
-
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def role_sidebar(request, role_id):
-#     """
-#     GET /api/role/<role_id>/sidebar/
-#     Returns modules → main menus → sub menus → functions with permissions.
-#     """
-#     # 1) Load role
-#     role = get_object_or_404(MTTB_Role_Master, role_id=role_id)
-
-#     # 2) Pull in every detail → function → sub_menu → main_menu → module
-#     details = (
-#         MTTB_Role_Detail.objects
-#         .filter(role_id=role)
-#         .select_related(
-#             'function_id',
-#             'function_id__sub_menu_id',
-#             'function_id__sub_menu_id__menu_id',
-#             'function_id__sub_menu_id__menu_id__module_Id'
-#         )
-#         .order_by(
-#             'function_id__sub_menu_id__menu_id__module_Id__module_order',
-#             'function_id__sub_menu_id__menu_id__menu_order',
-#             'function_id__sub_menu_id__sub_menu_order',
-#             'function_id__function_order'
-#         )
-#     )
-
-#     # 3) Group into nested dicts
-#     modules = OrderedDict()
-#     for det in details:
-#         func = det.function_id
-#         sub  = func.sub_menu_id
-#         main = sub.menu_id
-#         mod  = main.module_Id
-
-#         # ensure all links exist
-#         if not (sub and main and mod):
-#             continue
-
-#         # Module level
-#         if mod.module_Id not in modules:
-#             modules[mod.module_Id] = {
-#                 'module_Id':      mod.module_Id,
-#                 'module_name_la': mod.module_name_la,
-#                 'module_name_en': mod.module_name_en,
-#                 'module_icon':    mod.module_icon,
-#                 'module_order':   mod.module_order,
-#                 'is_active':      mod.is_active,
-#                 'main_menus':     OrderedDict()
-#             }
-#         mm_group = modules[mod.module_Id]['main_menus']
-
-#         # Main-menu level
-#         if main.menu_id not in mm_group:
-#             mm_group[main.menu_id] = {
-#                 'menu_id':      main.menu_id,
-#                 'menu_name_la': main.menu_name_la,
-#                 'menu_name_en': main.menu_name_en,
-#                 'menu_icon':    main.menu_icon,
-#                 'menu_order':   main.menu_order,
-#                 'is_active':    main.is_active,
-#                 'sub_menus':    OrderedDict()
-#             }
-#         sm_group = mm_group[main.menu_id]['sub_menus']
-
-#         # Sub-menu level
-#         if sub.sub_menu_id not in sm_group:
-#             sm_group[sub.sub_menu_id] = {
-#                 'sub_menu_id':      sub.sub_menu_id,
-#                 'sub_menu_name_la': sub.sub_menu_name_la,
-#                 'sub_menu_name_en': sub.sub_menu_name_en,
-#                 'sub_menu_icon':    sub.sub_menu_icon,
-#                 'sub_menu_order':   sub.sub_menu_order,
-#                 'is_active':        sub.is_active,
-#                 'functions':        []
-#             }
-
-#         # Function level
-#         sm_group[sub.sub_menu_id]['functions'].append({
-#             'function_id':    func.function_id,
-#             'description_la': func.description_la,
-#             'description_en': func.description_en,
-#             'permissions': {
-#                 'new':    det.New_Detail,
-#                 'delete': det.Del_Detail,
-#                 'edit':   det.Edit_Detail,
-#                 'auth':   det.Auth_Detail,
-#                 'view':   det.View_Detail
-#             }
-#         })
-
-#     # 4) Convert nested OrderedDicts to lists
-#     sidebar = []
-#     for mod in modules.values():
-#         main_menus = []
-#         for mm in mod['main_menus'].values():
-#             mm['sub_menus'] = list(mm['sub_menus'].values())
-#             main_menus.append(mm)
-#         mod['main_menus'] = main_menus
-#         sidebar.append(mod)
-
-#     return Response(sidebar, status=status.HTTP_200_OK)
 
 from collections import OrderedDict
 from rest_framework.decorators import api_view, permission_classes
@@ -758,7 +955,6 @@ from django.shortcuts import get_object_or_404
 from .models import (
     MTTB_Role_Master,
     MTTB_Role_Detail,
-    MTTB_Function_Desc,
     MTTB_SUB_MENU,
     MTTB_MAIN_MENU,
     STTB_ModulesInfo,
@@ -769,56 +965,47 @@ from .models import (
 def role_sidebar(request, role_id=None):
     """
     GET /api/role/<role_id>/sidebar/
-    Returns modules → main menus → sub menus → functions with permissions.
-    If role_id is not provided, returns all available data.
+    Returns modules → main menus → sub menus with permissions.
     """
     # 1) Initialize query based on role_id
     if role_id:
-        # Load specific role if role_id is provided
         role = get_object_or_404(MTTB_Role_Master, role_id=role_id)
         details = (
             MTTB_Role_Detail.objects
             .filter(role_id=role)
             .select_related(
-                'function_id',
-                'function_id__sub_menu_id',
-                'function_id__sub_menu_id__menu_id',
-                'function_id__sub_menu_id__menu_id__module_Id'
+                'sub_menu_id',
+                'sub_menu_id__menu_id',
+                'sub_menu_id__menu_id__module_Id'
             )
             .order_by(
-                'function_id__sub_menu_id__menu_id__module_Id__module_order',
-                'function_id__sub_menu_id__menu_id__menu_order',
-                'function_id__sub_menu_id__sub_menu_order',
-                'function_id__function_order'
+                'sub_menu_id__menu_id__module_Id__module_order',
+                'sub_menu_id__menu_id__menu_order',
+                'sub_menu_id__sub_menu_order'
             )
         )
     else:
-        # Get all role details if no role_id is provided
         details = (
             MTTB_Role_Detail.objects
             .select_related(
-                'function_id',
-                'function_id__sub_menu_id',
-                'function_id__sub_menu_id__menu_id',
-                'function_id__sub_menu_id__menu_id__module_Id'
+                'sub_menu_id',
+                'sub_menu_id__menu_id',
+                'sub_menu_id__menu_id__module_Id'
             )
             .order_by(
-                'function_id__sub_menu_id__menu_id__module_Id__module_order',
-                'function_id__sub_menu_id__menu_id__menu_order',
-                'function_id__sub_menu_id__sub_menu_order',
-                'function_id__function_order'
+                'sub_menu_id__menu_id__module_Id__module_order',
+                'sub_menu_id__menu_id__menu_order',
+                'sub_menu_id__sub_menu_order'
             )
         )
 
     # 2) Group into nested dicts
     modules = OrderedDict()
     for det in details:
-        func = det.function_id
-        sub = func.sub_menu_id
+        sub = det.sub_menu_id
         main = sub.menu_id
         mod = main.module_Id
 
-        # Ensure all links exist
         if not (sub and main and mod):
             continue
 
@@ -830,7 +1017,7 @@ def role_sidebar(request, role_id=None):
                 'module_name_en': mod.module_name_en,
                 'module_icon':    mod.module_icon,
                 'module_order':   mod.module_order,
-                'is_active':      mod.is_active,
+                'Record_Status':      mod.Record_Status,
                 'main_menus':     OrderedDict()
             }
         mm_group = modules[mod.module_Id]['main_menus']
@@ -843,7 +1030,7 @@ def role_sidebar(request, role_id=None):
                 'menu_name_en': main.menu_name_en,
                 'menu_icon':    main.menu_icon,
                 'menu_order':   main.menu_order,
-                'is_active':    main.is_active,
+                'Record_Status':    main.Record_Status,
                 'sub_menus':    OrderedDict()
             }
         sm_group = mm_group[main.menu_id]['sub_menus']
@@ -856,23 +1043,16 @@ def role_sidebar(request, role_id=None):
                 'sub_menu_name_en': sub.sub_menu_name_en,
                 'sub_menu_icon':    sub.sub_menu_icon,
                 'sub_menu_order':   sub.sub_menu_order,
-                'is_active':        sub.is_active,
-                'functions':        []
+                'sub_menu_urls':    sub.sub_menu_urls,
+                'Record_Status':        sub.Record_Status,
+                'permissions': {
+                    'new':    det.New_Detail,
+                    'delete': det.Del_Detail,
+                    'edit':   det.Edit_Detail,
+                    'auth':   det.Auth_Detail,
+                    'view':   det.View_Detail
+                }
             }
-
-        # Function level
-        sm_group[sub.sub_menu_id]['functions'].append({
-            'function_id':    func.function_id,
-            'description_la': func.description_la,
-            'description_en': func.description_en,
-            'permissions': {
-                'new':    det.New_Detail,
-                'delete': det.Del_Detail,
-                'edit':   det.Edit_Detail,
-                'auth':   det.Auth_Detail,
-                'view':   det.View_Detail
-            }
-        })
 
     # 3) Convert nested OrderedDicts to lists
     sidebar = []
@@ -886,7 +1066,118 @@ def role_sidebar(request, role_id=None):
 
     return Response(sidebar, status=status.HTTP_200_OK)
 
-from rest_framework import viewsets
+
+from collections import OrderedDict
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import (
+    STTB_ModulesInfo,
+    MTTB_MAIN_MENU,
+    MTTB_SUB_MENU,
+    MTTB_Function_Desc,
+)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def AllModule(request):
+    """
+    GET /api/modules/all/
+    Returns all modules -> main menus -> sub menus -> functions.
+    Only includes active records, ordered by their respective order fields.
+    """
+    # 1) Fetch all active modules
+    modules = (
+        STTB_ModulesInfo.objects
+        .filter(Record_Status='O')
+        .order_by('module_order')
+    )
+
+    # 2) Initialize response structure
+    result = []
+
+    # 3) Loop through modules
+    for mod in modules:
+        module_data = {
+            'module_Id': mod.module_Id,
+            'module_name_la': mod.module_name_la,
+            'module_name_en': mod.module_name_en,
+            'module_icon': mod.module_icon,
+            'module_order': mod.module_order,
+            'Record_Status': mod.Record_Status,
+            'main_menus': []
+        }
+
+        # 4) Fetch active main menus for this module
+        main_menus = (
+            MTTB_MAIN_MENU.objects
+            .filter(module_Id=mod, Record_Status='O')
+            .order_by('menu_order')
+        )
+
+        # 5) Loop through main menus
+        for main in main_menus:
+            main_menu_data = {
+                'menu_id': main.menu_id,
+                'menu_name_la': main.menu_name_la,
+                'menu_name_en': main.menu_name_en,
+                'menu_icon': main.menu_icon,
+                'menu_order': main.menu_order,
+                'Record_Status': main.Record_Status,
+                'sub_menus': []
+            }
+
+            # 6) Fetch active sub-menus for this main menu
+            sub_menus = (
+                MTTB_SUB_MENU.objects
+                .filter(menu_id=main, Record_Status='O')
+                .order_by('sub_menu_order')
+            )
+
+            # 7) Loop through sub-menus
+            for sub in sub_menus:
+                sub_menu_data = {
+                    'sub_menu_id': sub.sub_menu_id,
+                    'sub_menu_name_la': sub.sub_menu_name_la,
+                    'sub_menu_name_en': sub.sub_menu_name_en,
+                    'sub_menu_icon': sub.sub_menu_icon,
+                    'sub_menu_order': sub.sub_menu_order,
+                    'sub_menu_urls': sub.sub_menu_urls,
+                    'Record_Status': sub.Record_Status,
+                    'functions': []
+                }
+
+                # 8) Fetch active functions for this sub-menu
+                functions = (
+                    MTTB_Function_Desc.objects
+                    .filter(sub_menu_id=sub, is_active='O')
+                    .order_by('function_order')
+                )
+
+                # 9) Loop through functions
+                for func in functions:
+                    function_data = {
+                        'function_id': func.function_id,
+                        'description_la': func.description_la,
+                        'description_en': func.description_en,
+                        'function_order': func.function_order,
+                        'Record_Status': func.is_active
+                    }
+                    sub_menu_data['functions'].append(function_data)
+
+                main_menu_data['sub_menus'].append(sub_menu_data)
+
+            module_data['main_menus'].append(main_menu_data)
+
+        result.append(module_data)
+
+    return Response(result, status=status.HTTP_200_OK)
+
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import (
     STTB_ModulesInfo,
@@ -910,17 +1201,89 @@ class ModulesInfoViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=user_id,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)
         serializer.save(
-            modified_by=user_id,
-            modified_date=timezone.now()
-        )
+            Checker_Id=user_id,
+            Checker_DT_Stamp=timezone.now()
+    )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
 
 class MainMenuViewSet(viewsets.ModelViewSet):
     serializer_class = MainMenuSerializer
@@ -937,18 +1300,90 @@ class MainMenuViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=user_id,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)
         serializer.save(
-            modified_by=user_id,
-            modified_date=timezone.now()
+            Checker_Id=user_id,
+            Checker_DT_Stamp=timezone.now()
         )
-    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
 
 class SubMenuViewSet(viewsets.ModelViewSet):
     serializer_class = SubMenuSerializer
@@ -965,44 +1400,186 @@ class SubMenuViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=user_id,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
         user = self.request.user
         user_id = getattr(user, 'user_id', None)
         serializer.save(
-            modified_by=user_id,
-            modified_date=timezone.now()
+            Checker_Id=user_id,
+            Checker_DT_Stamp=timezone.now()
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None) or str(request.user)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
 
 class FunctionDescViewSet(viewsets.ModelViewSet):
     serializer_class = FunctionDescSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = MTTB_Function_Desc.objects.select_related('sub_menu_id').all().order_by('function_order')
-        sub_menu_id = self.request.query_params.get('sub_menu_id')
-        if sub_menu_id:
-            queryset = queryset.filter(sub_menu_id=sub_menu_id) 
+        queryset = MTTB_Function_Desc.objects.all().order_by('function_order')
+        Record_Status = self.request.query_params.get('Record_Status')
+        eod_function = self.request.query_params.get('eod_function')
+        if eod_function:
+            queryset = queryset.filter(eod_function=eod_function)
+        if Record_Status:
+            queryset = queryset.filter(Record_Status=Record_Status) 
         return queryset
     
     def perform_create(self, serializer):
-        user = self.request.user
-        user_id = getattr(user, 'user_id', None)  # ปรับให้เข้ากับ user model ของคุณ
+        maker = None
+        if self.request.user and self.request.user.is_authenticated:
+            maker = self.request.user  # Always assign the user instance
         serializer.save(
-            created_by=user_id,
-            created_date=timezone.now()
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
         )
 
     def perform_update(self, serializer):
-        user = self.request.user
-        user_id = getattr(user, 'user_id', None)
+        user = self.request.user if self.request.user and self.request.user.is_authenticated else None
         serializer.save(
-            modified_by=user_id,
-            modified_date=timezone.now()
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
         )
+    def perform_destroy(self, instance):
+        return super().perform_destroy(instance)
+
+    def get_permissions(self):
+        # Allow unauthenticated creation
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = request.user  # Assign the user instance directly
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.eod_function = 'N'  # Ensure eod_function is set to 'N' when closing
+        obj.Record_Status = 'C'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_enable_eoc(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.eod_function == 'Y':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Record_Status', None) != 'O':
+            return Response({'detail': 'Cannot set to Open. Only Record_Status = "O" records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.eod_function = 'Y'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Enable.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_disable_eoc(self, request, pk=None): #set_enable_eoc(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.eod_function == 'N':
+            return Response({'detail': 'Already Disable.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Record_Status', None) != 'C':
+            return Response({'detail': 'Cannot set to Open. Only Record_Status = "C" records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.eod_function = 'N'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Disable.', 'entry': serializer.data})
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -1041,6 +1618,79 @@ class CcyDefnViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -1055,6 +1705,13 @@ class ExcRateViewSet(viewsets.ModelViewSet):
     """
     queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('ccy_code__ccy_code')
     serializer_class = ExcRateSerializer
+
+    def get_queryset(self):
+        queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('ccy_code__ccy_code')
+        ccy_code_param = self.request.query_params.get('ccy_code')
+        if ccy_code_param:
+            queryset = queryset.filter(ccy_code__ccy_code=ccy_code_param)
+        return queryset
 
     def get_permissions(self):
         # Allow unauthenticated create
@@ -1099,6 +1756,49 @@ class ExcRateViewSet(viewsets.ModelViewSet):
             Auth_Status=exc_rate.Auth_Status
         )
 
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'U'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
+
 class ExcRateHistoryViewSet(viewsets.ModelViewSet):
     """
     CRUD for Exchange Rate History.
@@ -1122,42 +1822,6 @@ def exchange_rate_history_for_ccy(request, ccy_code):
     histories = MTTB_EXC_Rate_History.objects.filter(ccy_code__ccy_code=ccy_code).order_by('-Maker_DT_Stamp')
     serializer = ExcRateHistorySerializer(histories, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# from rest_framework import viewsets
-# from rest_framework.permissions import IsAuthenticated, AllowAny
-# from django.utils import timezone
-# from .models import MTTB_GLMaster
-# from .serializers import GLMasterSerializer
-
-# class GLMasterViewSet(viewsets.ModelViewSet):
-#     """
-#     CRUD for General Ledger Master records.
-#     """
-#     queryset = MTTB_GLMaster.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('gl_code')
-#     serializer_class = GLMasterSerializer
-
-#     def get_permissions(self):
-#         # Allow unauthenticated creation (e.g. bootstrap), require auth otherwise
-#         if self.request.method == 'POST':
-#             return [AllowAny()]
-#         return [IsAuthenticated()]
-
-#     def perform_create(self, serializer):
-#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         gl = serializer.save(
-#             Maker_Id=maker,
-#             Maker_DT_Stamp=timezone.now()
-#         )
-#         return gl
-
-#     def perform_update(self, serializer):
-#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         gl = serializer.save(
-#             Checker_Id=checker,
-#             Checker_DT_Stamp=timezone.now()
-#         )
-#         return gl
 
 
 from rest_framework import viewsets
@@ -1222,6 +1886,79 @@ class GLMasterViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
     
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+    
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
@@ -1232,8 +1969,21 @@ class GLSubViewSet(viewsets.ModelViewSet):
     """
     CRUD for General Ledger Sub-account (GLSub) records.
     """
-    queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
     serializer_class = GLSubSerializer
+
+    def get_queryset(self):
+        queryset = MTTB_GLSub.objects.select_related('gl_code', 'Maker_Id', 'Checker_Id').all().order_by('glsub_code')
+
+        gl_code = self.request.query_params.get('gl_code')
+        glcode_sub = self.request.query_params.get('glcode_sub')  # New search param
+
+        if gl_code:
+            queryset = queryset.filter(gl_code=gl_code)
+
+        if glcode_sub:
+            queryset = queryset.filter(glsub_code__icontains=glcode_sub)
+
+        return queryset
 
     def get_permissions(self):
         # Allow unauthenticated create if needed
@@ -1255,68 +2005,372 @@ class GLSubViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import MTTB_EMPLOYEE,MTTB_LCL_Holiday
-from .serializers import MTTB_EMPLOYEESerializer,MTTB_LCL_HolidaySerializer
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
 
-class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
-    serializer_class = MTTB_EMPLOYEESerializer
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='validate-selection')
+    def validate_glsub_selection(self, request):
+        """
+        Validate if a GL sub-account can be used for a debit or credit transaction based on
+        the outstanding field in the linked MTTB_GLMaster.
+        Expects 'glsub_code' and 'transaction_side' ('dr' or 'cr') in the request data.
+        MTTB_GLMaster.outstanding can be 'dr', 'cr', or 'dr/cr'.
+        """
+        glsub_code = request.data.get('glsub_code')
+        transaction_side = request.data.get('transaction_side')
+
+        if not glsub_code or not transaction_side:
+            return Response({
+                'valid': False,
+                'message': 'Both glsub_code and transaction_side are required.',
+                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if transaction_side not in ['dr', 'cr']:
+            return Response({
+                'valid': False,
+                'message': 'Transaction side must be "dr" (debit) or "cr" (credit).',
+                'debug': {'transaction_side': transaction_side}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            glsub = MTTB_GLSub.objects.select_related('gl_code').get(glsub_code=glsub_code)
+        except MTTB_GLSub.DoesNotExist:
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} does not exist.',
+                'debug': {'glsub_code': glsub_code}
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if gl_code exists (since it's nullable)
+        if not glsub.gl_code:
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} is not linked to any GL Master account.',
+                'debug': {'glsub_id': glsub.glsub_id, 'gl_code': None}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        outstanding = glsub.gl_code.outstanding or ''
+
+        # Validate outstanding value
+        if outstanding not in ['dr', 'cr', 'dr/cr']:
+            return Response({
+                'valid': False,
+                'message': f'Invalid outstanding value ({outstanding}) for GL Master account linked to {glsub_code}. Must be "dr", "cr", or "dr/cr".',
+                'debug': {'glsub_code': glsub_code, 'outstanding': outstanding}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate transaction_side against outstanding
+        if outstanding == 'dr' and transaction_side != 'dr':
+            return Response({
+                'valid': False,
+                'message': f'Cannot use {glsub_code} for credit transaction. GL Master account allows only debit (outstanding = "dr").',
+                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if outstanding == 'cr' and transaction_side != 'cr':
+            return Response({
+                'valid': False,
+                'message': f'Cannot use {glsub_code} for debit transaction. GL Master account allows only credit (outstanding = "cr").',
+                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Relaxed status checks based on sample data
+        # Sample shows MTTB_GLSub.Record_Status = 'C' and MTTB_GLMaster.Auth_Status = 'U', which may be valid
+        # Commenting out these checks; uncomment if they are required in your business logic
+        """
+        if glsub.Record_Status == 'C':
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} is closed and cannot be used.',
+                'debug': {'glsub_code': glsub_code, 'Record_Status': glsub.Record_Status}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if glsub.Auth_Status != 'A':
+            return Response({
+                'valid': False,
+                'message': f'GL sub-account {glsub_code} is not authorized (Auth_Status must be "A").',
+                'debug': {'glsub_code': glsub_code, 'Auth_Status': glsub.Auth_Status}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        """
+
+        return Response({
+            'valid': True,
+            'message': f'GL sub-account {glsub_code} is valid for {transaction_side} transaction.',
+            'debug': {
+                'glsub_code': glsub_code,
+                'transaction_side': transaction_side,
+                'outstanding': outstanding,
+                'glsub_record_status': glsub.Record_Status,
+                'glsub_auth_status': glsub.Auth_Status,
+                'glmaster_auth_status': glsub.gl_code.Auth_Status
+            }
+        }, status=status.HTTP_200_OK)
+
+
+
+# class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
+#     serializer_class = MTTB_EMPLOYEESerializer
+#     permission_classes = [IsAuthenticated]
+#     lookup_field = 'employee_id'
+
+#     def get_queryset(self):
+#         queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
+#         div_id = self.request.query_params.get('div_id')
+#         if div_id:
+#             queryset = queryset.filter(division_id=div_id)
+#         return queryset
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         if serializer.is_valid():
+#             self.perform_create(serializer)
+#             return Response({
+#                 "status": "success",
+#                 "message": "Employee created successfully.",
+#                 "data": serializer.data
+#             }, status=status.HTTP_201_CREATED)
+#         else:
+#             return Response({
+#                 "status": "error",
+#                 "message": "Failed to create employee.",
+#                 "errors": serializer.errors
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+#     def destroy(self, request, *args, **kwargs):
+#         try:
+#             instance = self.get_object()
+#             self.perform_destroy(instance)
+#             return Response({
+#                 "status": "success",
+#                 "message": "Employee deleted successfully."
+#             }, status=status.HTTP_204_NO_CONTENT)
+#         except Exception as e:
+#             return Response({
+#                 "status": "error",
+#                 "message": f"Failed to delete employee: {str(e)}"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+#     def perform_create(self, serializer):
+#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Maker_Id=maker,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Checker_Id=checker,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+from django.utils import timezone
+from .models import MTTB_EMPLOYEE, MTTB_Users, MTTB_Divisions
+from .serializers import EmployeeSerializer
+
+class EmployeeViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for employees, supporting:
+      - JSON and multipart/form-data for file uploads
+      - Filtering by ?div_id=...
+      - Soft deletion via record_stat='D'
+    """
+    serializer_class = EmployeeSerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
-    lookup_field = 'employee_id'
 
     def get_queryset(self):
-        queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
-        div_id = self.request.query_params.get('div_id')
+        """
+        Returns active employees (record_stat='A'), optionally filtered by div_id.
+        """
+        qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id').filter(record_stat='O')
+        
+        params = self.request.query_params
+        div_id = params.get('div_id')
         if div_id:
-            queryset = queryset.filter(division_id=div_id)
-        return queryset
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            self.perform_create(serializer)
-            return Response({
-                "status": "success",
-                "message": "Employee created successfully.",
-                "data": serializer.data
-            }, status=status.HTTP_201_CREATED)
-        else:
-            return Response({
-                "status": "error",
-                "message": "Failed to create employee.",
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-    def destroy(self, request, *args, **kwargs):
-        try:
-            instance = self.get_object()
-            self.perform_destroy(instance)
-            return Response({
-                "status": "success",
-                "message": "Employee deleted successfully."
-            }, status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            return Response({
-                "status": "error",
-                "message": f"Failed to delete employee: {str(e)}"
-            }, status=status.HTTP_400_BAD_REQUEST)
+            qs = qs.filter(div_id_id__div_id=div_id)
+        
+        return qs.order_by('employee_id')
 
     def perform_create(self, serializer):
-        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        """
+        Sets audit fields for creation.
+        """
         serializer.save(
-            Maker_Id=maker,
-            Maker_DT_Stamp=timezone.now()
+            Maker_Id=self.request.user if self.request.user.is_authenticated else None,
+            Maker_DT_Stamp=timezone.now(),
+            record_stat='A',
+            Auth_Status='U',
+            Once_Auth='N'
         )
 
     def perform_update(self, serializer):
-        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        """
+        Sets audit fields for updates.
+        """
         serializer.save(
-            Checker_Id=checker,
+            Checker_Id=self.request.user if self.request.user.is_authenticated else None,
             Checker_DT_Stamp=timezone.now()
         )
 
-class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
+    def perform_destroy(self, instance):
+        """
+        Soft deletes the employee by setting record_stat to 'D'.
+        """
+        instance.record_stat = 'D'
+        instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
+        instance.Checker_DT_Stamp = timezone.now()
+        instance.save()
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.record_stat == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.record_stat = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.record_stat == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.record_stat = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.record_stat = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.record_stat = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+        
+
+from .serializers import MTTB_LCL_HolidaySerializer
+from .models import MTTB_LCL_Holiday
+class HolidayViewSet(viewsets.ModelViewSet):
     queryset = MTTB_LCL_Holiday.objects.all().order_by('lcl_holiday_id')
     serializer_class = MTTB_LCL_HolidaySerializer
     permission_classes = [IsAuthenticated]
@@ -1353,9 +2407,7 @@ from .models import MTTB_Fin_Cycle
 from .serializers import FinCycleSerializer
 
 class FinCycleViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for Financial Cycles.
-    """
+
     queryset = MTTB_Fin_Cycle.objects.select_related('Maker_Id', 'Checker_Id').all().order_by('fin_cycle')
     serializer_class = FinCycleSerializer
 
@@ -1379,6 +2431,97 @@ class FinCycleViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
+
+
+from rest_framework import viewsets
+from .models import MTTB_Per_Code
+from .serializers import PerCodeSerializer
+
+class PerCodeViewSet(viewsets.ModelViewSet):
+    serializer_class = PerCodeSerializer
+    lookup_field = 'period_code'
+
+    def get_queryset(self):
+        queryset = MTTB_Per_Code.objects.all()
+        fincycle_param = self.request.query_params.get('fincycle')
+
+        if fincycle_param:
+            queryset = queryset.filter(Fin_cycle__fin_cycle=fincycle_param)
+
+        return queryset
 
 
 from collections import OrderedDict
@@ -1418,7 +2561,45 @@ def gl_hierarchy(request):
 
     return Response(result)
 
-# views.py
+
+
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from .models import MTTB_GLMaster
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def gl_tree(request):
+#     """
+#     Returns GL codes nested by prefix.
+#     """
+#     q = MTTB_GLMaster.objects.filter(gl_code__isnull=False).order_by('gl_code')
+
+#     # Build code-to-node map
+#     nodes = {}
+#     for gl in q:
+#         if gl.gl_code:
+#             nodes[gl.gl_code] = {
+#                 'gl_code': gl.gl_code,
+#                 'gl_Desc_la': gl.gl_Desc_la,
+#                 'gl_Desc_en': gl.gl_Desc_en,
+#                 'children': []
+#             }
+
+#     roots = []
+#     for code, node in nodes.items():
+#         parent_code = None
+#         for candidate in nodes:
+#             if candidate != code and code.startswith(candidate):
+#                 if parent_code is None or len(candidate) > len(parent_code):
+#                     parent_code = candidate
+#         if parent_code:
+#             nodes[parent_code]['children'].append(node)
+#         else:
+#             roots.append(node)
+
+#     return Response(roots)
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -1429,49 +2610,49 @@ from .models import MTTB_GLMaster
 @permission_classes([IsAuthenticated])
 def gl_tree(request):
     """
-    GET /api/gl-tree/
-    Returns all GL codes nested by prefix:
-    [
-      {
-        "gl_code": "110",
-        "gl_Desc_la": "...",
-        "gl_Desc_en": "...",
-        "children": [
-          {
-            "gl_code": "1101",
-            "gl_Desc_la": "...",
-            "gl_Desc_en": "...",
-            "children": [
-              {
-                "gl_code": "11011",
-                "children": [
-                  { "gl_code": "110111", "children": [] },
-                  { "gl_code": "110112", "children": [] }
-                ]
-              },
-              { "gl_code": "11012", "children": [] }
-            ]
-          }
-        ]
-      }
-    ]
+    Returns GL codes nested by prefix.
+    
+    Query Parameters:
+    - gl_code: Filter GL codes that start with this value (optional)
+    - glType: Filter by GL type (optional)
     """
-    # 1) load and order all
-    q = MTTB_GLMaster.objects.all().order_by('gl_code')
-    # 2) build a lookup of code -> node dict
+    # Get query parameters
+    gl_code_filter = request.query_params.get('gl_code', None)
+    gl_type_filter = request.query_params.get('glType', None)
+    
+    # Build base query
+    q = MTTB_GLMaster.objects.filter(gl_code__isnull=False)
+    
+    # Apply filters if provided
+    if gl_code_filter:
+        q = q.filter(gl_code__startswith=gl_code_filter)
+    
+    if gl_type_filter:
+        q = q.filter(glType=gl_type_filter)
+    
+    # Order by gl_code
+    q = q.order_by('gl_code')
+
+    # Build code-to-node map
     nodes = {}
     for gl in q:
-        nodes[gl.gl_code] = {
-            'gl_code': gl.gl_code,
-            'gl_Desc_la': gl.gl_Desc_la,
-            'gl_Desc_en': gl.gl_Desc_en,
-            'children': []
-        }
+        if gl.gl_code:
+            nodes[gl.gl_code] = {
+                'gl_code': gl.gl_code,
+                'gl_Desc_la': gl.gl_Desc_la,
+                'gl_Desc_en': gl.gl_Desc_en,
+                'glType': gl.glType,
+                'glCategory': gl.category,
+                'gl_Retal': gl.retal,
+                'ccy_Res': gl.ccy_Res,
+                # 'Res_ccy': gl.Res_ccy,
+                'Record_Status': gl.Record_Status,
+                'Auth_Status': gl.Auth_Status,
+                'children': []
+            }
 
     roots = []
-    # 3) attach each node to its parent (longest prefix)
     for code, node in nodes.items():
-        # find the longest other code that's a strict prefix
         parent_code = None
         for candidate in nodes:
             if candidate != code and code.startswith(candidate):
@@ -1483,3 +2664,3129 @@ def gl_tree(request):
             roots.append(node)
 
     return Response(roots)
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Count
+from .models import MTTB_MAIN_MENU
+
+@api_view(['GET'])
+def count_menus_by_module(request):
+    module_id = request.query_params.get('module_Id')
+
+    queryset = MTTB_MAIN_MENU.objects.all()
+
+    if module_id:
+        queryset = queryset.filter(module_Id=module_id)
+
+    data = (
+        queryset
+        .values('module_Id')
+        .annotate(c_main=Count('menu_id'))
+    )
+
+    return Response(data)
+
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Count
+from .models import MTTB_SUB_MENU
+
+@api_view(['GET'])
+def count_submenus_per_menu(request):
+    menu_id = request.query_params.get('menu_id')
+
+    queryset = MTTB_SUB_MENU.objects.all()
+
+    if menu_id:
+        queryset = queryset.filter(menu_id=menu_id)
+
+    data = (
+        queryset
+        .values(
+            'menu_id',
+            'menu_id__menu_name_la',
+            'menu_id__menu_name_en'
+        )
+        .annotate(count_menu=Count('sub_menu_id'))
+        .order_by('menu_id')
+    )
+
+    result = [
+        {
+            "menu_id": item['menu_id'],
+            "menu_name_la": item['menu_id__menu_name_la'],
+            "menu_name_en": item['menu_id__menu_name_en'],
+            "count_menu": item['count_menu']
+        }
+        for item in data
+    ]
+
+    return Response(result)
+
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django_filters.rest_framework import DjangoFilterBackend
+from django.utils import timezone
+from rest_framework import filters
+from rest_framework import viewsets, status
+from .models import MTTB_LCL_Holiday
+from .serializers import MTTB_LCL_HolidaySerializer
+
+class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for MTTB_LCL_Holiday model providing CRUD operations.
+    
+    list: Get all holidays with optional filtering
+    create: Create a new holiday (no authentication required)
+    retrieve: Get a specific holiday by ID
+    update: Update a holiday (full update)
+    partial_update: Update a holiday (partial update)
+    destroy: Delete a holiday
+    """
+    queryset = MTTB_LCL_Holiday.objects.all()
+    serializer_class = MTTB_LCL_HolidaySerializer
+    lookup_field = 'lcl_holiday_id'
+    
+    # Enable filtering, searching, and ordering
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    
+    # Define filterable fields
+    filterset_fields = {
+        'HYear': ['exact', 'in'],
+        'HMonth': ['exact', 'in'],
+        'HDate': ['exact', 'gte', 'lte', 'range'],
+        'Holiday_List': ['exact'],
+        'Record_Status': ['exact', 'in'],
+        'Auth_Status': ['exact', 'in'],
+        'Once_Auth': ['exact'],
+        'Maker_Id': ['exact'],
+        'Checker_Id': ['exact']
+    }
+    
+    # Define searchable fields
+    search_fields = ['lcl_holiday_id', 'HYear', 'HMonth']
+    
+    # Define ordering fields
+    ordering_fields = ['lcl_holiday_id', 'HDate', 'HYear', 'HMonth', 'Maker_DT_Stamp']
+    ordering = ['-Maker_DT_Stamp']  # Default ordering
+    
+    def get_permissions(self):
+        # Allow anyone to create a new holiday, require auth elsewhere
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+    
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    def get_queryset(self):
+        """
+        Optionally restricts the returned holidays based on query parameters.
+        """
+        queryset = super().get_queryset()
+        
+        # Example: Filter holidays by date range
+        start_date = self.request.query_params.get('start_date', None)
+        end_date = self.request.query_params.get('end_date', None)
+        
+        if start_date and end_date:
+            queryset = queryset.filter(HDate__range=[start_date, end_date])
+        
+        # Example: Filter only active records
+        active_only = self.request.query_params.get('active_only', None)
+        if active_only and active_only.lower() == 'true':
+            queryset = queryset.filter(Record_Status='C')
+        
+        return queryset
+    
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def pending_authorization(self, request):
+        """
+        Get all holidays pending authorization (Auth_Status='U')
+        """
+        pending = self.get_queryset().filter(Auth_Status='U')
+        serializer = self.get_serializer(pending, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, lcl_holiday_id=None):
+        """
+        Authorize a holiday record
+        """
+        holiday = self.get_object()
+        
+        if holiday.Auth_Status == 'A':
+            return Response(
+                {'detail': 'Holiday already authorized'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Prevent self-authorization
+        if holiday.Maker_Id and holiday.Maker_Id == request.user:
+            return Response(
+                {'detail': 'Cannot authorize your own record'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        holiday.Auth_Status = 'A'
+        holiday.Checker_Id = request.user
+        holiday.Checker_DT_Stamp = timezone.now()
+        holiday.save()
+        
+        serializer = self.get_serializer(holiday)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reject(self, request, lcl_holiday_id=None):
+        """
+        Reject a holiday record
+        """
+        holiday = self.get_object()
+        
+        if holiday.Auth_Status == 'U':
+            return Response(
+                {'detail': 'Holiday already rejected'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        holiday.Auth_Status = 'U'
+        holiday.Checker_Id = request.user
+        holiday.Checker_DT_Stamp = timezone.now()
+        holiday.save()
+        
+        serializer = self.get_serializer(holiday)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def by_year_month(self, request):
+        """
+        Get holidays for a specific year and month
+        """
+        year = request.query_params.get('year', None)
+        month = request.query_params.get('month', None)
+        
+        if not year:
+            return Response(
+                {'detail': 'Year parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        queryset = self.get_queryset().filter(HYear=year)
+        
+        if month:
+            queryset = queryset.filter(HMonth=month)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def upcoming(self, request):
+        """
+        Get upcoming holidays (HDate >= today)
+        """
+        from datetime import date
+        today = date.today()
+        
+        upcoming = self.get_queryset().filter(
+            HDate__gte=today,
+            Record_Status='C',
+            Auth_Status='A'
+        ).order_by('HDate')
+        
+        serializer = self.get_serializer(upcoming, many=True)
+        return Response(serializer.data)
+    
+    def perform_destroy(self, instance):
+        instance.delete()
+
+from rest_framework import viewsets, filters
+from django_filters.rest_framework import DjangoFilterBackend
+from .serializers import MTTB_TRN_CodeSerializer
+from .models import MTTB_TRN_Code
+
+class MTTB_TRN_CodeViewSet(viewsets.ModelViewSet):
+    """
+    Enhanced CRUD ViewSet with filtering and searching
+    """
+    queryset = MTTB_TRN_Code.objects.all()
+    serializer_class = MTTB_TRN_CodeSerializer
+    lookup_field = 'trn_code'
+    
+    # Add filtering, searching, and ordering
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['Record_Status', 'Auth_Status', 'Once_Auth']
+    search_fields = ['trn_code', 'trn_Desc_la', 'trn_Desc_en']
+    ordering_fields = ['trn_code', 'Maker_DT_Stamp']
+    ordering = ['-Maker_DT_Stamp']
+    
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+    
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    def perform_destroy(self, instance):
+        instance.Record_Status = 'D'
+        instance.save()
+    
+    def get_queryset(self):
+        """Add custom query filters"""
+        queryset = super().get_queryset()
+        
+        # Filter only active records by default
+        if self.request.query_params.get('all') != 'true':
+            queryset = queryset.exclude(Record_Status='D')
+        
+        # Filter by authorization status
+        auth_status = self.request.query_params.get('auth_status')
+        if auth_status:
+            queryset = queryset.filter(Auth_Status=auth_status)
+        
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        """Get all pending transaction codes"""
+        pending = self.get_queryset().filter(Auth_Status='U')
+        serializer = self.get_serializer(pending, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+        obj = self.get_object()
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(obj, 'Auth_Status', None) != 'A':
+            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Once_Status = 'Y'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, pk=None):
+        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+        journal_entry = self.get_object()
+
+        if journal_entry.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', Record_Status = 'C'
+        journal_entry.Auth_Status = 'U'
+        journal_entry.Record_Status = 'C'
+        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry unauthorized successfully',
+            'entry': serializer.data
+        })
+
+    
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import viewsets
+from django.db.models import Q
+from .models import MTTB_ProvinceInfo, MTTB_DistrictInfo, MTTB_VillageInfo
+from .serializers import ProvinceSerializer, DistrictSerializer, VillageSerializer
+
+class ProvinceViewSet(viewsets.ModelViewSet):
+
+    " CRUD for provinces with custom list and create  methods"
+
+    queryset = MTTB_ProvinceInfo.objects.all().order_by('pro_id')
+    serializer_class = ProvinceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        count = queryset.count()
+
+        if count == 0:
+            return Response({
+                "status": False,
+                "message": "ບໍ່ພົບຂໍ້ມູນແຂວງ",
+                "count": 0,
+                "data": []
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            "status": True,
+            "message": "ສຳເລັດການດຶງຂໍ້ມູນແຂວງທັງໝົດ",
+            "count": count,
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ສຳເລັດການເພີ່ມຂໍ້ມູນແຂວງ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ເພີ່ມຂໍ້ມູນແຂວງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ອັບເດດຂໍ້ມູນແຂວງສຳເລັດ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ອັບເດດຂໍ້ມູນແຂວງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "status": True,
+                "message": "ລົບຂໍ້ມູນແຂວງສຳເລັດ"
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ລົບຂໍ້ມູນແຂວງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DistrictViewSet(viewsets.ModelViewSet):
+    "CRUD for districts with custom list and create methods"
+        # queryset = DistrictInfo_new.objects.all().order_by('pro_id', 'dis_id')
+    serializer_class = DistrictSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = MTTB_DistrictInfo.objects.all().order_by('pro_id', 'dis_id')
+        pro_id = self.request.query_params.get('pro_id')
+        if pro_id:
+            queryset = queryset.filter(pro_id=pro_id) 
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            user_id=user_id,
+            date_insert=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        serializer.save(
+            date_update=timezone.now()
+        )
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+
+        pro_id = self.request.query_params.get('pro_id')
+        pro_name = None
+
+        if pro_id:
+            try:
+                province = MTTB_ProvinceInfo.objects.get(pro_id=pro_id)
+                pro_name = province.pro_name_l
+            except MTTB_ProvinceInfo.DoesNotExist:
+                pro_name = None
+
+        count = queryset.count()
+
+        if count == 0:
+            message = "ບໍ່ພົບຂໍ້ມູນທີ່ຄົນຄົນຫາ."
+            return Response({
+                "status": False,
+                "message": message,
+                "count": 0,
+                "data": []
+            }, status=status.HTTP_200_OK)
+    
+        if pro_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນເມືອງຂອງແຂວງ={pro_name}."
+        else:
+            message = "ສຳເລັດການດຶງຂໍ້ມູນເມືອງທັງໝົດ."
+
+        return Response({
+            "status": True,
+            "message": message,
+            "count": queryset.count(),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ສຳເລັດການເພີ່ມຂໍ້ມູນເມືອງ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ການເພີ່ມຂໍ້ມູນເມືອງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ອັບເດດຂໍ້ມູນເມືອງສຳເລັດ.",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ອັບເດດຂໍ້ມູນເມືອງບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "status": True,
+                "message": "ລົບຂໍ້ມູນສຳເລັດ."
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ລົບຂໍ້ມູນບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+class VillageViewSet(viewsets.ModelViewSet):
+    "CRUD for villages with custom list and create methods"
+    serializer_class = VillageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = MTTB_VillageInfo.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
+        pro_id = self.request.query_params.get('pro_id')
+        dis_id = self.request.query_params.get('dis_id')
+        search_name = self.request.query_params.get('search_name')
+
+        if pro_id:
+            queryset = queryset.filter(pro_id=pro_id)
+        if dis_id:
+            queryset = queryset.filter(dis_id=dis_id)
+        if search_name:
+            queryset = queryset.filter(
+                Q(vil_name_e__icontains=search_name) | Q(vil_name_l__icontains=search_name)
+            )
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+
+        pro_id = request.query_params.get('pro_id')
+        dis_id = request.query_params.get('dis_id')
+
+        pro_name = None
+        dis_name = None
+
+        if pro_id:
+            try:
+                province = MTTB_ProvinceInfo.objects.get(pro_id=pro_id.strip())
+                pro_name = province.pro_name_l
+            except MTTB_ProvinceInfo.DoesNotExist:
+                pro_name = None
+        
+        if dis_id:
+            try:
+                district = MTTB_DistrictInfo.objects.get(dis_code=dis_id.strip())
+                dis_name = district.dis_name_l
+            except MTTB_DistrictInfo.DoesNotExist:
+                dis_name = None
+
+        count = queryset.count()
+
+        if count == 0:
+            return Response({
+                "status": False,
+                "message": "ບໍ່ພົບຂໍ້ມູນບ້ານທີ່ຄົ້ນຫາ",
+                "count": 0,
+                "data": []
+            }, status=status.HTTP_200_OK)
+
+        if pro_name and dis_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name} ແລະ ເມືອງ {dis_name}."
+        elif pro_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name}."
+        elif dis_name:
+            message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນເມືອງ {dis_name}."
+        else:
+            message = "ສຳເລັດການດຶງຂໍ້ມູນບ້ານທັງໝົດ."
+
+        return Response({
+            "status": True,
+            "message": message,
+            "count": count,
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        serializer.save(
+            user_id=user_id,
+            date_insert=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        serializer.save(
+            date_update=timezone.now()
+        )
+
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ສຳເລັດການເພີ່ມຂໍ້ມູນບ້ານ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ການເພີ່ມຂໍ້ມູນບ້ານບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "status": True,
+                "message": "ອັບເດດຂໍ້ມູນບ້ານສຳເລັດ",
+                "data": response.data
+            }, status=response.status_code)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ອັບເດດຂໍ້ມູນບ້ານບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({
+                "status": True,
+                "message": "ລົບຂໍ້ມູນສຳເລັດ"
+            }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"ລົບຂໍ້ມູນບໍ່ສຳເລັດ: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated])
+def list_villages(request):
+
+    "method GET to list villages with optional filters only GET list_villages/"
+
+    queryset = MTTB_VillageInfo.objects.all().order_by('pro_id', 'dis_id', 'vil_id')
+    pro_id = request.query_params.get('pro_id')
+    dis_id = request.query_params.get('dis_id')
+    search_name = request.query_params.get('search_name')
+
+    if pro_id:
+        queryset = queryset.filter(pro_id=pro_id)
+    if dis_id:
+        queryset = queryset.filter(dis_id=dis_id)
+    if search_name:
+        queryset = queryset.filter(
+            Q(vil_name_e__icontains=search_name) | Q(vil_name_l__icontains=search_name)
+        )
+
+    if not queryset.exists():
+        return Response({
+            "status": False,
+            "message": "ບໍ່ພົບຂໍ້ມູນບ້ານທີ່ຄົ້ນຫາ",
+            "count": 0,
+            "data": []
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    pro_name = None
+    dis_name = None
+
+    if pro_id:
+        try:
+            province = MTTB_ProvinceInfo.objects.get(pro_id=pro_id.strip())
+            pro_name = province.pro_name_l
+        except MTTB_ProvinceInfo.DoesNotExist:
+            pro_name = None
+
+    if dis_id:
+        try:
+            district = MTTB_DistrictInfo.objects.get(dis_code=dis_id.strip())
+            dis_name = district.dis_name_l
+        except MTTB_DistrictInfo.DoesNotExist:
+            dis_name = None
+
+    if pro_name and dis_name:
+        message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name} ແລະ ເມືອງ {dis_name}."
+    elif pro_name:
+        message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນແຂວງ {pro_name}."
+    elif dis_name:
+        message = f"ສຳເລັດການດຶງຂໍ້ມູນບ້ານໃນເມືອງ {dis_name}."
+    else:
+        message = "ສຳເລັດການດຶງຂໍ້ມູນບ້ານທັງໝົດ."
+
+    serializer = VillageSerializer(queryset, many=True)
+
+    return Response({
+        "status": True,
+        "message": message,
+        "count": queryset.count(),
+        "data": serializer.data
+    }, status=status.HTTP_200_OK)
+
+from rest_framework import viewsets
+from .models import MTTB_DATA_Entry
+from .serializers import MTTB_DATA_EntrySerializer
+
+class Data_EntryViewSet(viewsets.ModelViewSet):
+    queryset = MTTB_DATA_Entry.objects.all()
+    serializer_class = MTTB_DATA_EntrySerializer
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def perform_create(self, serializer):
+        maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Maker_Id=maker,
+            Maker_DT_Stamp=timezone.now()
+        )
+    
+    def perform_update(self, serializer):
+        checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(
+            Checker_Id=checker,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from .models import MTTB_GLMaster, MTTB_GLSub
+from .serializers import GLSubSerializer
+
+@api_view(['GET'])
+def GLTreeAPIView(request, gl_code_id):
+    """
+    Get GLSub details by GL code ID
+    
+    Args:
+        gl_code_id: The primary key (glid) of MTTB_GLMaster
+    
+    Returns:
+        JSON response with GLSub details and related GLMaster info
+    """
+    try:
+        # Verify GL Master exists
+        gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
+        
+        # Get all GLSub records for this GL code
+        glsub_records = MTTB_GLSub.objects.filter(
+            gl_code=gl_master,
+           
+        ).select_related('gl_code')
+        
+        if not glsub_records.exists():
+            return Response({
+                'success': False,
+                'message': f'No GLSub records found for GL code ID: {gl_code_id}',
+                'data': []
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Serialize the data
+        serializer = GLSubSerializer(glsub_records, many=True)
+        
+        return Response({
+            'success': True,
+            'message': f'Found {glsub_records.count()} GLSub record(s)',
+            'gl_master_info': {
+                'glid': gl_master.glid,
+                'gl_code': gl_master.gl_code,
+                'gl_Desc_en': gl_master.gl_Desc_en,
+                'gl_Desc_la': gl_master.gl_Desc_la
+            },
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+        
+    except MTTB_GLMaster.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': f'GL Master with ID {gl_code_id} not found',
+            'data': []
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'An error occurred: {str(e)}',
+            'data': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+# from rest_framework import status
+# from rest_framework.decorators import api_view
+# from rest_framework.response import Response
+# from django.shortcuts import get_object_or_404
+# from .models import MTTB_GLMaster, MTTB_GLSub
+# from .serializers import GLSubSerializer
+# from collections import defaultdict
+
+# @api_view(['GET'])
+# def GLTreeAll(request, gl_code_id=None):
+#     """
+#     Get GLSub details by GL code ID, or get all GLSub records grouped by GL Master
+    
+#     Args:
+#         gl_code_id: Optional - The primary key (glid) of MTTB_GLMaster
+#                    If provided, returns GLSub records for that specific GL Master
+#                    If None, returns all GLSub records grouped by their GL Master
+    
+#     Returns:
+#         JSON response with GLSub details grouped by GLMaster info
+#     """
+#     try:
+#         if gl_code_id is not None:
+#             # Get GLSub records for specific GL Master (existing functionality)
+#             gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
+            
+#             glsub_records = MTTB_GLSub.objects.filter(
+#                 gl_code=gl_master,
+#             ).select_related('gl_code')
+            
+#             if not glsub_records.exists():
+#                 return Response({
+#                     'success': False,
+#                     'message': f'No GLSub records found for GL code ID: {gl_code_id}',
+#                     'data': []
+#                 }, status=status.HTTP_404_NOT_FOUND)
+            
+#             # Serialize the data
+#             serializer = GLSubSerializer(glsub_records, many=True)
+            
+#             return Response({
+#                 'success': True,
+#                 'message': f'Found {glsub_records.count()} GLSub record(s)',
+#                 'gl_master_info': {
+#                     'glid': gl_master.glid,
+#                     'gl_code': gl_master.gl_code,
+#                     'gl_Desc_en': gl_master.gl_Desc_en,
+#                     'gl_Desc_la': gl_master.gl_Desc_la,
+#                     'glType': gl_master.glType,
+#                     'category': gl_master.category,
+#                     'retal': gl_master.retal,
+#                     'ccy_Res': gl_master.ccy_Res,
+#                     'Res_ccy': gl_master.Res_ccy,
+#                     'Record_Status': gl_master.Record_Status,
+#                     'Auth_Status': gl_master.Auth_Status
+#                 },
+#                 'data': serializer.data
+#             }, status=status.HTTP_200_OK)
+            
+#         else:
+#             # CORRECTED LOGIC: Find all GLSub records and group by GL Master
+            
+#             # Step 1: Get all GLSub records with their GL Master info
+#             glsub_records = MTTB_GLSub.objects.all().select_related('gl_code')
+            
+#             if not glsub_records.exists():
+#                 return Response({
+#                     'success': False,
+#                     'message': 'No GLSub records found in the system',
+#                     'data': []
+#                 }, status=status.HTTP_404_NOT_FOUND)
+            
+#             # Step 2: Group GLSub records by GL Master
+#             gl_master_groups = defaultdict(list)
+            
+#             for glsub in glsub_records:
+#                 if glsub.gl_code:  # Make sure gl_code exists
+#                     gl_master_groups[glsub.gl_code].append(glsub)
+            
+#             # Step 3: Build the tree structure
+#             tree_data = []
+#             total_glsub_count = 0
+            
+#             for gl_master, glsub_list in gl_master_groups.items():
+#                 # Serialize GLSub records for this GL Master
+#                 glsub_serializer = GLSubSerializer(glsub_list, many=True)
+                
+#                 # Build GL Master node with children
+#                 gl_master_node = {
+#                     'gl_master_info': {
+#                         'glid': gl_master.glid,
+#                         'gl_code': gl_master.gl_code,
+#                         'gl_Desc_en': gl_master.gl_Desc_en,
+#                         'gl_Desc_la': gl_master.gl_Desc_la,
+#                         'glType': gl_master.glType,
+#                         'category': gl_master.category,
+#                         'Record_Status': gl_master.Record_Status,
+#                         'Auth_Status': gl_master.Auth_Status
+#                     },
+#                     'children_count': len(glsub_list),
+#                     'children': glsub_serializer.data
+#                 }
+                
+#                 tree_data.append(gl_master_node)
+#                 total_glsub_count += len(glsub_list)
+            
+#             # Sort by GL Master glid for consistent ordering
+#             tree_data.sort(key=lambda x: x['gl_master_info']['glid'])
+            
+#             return Response({
+#                 'success': True,
+#                 'message': f'Found {len(tree_data)} GL Master(s) with {total_glsub_count} total GLSub record(s)',
+#                 'total_gl_masters': len(tree_data),
+#                 'total_glsub_records': total_glsub_count,
+#                 'data': tree_data
+#             }, status=status.HTTP_200_OK)
+        
+#     except MTTB_GLMaster.DoesNotExist:
+#         return Response({
+#             'success': False,
+#             'message': f'GL Master with ID {gl_code_id} not found',
+#             'data': []
+#         }, status=status.HTTP_404_NOT_FOUND)
+    
+#     except Exception as e:
+#         return Response({
+#             'success': False,
+#             'message': f'An error occurred: {str(e)}',
+#             'data': []
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from .models import MTTB_GLMaster, MTTB_GLSub
+from .serializers import GLSubSerializer
+from collections import defaultdict
+
+@api_view(['GET'])
+def GLTreeAll(request, gl_code_id=None):
+    """
+    Get GLSub details by GL code ID (glid) or gl_code string, or return all GLSub grouped by GLMaster.
+    
+    Query Parameters:
+    - gl_code_id (int): Primary key of MTTB_GLMaster
+    - gl_code (str or int): gl_code field of MTTB_GLMaster
+    """
+    try:
+        gl_code_param = request.GET.get('gl_code', None)
+
+        # If both gl_code_id and gl_code are provided, return an error
+        if gl_code_id and gl_code_param:
+            return Response({
+                'success': False,
+                'message': 'Please provide only one of gl_code_id or gl_code',
+                'data': []
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        gl_master = None
+
+        if gl_code_id:
+            gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
+        elif gl_code_param:
+            gl_master = get_object_or_404(MTTB_GLMaster, gl_code=str(gl_code_param))
+
+        # If either gl_code_id or gl_code was used, return filtered GLSub
+        if gl_master:
+            glsub_records = MTTB_GLSub.objects.filter(
+                gl_code=gl_master
+            ).select_related('gl_code')
+
+            if not glsub_records.exists():
+                return Response({
+                    'success': False,
+                    'message': 'No GLSub records found for the provided GL code.',
+                    'data': []
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            serializer = GLSubSerializer(glsub_records, many=True)
+
+            return Response({
+                'success': True,
+                'message': f'Found {glsub_records.count()} GLSub record(s)',
+                'gl_master_info': {
+                    'glid': gl_master.glid,
+                    'gl_code': gl_master.gl_code,
+                    'gl_Desc_en': gl_master.gl_Desc_en,
+                    'gl_Desc_la': gl_master.gl_Desc_la,
+                    'glType': gl_master.glType,
+                    'category': gl_master.category,
+                    'retal': gl_master.retal,
+                    'ccy_Res': getattr(gl_master.ccy_Res, 'ccy_code', gl_master.ccy_Res),
+                    'Res_ccy': getattr(gl_master.Res_ccy, 'ccy_code', gl_master.Res_ccy),
+                    'Record_Status': gl_master.Record_Status,
+                    'Auth_Status': gl_master.Auth_Status
+                },
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+
+        # If no filtering, return full GL tree
+        glsub_records = MTTB_GLSub.objects.all().select_related('gl_code')
+
+        if not glsub_records.exists():
+            return Response({
+                'success': False,
+                'message': 'No GLSub records found in the system',
+                'data': []
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        gl_master_groups = defaultdict(list)
+        for glsub in glsub_records:
+            if glsub.gl_code:
+                gl_master_groups[glsub.gl_code].append(glsub)
+
+        tree_data = []
+        total_glsub_count = 0
+
+        for gl_master, glsub_list in gl_master_groups.items():
+            glsub_serializer = GLSubSerializer(glsub_list, many=True)
+            gl_master_node = {
+                'gl_master_info': {
+                    'glid': gl_master.glid,
+                    'gl_code': gl_master.gl_code,
+                    'gl_Desc_en': gl_master.gl_Desc_en,
+                    'gl_Desc_la': gl_master.gl_Desc_la,
+                    'glType': gl_master.glType,
+                    'category': gl_master.category,
+                    'Record_Status': gl_master.Record_Status,
+                    'Auth_Status': gl_master.Auth_Status
+                },
+                'children_count': len(glsub_list),
+                'children': glsub_serializer.data
+            }
+            tree_data.append(gl_master_node)
+            total_glsub_count += len(glsub_list)
+
+        tree_data.sort(key=lambda x: x['gl_master_info']['glid'])
+
+        return Response({
+            'success': True,
+            'message': f'Found {len(tree_data)} GL Master(s) with {total_glsub_count} total GLSub record(s)',
+            'total_gl_masters': len(tree_data),
+            'total_glsub_records': total_glsub_count,
+            'data': tree_data
+        }, status=status.HTTP_200_OK)
+
+    except MTTB_GLMaster.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'GL Master not found',
+            'data': []
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'An error occurred: {str(e)}',
+            'data': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
+from django.utils import timezone
+from django.db.models import Q, Sum
+from datetime import datetime, timedelta
+import logging
+from .models import (DETB_JRNL_LOG, 
+                     MTTB_GLSub, MTTB_GLMaster,
+                     MTTB_TRN_Code, 
+                     DETB_JRNL_LOG_MASTER, 
+                     DETB_JRNL_LOG_HIST, 
+                     ACTB_DAIRY_LOG,
+                     ACTB_DAIRY_LOG_HISTORY)
+from .serializers import JRNLLogSerializer, JournalEntryBatchSerializer
+from .utils import JournalEntryHelper
+
+logger = logging.getLogger(__name__)
+
+class JRNLLogViewSet(viewsets.ModelViewSet):
+    queryset = DETB_JRNL_LOG.objects.select_related(
+        'Ccy_cd', 'Account', 'Account__gl_code', 'Txn_code', 
+        'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id', 'module_id'
+    ).all().order_by('-Maker_DT_Stamp')
+    
+    serializer_class = JRNLLogSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['Reference_No', 'Ccy_cd', 'Dr_cr', 'Auth_Status', 'Txn_code']
+    search_fields = ['Reference_No', 'Addl_text', 'Account__glsub_code', 'Account__glsub_Desc_la']
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filter by date range
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(Value_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(Value_date__lte=end_date)
+        
+        # Filter by account
+        account_id = self.request.query_params.get('account_id')
+        if account_id:
+            queryset = queryset.filter(Account_id=account_id)
+
+        # Filter by Currency
+        ccy_cd = self.request.query_params.get('Ccy_cd')
+        if ccy_cd:
+            queryset = queryset.filter(Ccy_cd_id=ccy_cd)
+
+        Auth_Status = self.request.query_params.get('Auth_Status')
+        if Auth_Status:
+            queryset = queryset.filter(Auth_Status=Auth_Status)
+
+        # Filter by Reference_No
+        Reference_No = self.request.query_params.get('Reference_No')
+        if Reference_No:
+            queryset = queryset.filter(Reference_No=Reference_No).order_by('JRNLLog_id')
+            
+
+        return queryset
+
+    def perform_create(self, serializer):
+        """Set audit fields on creation"""
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now(),
+            Auth_Status='U'  # Unauthorized
+        )
+
+    def perform_update(self, serializer):
+        """Update only if not authorized"""
+        instance = serializer.instance
+        if instance.Auth_Status == 'A':
+            raise serializer.ValidationError("Cannot modify authorized entries.")
+        
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+        
+    @action(detail=False, methods=['post'])
+    def batch_create(self, request):
+        """Create multiple journal entries in a single transaction"""
+        serializer = JournalEntryBatchSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        data = serializer.validated_data
+        
+        try:
+            with transaction.atomic():
+                # Auto-generate reference number if not provided
+                if not data.get('Reference_No'):
+                    data['Reference_No'] = JournalEntryHelper.generate_reference_number(
+                        module_id=data.get('module_id', 'GL'),
+                        txn_code=data['Txn_code'],
+                        date=data['Value_date'].date() if data.get('Value_date') else None
+                    )
+                
+                # Get exchange rate
+                exchange_rate = self.get_exchange_rate(data['Ccy_cd'])
+                
+                created_entries = []
+                history_entries = []
+                daily_log_entries = []
+                # hist_daily_log_entries = []
+                
+                # Generate base timestamp for unique history references
+                base_timestamp = timezone.now().strftime("%H%M%S")  # HHMMSS format (6 chars)
+                
+                for idx, entry_data in enumerate(data['entries']):
+                    # Calculate amounts based on Dr_cr
+                    fcy_amount = Decimal(str(entry_data['Amount']))
+                    lcy_amount = fcy_amount * exchange_rate
+                    
+                    # Set debit/credit amounts
+                    fcy_dr = fcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+                    fcy_cr = fcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                    lcy_dr = lcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+                    lcy_cr = lcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                    
+                    addl_sub_text = (
+                        entry_data.get('Addl_sub_text') or 
+                        data.get('Addl_sub_text', '') or 
+                        f"Entry for {entry_data['Dr_cr']} {fcy_amount}"
+                    )
+
+                    account_no = entry_data.get('Account_no')
+                    current_time = timezone.now()
+
+                    # Create journal entry
+                    journal_entry = DETB_JRNL_LOG.objects.create(
+                        module_id_id=data.get('module_id'),
+                        Reference_No=data['Reference_No'],
+                        Ccy_cd_id=data['Ccy_cd'],
+                        Fcy_Amount=fcy_amount,
+                        Lcy_Amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        Dr_cr=entry_data['Dr_cr'],
+                        Ac_relatives=entry_data.get('Ac_relatives'),
+                        Account_id=entry_data['Account'],
+                        Account_no=account_no,
+                        Txn_code_id=data['Txn_code'],
+                        Value_date=data['Value_date'],
+                        Exch_rate=exchange_rate,
+                        fin_cycle_id=data.get('fin_cycle'),
+                        Period_code_id=data.get('Period_code'),
+                        Addl_text=data.get('Addl_text', ''),
+                        Addl_sub_text=addl_sub_text,
+                        Maker_Id=request.user,
+                        Maker_DT_Stamp=current_time,
+                        Auth_Status='U'
+                    )
+
+                    created_entries.append(journal_entry)
+
+                    # Generate shorter history reference number (max 20 chars)
+                    # Strategy: Use first part of original ref + timestamp + sequence
+                    original_ref = data['Reference_No']
+                    
+                    # Method 1: Truncate original and add timestamp + sequence
+                    
+                    history_entry = DETB_JRNL_LOG_HIST.objects.create(
+                        Reference_No=original_ref,
+                        module_id_id=data.get('module_id'),
+                        Ccy_cd_id=data['Ccy_cd'],
+                        Fcy_Amount=fcy_amount,
+                        Lcy_Amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        Dr_cr=entry_data['Dr_cr'],
+                        Ac_relatives=entry_data.get('Ac_relatives'),
+                        Account_id=entry_data['Account'],
+                        Account_no=account_no,
+                        Txn_code_id=data['Txn_code'],
+                        Value_date=data['Value_date'],
+                        Exch_rate=exchange_rate,
+                        fin_cycle_id=data.get('fin_cycle'),
+                        Period_code_id=data.get('Period_code'),
+                        Addl_text=data.get('Addl_text', ''),
+                        Addl_sub_text=addl_sub_text,
+                        Maker_Id=request.user,
+                        Maker_DT_Stamp=current_time,
+                        Auth_Status='U'
+                    )
+                    
+                    history_entries.append(history_entry)
+
+                    try:
+                        glsub_account = MTTB_GLSub.objects.select_related('gl_code').get(
+                            glsub_id=entry_data['Account']
+                        )
+                        gl_master = glsub_account.gl_code  # Assuming gl_head is the FK to GLMaster
+                    except MTTB_GLSub.DoesNotExist:
+                        logger.warning(f"GLSub account {entry_data['Account']} not found")
+                        gl_master = None
+                    
+                    # Create daily log entry
+                    daily_log_entry = ACTB_DAIRY_LOG.objects.create(
+                        module_id=data.get('module_id'),
+                        trn_ref_no=journal_entry,  # FK to the created journal entry
+                        event_sr_no=idx + 1,  # Sequential number for this batch
+                        event='JRNL',  # Journal event type
+                        ac_no_id=entry_data['Account'],
+                        ac_no_full=account_no,
+                        ac_relative=entry_data.get('Ac_relatives'),
+                        ac_ccy_id=data['Ccy_cd'],
+                        drcr_ind=entry_data['Dr_cr'],
+                        trn_code_id=data['Txn_code'],
+                        fcy_amount=fcy_amount,
+                        exch_rate=exchange_rate,
+                        lcy_amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        external_ref_no=data['Reference_No'][:16],  # Truncate to fit max length
+                        addl_text=data.get('Addl_text', ''),
+                        addl_sub_text=addl_sub_text,
+                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                        glid=gl_master,  # GLMaster instance for type
+                        category=gl_master.category if gl_master else None,  # category from GLMaster
+                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                        financial_cycle_id=data.get('fin_cycle'),
+                        period_code_id=data.get('Period_code'),
+                        user_id=request.user,
+                        Maker_DT_Stamp=current_time,
+                        auth_id=None,  # Will be set during authorization
+                        Checker_DT_Stamp=None,  # Will be set during authorization
+                        Auth_Status='U',  # Unauthorized
+                        product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
+                        entry_seq_no=idx + 1,  # Sequential number in batch
+                        delete_stat=None  # Not deleted
+                    )
+                    
+                    daily_log_entries.append(daily_log_entry)
+
+                    ACTB_DAIRY_LOG_HISTORY.objects.create(
+                        module_id=data.get('module_id'),
+                        trn_ref_no=journal_entry,  # FK to the created journal entry
+                        event_sr_no=idx + 1,
+                        event='JRNL',
+                        ac_no_id=entry_data['Account'],
+                        ac_no_full=account_no,
+                        ac_relative=entry_data.get('Ac_relatives'),
+                        ac_ccy_id=data['Ccy_cd'],
+                        drcr_ind=entry_data['Dr_cr'],
+                        trn_code_id=data['Txn_code'],
+                        fcy_amount=fcy_amount,
+                        exch_rate=exchange_rate,
+                        lcy_amount=lcy_amount,
+                        fcy_dr=fcy_dr,
+                        fcy_cr=fcy_cr,
+                        lcy_dr=lcy_dr,
+                        lcy_cr=lcy_cr,
+                        external_ref_no=data['Reference_No'][:16],
+                        addl_text=data.get('Addl_text', ''),
+                        addl_sub_text=addl_sub_text,
+                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                        glid=gl_master,
+                        category=gl_master.category if gl_master else None,
+                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                        financial_cycle_id=data.get('fin_cycle'),
+                        period_code_id=data.get('Period_code'),
+                        user_id=request.user,
+                        Maker_DT_Stamp=current_time,
+                        auth_id=None,
+                        Checker_DT_Stamp=None,
+                        Auth_Status='U',
+                        product=data.get('product_code', 'GL')[:4],
+                        entry_seq_no=idx + 1,
+                        delete_stat=None
+                    )
+
+                if created_entries:
+                    # Use the first entry as a reference for shared fields
+                    entry_seq_no = len(created_entries) 
+                    first = created_entries[0]
+                    reference_no = first.Reference_No
+                    module_id = first.module_id
+                    ccy_cd = first.Ccy_cd
+                    txn_code = first.Txn_code
+                    value_date = first.Value_date
+                    exch_rate = first.Exch_rate
+                    fin_cycle = first.fin_cycle
+                    period_code = first.Period_code
+                    addl_text = first.Addl_text
+
+                    # Sum Fcy_Amount and Lcy_Amount for this batch
+                    total_fcy = sum(e.fcy_dr  for e in created_entries)
+                    total_lcy = sum(e.lcy_dr for e in created_entries)
+                
+
+                    master_entry = DETB_JRNL_LOG_MASTER.objects.create(
+                        module_id=module_id,
+                        Reference_No=reference_no,
+                        Ccy_cd=ccy_cd,
+                        Fcy_Amount=total_fcy,
+                        Lcy_Amount=total_lcy,
+                        Txn_code=txn_code,
+                        Value_date=value_date,
+                        Exch_rate=exch_rate,
+                        fin_cycle=fin_cycle,
+                        Period_code=period_code,
+                        Addl_text=addl_text,
+                        Maker_Id=request.user,
+                        Maker_DT_Stamp=timezone.now(),
+                        Auth_Status='U',
+                        entry_seq_no=entry_seq_no 
+                    )
+
+                    # Log successful creation
+                    logger.info(f"Journal batch created - Reference: {reference_no}, Entries: {len(created_entries)}, History: {len(history_entries)}")
+                
+                # Serialize response
+                response_serializer = JRNLLogSerializer(created_entries, many=True)
+                response_data = response_serializer.data
+
+                for idx, entry in enumerate(created_entries):
+                    response_data[idx]['Account_id'] = entry.Account.glsub_code
+                
+                return Response({
+                    'message': f'Successfully created {len(created_entries)} journal entries with history',
+                    'reference_no': data['Reference_No'],
+                    'entries_created': len(created_entries),
+                    'history_entries_created': len(history_entries),
+                    'daily_log_entries_created': len(daily_log_entries),
+                    'entries': response_data
+                }, status=status.HTTP_201_CREATED)
+                
+        except Exception as e:
+            logger.error(f"Error creating batch journal entries with history: {str(e)}")
+            return Response({
+                'error': 'Failed to create journal entries',
+                'detail': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def balance_check(self, request):
+        """Check if journal entries are balanced by reference number"""
+        reference_no = request.query_params.get('reference_no')
+        
+        if not reference_no:
+            return Response({'error': 'reference_no parameter is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+        
+        if not entries.exists():
+            return Response({'error': 'No entries found for this reference number'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Calculate totals
+        totals = entries.aggregate(
+            total_lcy_dr=Sum('lcy_dr'),
+            total_lcy_cr=Sum('lcy_cr'),
+            total_fcy_dr=Sum('fcy_dr'),
+            total_fcy_cr=Sum('fcy_cr')
+        )
+        
+        lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
+        fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
+        
+        return Response({
+            'reference_no': reference_no,
+            'entry_count': entries.count(),
+            'lcy_totals': {
+                'debit': totals['total_lcy_dr'] or 0,
+                'credit': totals['total_lcy_cr'] or 0,
+                'balanced': lcy_balanced
+            },
+            'fcy_totals': {
+                'debit': totals['total_fcy_dr'] or 0,
+                'credit': totals['total_fcy_cr'] or 0,
+                'balanced': fcy_balanced
+            },
+            'overall_balanced': lcy_balanced and fcy_balanced
+        })
+
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, pk=None):
+        """Authorize a journal entry"""
+        journal_entry = self.get_object()
+        
+        if journal_entry.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        journal_entry.Auth_Status = 'A'
+        journal_entry.Checker_Id = request.user
+        journal_entry.Checker_DT_Stamp = timezone.now()
+        journal_entry.save()
+        
+        serializer = self.get_serializer(journal_entry)
+        return Response({
+            'message': 'Entry authorized successfully',
+            'entry': serializer.data
+        })
+
+    @action(detail=False, methods=['post'])
+    def authorize_batch(self, request):
+        """Authorize multiple journal entries by reference number"""
+        reference_no = request.data.get('reference_no')
+        
+        if not reference_no:
+            return Response({'error': 'reference_no is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        entries = DETB_JRNL_LOG.objects.filter(
+            Reference_No=reference_no,
+            Auth_Status='U'
+        )
+        
+        if not entries.exists():
+            return Response({'error': 'No unauthorized entries found for this reference number'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if balanced before authorization
+        balance_info = self.balance_check(request)
+        if not balance_info.data.get('overall_balanced'):
+            return Response({'error': 'Cannot authorize unbalanced entries'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        updated_count = entries.update(
+            Auth_Status='A',
+            Checker_Id=request.user,
+            Checker_DT_Stamp=timezone.now()
+        )
+        
+        return Response({
+            'message': f'Successfully authorized {updated_count} entries',
+            'reference_no': reference_no
+        })
+
+    @action(detail=False, methods=['get'])
+    def summary_report(self, request):
+        """Generate summary report for journal entries"""
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        queryset = self.get_queryset()
+        
+        if start_date:
+            queryset = queryset.filter(Value_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(Value_date__lte=end_date)
+        
+        # Summary statistics
+        summary = queryset.aggregate(
+            total_entries=models.Count('JRNLLog_id'),
+            total_lcy_amount=Sum('Lcy_Amount'),
+            total_fcy_amount=Sum('Fcy_Amount'),
+            authorized_count=models.Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+            unauthorized_count=models.Count('JRNLLog_id', filter=Q(Auth_Status='U'))
+        )
+        
+        # By currency breakdown
+        by_currency = queryset.values('Ccy_cd__ccy_code', 'Ccy_cd__Ccy_Name_la').annotate(
+            entry_count=models.Count('JRNLLog_id'),
+            total_amount=Sum('Fcy_Amount')
+        ).order_by('-total_amount')
+        
+        # By transaction code breakdown
+        by_txn_code = queryset.values('Txn_code__trn_code', 'Txn_code__trn_Desc_la').annotate(
+            entry_count=models.Count('JRNLLog_id'),
+            total_amount=Sum('Lcy_Amount')
+        ).order_by('-total_amount')
+        
+        return Response({
+            'period': {
+                'start_date': start_date,
+                'end_date': end_date
+            },
+            'summary': summary,
+            'by_currency': list(by_currency),
+            'by_transaction_code': list(by_txn_code)
+        })
+
+    def get_exchange_rate(self, currency_code):
+        """Get current exchange rate for currency"""
+        try:
+            if currency_code == 'LAK':
+                return Decimal('1.00')
+            
+            exc_rate = MTTB_EXC_Rate.objects.filter(
+                ccy_code__ccy_code=currency_code,
+                Auth_Status='A'
+            ).first()
+            
+            if exc_rate:
+                return exc_rate.Sale_Rate
+            else:
+                # Fallback to currency definition or default
+                currency = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
+                return getattr(currency, 'default_rate', Decimal('1.00'))
+                
+        except Exception:
+            return Decimal('1.00')
+    @action(detail=False, methods=['post'])
+    def generate_reference(self, request):
+        """Generate a reference number without creating entries"""
+        module_id = request.data.get('module_id', 'GL')
+        txn_code = request.data.get('txn_code')
+        value_date = request.data.get('value_date')
+        
+        if not txn_code:
+            return Response({'error': 'txn_code is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse date if provided
+        date = None
+        if value_date:
+            try:
+                from datetime import datetime
+                date = datetime.fromisoformat(value_date.replace('Z', '+00:00')).date()
+            except:
+                pass
+        
+        reference_no = JournalEntryHelper.generate_reference_number(
+            module_id=module_id,
+            txn_code=txn_code,
+            date=date
+        )
+        
+        return Response({
+            'reference_no': reference_no,
+            'module_id': module_id,
+            'txn_code': txn_code,
+            'date': date or timezone.now().date()
+        })
+
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+
+from .models import DETB_JRNL_LOG_MASTER
+from .serializers import DETB_JRNL_LOG_MASTER_Serializer
+
+class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
+    queryset = DETB_JRNL_LOG_MASTER.objects.all()
+    serializer_class = DETB_JRNL_LOG_MASTER_Serializer
+
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status', 'delete_stat']  # Add more as needed
+    search_fields = ['Reference_No', 'Addl_text']  # Optional
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date']  # Optional
+
+    def perform_update(self, serializer):
+        """
+        If Auth_Status is set to 'A', set all DETB_JRNL_LOG rows with the same Reference_No to 'A'.
+        """
+        instance = serializer.save()
+        if instance.Auth_Status == 'A':
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No=instance.Reference_No
+            ).update(Auth_Status='A')
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # Soft delete logic
+        instance.delete_stat = 'D'
+        instance.save()
+        return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    
+    
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from datetime import datetime
+from django.utils.timezone import make_aware
+from .models import STTB_Dates, MTTB_LCL_Holiday
+
+
+@api_view(['POST'])  # or ['GET'] if you want it triggered without payload
+@permission_classes([IsAuthenticated])
+def submit_eod_journal(request):
+    today = datetime.today().date()
+    current_year = today.year
+    current_month = today.month
+    current_day = today.day
+
+    try:
+        # Get Holiday Entry for Current Month and Year
+        holiday = MTTB_LCL_Holiday.objects.get(HYear=str(current_year), HMonth=str(current_month))
+
+        # Check Working Day from Holiday_List
+        day_index = current_day - 1  # 0-based index
+        if day_index >= len(holiday.Holiday_List):
+            return Response({"status": "error", "message": "Holiday list does not include today."}, status=400)
+
+        day_type = holiday.Holiday_List[day_index]
+        if day_type != 'W':
+            return Response({"status": "error", "message": f"Today is not a working day: {day_type}"}, status=400)
+
+        # Check if EOD Already Submitted
+        last_eod = STTB_Dates.objects.filter(eod_time='Y').order_by('-Start_Date').first()
+
+        if last_eod and last_eod.Start_Date.date() >= today:
+            return Response({"status": "error", "message": "EOD already submitted for today or later."}, status=400)
+
+        # Save New EOD Entry
+        new_eod = STTB_Dates.objects.create(
+            Start_Date=make_aware(datetime.combine(today, datetime.min.time())),
+            prev_Wroking_Day=last_eod.Start_Date if last_eod else None,
+            next_working_Day=None,  # To be calculated if needed
+            eod_time='Y'
+        )
+
+        return Response({
+            "status": "success",
+            "message": f"EOD submitted for {today}",
+            "eod_id": new_eod.date_id
+        }, status=201)
+
+    except MTTB_LCL_Holiday.DoesNotExist:
+        return Response({"status": "error", "message": "Holiday data not found for this month."}, status=404)
+
+    except Exception as e:
+        return Response({"status": "error", "message": str(e)}, status=500)
+
+#---------Asset-------------
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
+from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,FA_Depreciation_Sub,
+                     FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
+                     FA_Accounting_Method)
+from .serializers import (FAAssetTypeSerializer,FAChartOfAssetSerializer,FASuppliersSerializer,FALocationSerializer,FAExpenseCategorySerializer,
+    FAAssetListSerializer,FADepreciationMainSerializer,FADepreciationSubSerializer,FAAssetListDepreciationSerializer,FAAssetListDisposalSerializer,
+    FAAssetExpenseSerializer,FATransferLogsSerializer,FAAssetPhotosSerializer,FAMaintenanceLogsSerializer,FAAccountingMethodSerializer)
+from django.utils import timezone
+
+class FAAssetTypeViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetTypeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_Type.objects.all().order_by('type_id')
+        type_code = self.request.query_params.get('type_code')
+        if type_code:
+            queryset = queryset.filter(type_code=type_code)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' """
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_tangible(self, request, pk=None):
+        """Allow updating only the is_tangible field"""
+        obj = self.get_object()
+        new_status = request.data.get('is_tangible')
+
+        if not new_status:
+            return Response({'detail': 'is_tangible is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        obj.is_tangible = new_status
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': f'Status updated to "{new_status}".',
+            'entry': serializer.data
+        })
+
+class FAChartOfAssetViewSet(viewsets.ModelViewSet):
+    serializer_class = FAChartOfAssetSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Chart_Of_Asset.objects.all().order_by('coa_id')
+        asset_code = self.request.query_params.get('asset_code')
+        asset_type_id = self.request.query_params.get('asset_type_id')
+        if asset_type_id:
+            queryset = queryset.filter(asset_type_id=asset_type_id)
+        if asset_code:
+            queryset = queryset.filter(asset_code=asset_code)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+class FASuppliersViewSet(viewsets.ModelViewSet):
+    serializer_class = FASuppliersSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Suppliers.objects.all().order_by('supplier_id')
+        supplier_code = self.request.query_params.get('supplier_code')
+        if supplier_code:
+            queryset = queryset.filter(supplier_code=supplier_code)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+class FALocationViewSet(viewsets.ModelViewSet):
+    serializer_class = FALocationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Location.objects.all().order_by('location_id')
+        location_code = self.request.query_params.get('location_code')
+        if location_code:
+            queryset = queryset.filter(location_code=location_code)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+class FAExpenseCategoryViewSet(viewsets.ModelViewSet):
+    serializer_class = FAExpenseCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Expense_Category.objects.all().order_by('ec_id')
+        category_code = self.request.query_params.get('category_code')
+        if category_code:
+            queryset = queryset.filter(category_code=category_code)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_y_approve(self, request, pk=None):
+        """Set required_approval = 'Y' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.required_approval == 'Y':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.required_approval = 'Y'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_n_approve(self, request, pk=None):
+        """Set required_approval = 'N' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.required_approval == 'N':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.required_approval = 'N'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+class FAAssetListViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetListSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_Lists.objects.all().order_by('asset_list_id')
+        asset_type_id = self.request.query_params.get('asset_type_id')
+        if asset_type_id:
+            queryset = queryset.filter(asset_type_id=asset_type_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now(),
+            asset_ac_by=user,
+            asset_ac_datetime=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
+class FADepreciationMainViewSet(viewsets.ModelViewSet):
+    serializer_class = FADepreciationMainSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Depreciation_Main.objects.all().order_by('dm_id')
+        dpca_type = self.request.query_params.get('dpca_type')
+        if dpca_type:
+            queryset = queryset.filter(dpca_type=dpca_type)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+
+class FADepreciationSubViewSet(viewsets.ModelViewSet):
+    serializer_class = FADepreciationSubSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Depreciation_Sub.objects.all().order_by('ds_id')
+        m_id = self.request.query_params.get('m_id')
+        if m_id:
+            queryset = queryset.filter(m_id=m_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+
+class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetListDepreciationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_List_Depreciation.objects.all().order_by('ald_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetListDisposalSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+class FAAssetExpenseViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetExpenseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_Expense.objects.all().order_by('ae_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+class FATransferLogsViewSet(viewsets.ModelViewSet):
+    serializer_class = FATransferLogsSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Transfer_Logs.objects.all().order_by('transfer_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+class FAAssetPhotosViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetPhotosSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_Photos.objects.all().order_by('ap_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+class FAMaintenanceLogsViewSet(viewsets.ModelViewSet):
+    serializer_class = FAMaintenanceLogsSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Maintenance_Logs.objects.all().order_by('maintenance_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+class FAAccountingMethodViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAccountingMethodSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Accounting_Method.objects.all().order_by('mapping_id')
+        acc_type = self.request.query_params.get('acc_type')
+        if acc_type:
+            queryset = queryset.filter(acc_type=acc_type)
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
+#----------------end of Asset-----------------
+
+# Function Get User Login Session
+
+# ---------------------------------------------------------------------------------------------------
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from django.utils import timezone
+from django.db import transaction
+from .models import MTTB_USER_ACCESS_LOG, MTTB_Users
+from datetime import datetime
+
+# @api_view(["POST"])
+# @permission_classes([IsAuthenticated])
+# def force_logout_user(request):
+#     """
+#     Force logout a user by their user_id.
+#     Only admins should be able to use this endpoint.
+    
+#     POST /api/force-logout/
+#     Body: { "user_id": "<user_id_to_logout>" }
+#     """
+#     # Optional: Check if the requesting user has admin privileges
+#     # if not request.user.Role_ID or request.user.Role_ID.role_name != 'Admin':
+#     #     return Response(
+#     #         {"error": "Permission denied. Admin access required."},
+#     #         status=status.HTTP_403_FORBIDDEN
+#     #     )
+    
+#     target_user_id = request.data.get("user_id")
+#     if not target_user_id:
+#         return Response(
+#             {"error": "user_id is required"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # Check if the target user exists
+#     try:
+#         target_user = MTTB_Users.objects.get(user_id=target_user_id)
+#     except MTTB_Users.DoesNotExist:
+#         return Response(
+#             {"error": f"User with id {target_user_id} not found"},
+#             status=status.HTTP_404_NOT_FOUND
+#         )
+    
+#     # Prevent users from force logging out themselves
+#     if request.user.user_id == target_user_id:
+#         return Response(
+#             {"error": "Cannot force logout yourself. Use normal logout instead."},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     with transaction.atomic():
+#         # 1. Find all active sessions for this user
+#         active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+#             user_id=target_user,
+#             logout_datetime__isnull=True,
+#             login_status='S'  # Only successful logins
+#         )
+        
+#         session_count = active_sessions.count()
+        
+#         # 2. Blacklist all outstanding tokens for this user
+#         blacklisted_count = 0
+#         try:
+#             # Get all outstanding tokens for this user
+#             outstanding_tokens = OutstandingToken.objects.filter(
+#                 user__user_id=target_user_id
+#             )
+            
+#             for token in outstanding_tokens:
+#                 # Check if already blacklisted
+#                 if not BlacklistedToken.objects.filter(token=token).exists():
+#                     BlacklistedToken.objects.create(token=token)
+#                     blacklisted_count += 1
+                    
+#         except Exception as e:
+#             # If blacklisting fails, still continue with logging out sessions
+#             print(f"Error blacklisting tokens: {str(e)}")
+        
+#         # 3. Update all active sessions to mark them as force logged out
+#         current_time = timezone.now()
+#         active_sessions.update(
+#             logout_datetime=current_time,
+#             logout_type='F',  # F = Force logout
+#             remarks=f'Force logged out by {request.user.user_id}'
+#         )
+        
+#         # 4. Optional: Create a new log entry for the force logout action
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=request.user,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='A',  # A = Admin action
+#             remarks=f'Force logged out user {target_user_id}'
+#         )
+    
+#     return Response({
+#         "message": f"Successfully force logged out user {target_user_id}",
+#         "sessions_terminated": session_count,
+#         "tokens_blacklisted": blacklisted_count
+#     }, status=status.HTTP_200_OK)
+
+# views.py - Add these views to your existing views
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, BasePermission
+from rest_framework.response import Response
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from django.utils import timezone
+from django.db import transaction
+from django.db.models import Q
+from .models import MTTB_USER_ACCESS_LOG, MTTB_Users, MTTB_REVOKED_SESSIONS
+from .serializers import UserAccessLogSerializer
+from SAMCSYS.authentication import get_jti_from_request
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# Helper function
+def get_client_ip(request):
+    """Extract client IP from request"""
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '')
+
+
+# Custom permission class for admin-only endpoints
+class IsAdminUser(BasePermission):
+    """
+    Custom permission to only allow admin users.
+    """
+    message = "Only administrators can perform this action."
+    
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Check if user has admin role
+        if hasattr(request.user, 'Role_ID') and request.user.Role_ID:
+            # Adjust this condition based on your role structure
+            role_name = getattr(request.user.Role_ID, 'role_name', '')
+            return role_name.lower() in ['SYA', 'SYS']
+        
+        return False
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def force_logout_user(request):
+    """
+    Force logout a user by their user_id.
+    Revokes all their active sessions and tokens.
+    
+    POST /api/force-logout/
+    Body: { "user_id": "<user_id_to_logout>" }
+    """
+    target_user_id = request.data.get("user_id")
+    
+    # Validation
+    if not target_user_id:
+        return Response(
+            {"error": "user_id is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if the target user exists
+    try:
+        target_user = MTTB_Users.objects.get(user_id=target_user_id)
+    except MTTB_Users.DoesNotExist:
+        return Response(
+            {"error": f"User with id {target_user_id} not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Prevent users from force logging out themselves
+    if request.user.user_id == target_user_id:
+        return Response(
+            {"error": "Cannot force logout yourself. Use normal logout instead."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    with transaction.atomic():
+        # Find all active sessions for this user
+        active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+            user_id=target_user,
+            logout_datetime__isnull=True,
+            login_status='S'  # Only successful logins
+        )
+        
+        session_count = active_sessions.count()
+        revoked_count = 0
+        
+        # Revoke all active sessions
+        for session in active_sessions:
+            if session.session_id:  # session_id contains the JTI
+                try:
+                    # Create revoked session entry
+                    MTTB_REVOKED_SESSIONS.objects.get_or_create(
+                        jti=session.session_id,
+                        defaults={
+                            'user_id': target_user,
+                            'revoked_by': request.user,
+                            'reason': f'Force logged out by {request.user.user_name}',
+                            'ip_address': get_client_ip(request)
+                        }
+                    )
+                    revoked_count += 1
+                except Exception as e:
+                    logger.error(f"Error revoking session {session.session_id}: {str(e)}")
+        
+        # Update all active sessions to mark them as force logged out
+        current_time = timezone.now()
+        active_sessions.update(
+            logout_datetime=current_time,
+            logout_type='F',  # F = Force logout
+            remarks=f'Force logged out by {request.user.user_name} ({request.user.user_id})'
+        )
+        
+        # Log the admin action
+        MTTB_USER_ACCESS_LOG.objects.create(
+            user_id=request.user,
+            session_id=get_jti_from_request(request),
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+            login_status='A',  # A = Admin action
+            remarks=f'Force logged out user {target_user.user_name} ({target_user_id})'
+        )
+    
+    logger.info(f"Admin {request.user.user_id} force logged out user {target_user_id}")
+    
+    return Response({
+        "success": True,
+        "message": f"Successfully force logged out user {target_user_id}",
+        "details": {
+            "user_id": target_user_id,
+            "user_name": target_user.user_name,
+            "sessions_terminated": session_count,
+            "tokens_revoked": revoked_count
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_active_sessions(request):
+    """
+    Get all active sessions (users currently logged in).
+    Regular users can only see their own sessions.
+    Admins can see all sessions.
+    
+    GET /api/active-sessions/
+    Optional query params:
+    - user_id: Filter by specific user (admin only)
+    - include_details: Include detailed session info
+    """
+    # Check if user is admin
+    is_admin = IsAdminUser().has_permission(request, None)
+    
+    # Base query for active sessions
+    query = MTTB_USER_ACCESS_LOG.objects.filter(
+        logout_datetime__isnull=True,
+        login_status='S'
+    ).select_related('user_id')
+    
+    # Non-admins can only see their own sessions
+    if not is_admin:
+        query = query.filter(user_id=request.user)
+    else:
+        # Admins can filter by user_id if provided
+        filter_user_id = request.query_params.get('user_id')
+        if filter_user_id:
+            query = query.filter(user_id__user_id=filter_user_id)
+    
+    # Order by login time (most recent first)
+    query = query.order_by('-login_datetime')
+    
+    # Prepare response data
+    sessions_data = []
+    for session in query:
+        session_info = {
+            'log_id': session.log_id,
+            'user_id': session.user_id.user_id if session.user_id else None,
+            'user_name': session.user_id.user_name if session.user_id else None,
+            'login_datetime': session.login_datetime,
+            'session_duration': str(timezone.now() - session.login_datetime) if session.login_datetime else None,
+            'ip_address': session.ip_address,
+        }
+        
+        # Include additional details if requested
+        if request.query_params.get('include_details') == 'true':
+            session_info.update({
+                'user_agent': session.user_agent,
+                'session_id': session.session_id[:10] + '...' if session.session_id else None,  # Partial JTI for security
+                'user_email': session.user_id.user_email if session.user_id else None,
+                'user_status': session.user_id.User_Status if session.user_id else None,
+            })
+        
+        sessions_data.append(session_info)
+    
+    return Response({
+        "success": True,
+        "active_sessions": sessions_data,
+        "total_count": len(sessions_data),
+        "is_admin_view": is_admin,
+        "current_time": timezone.now()
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def force_logout_all_users(request):
+    """
+    Force logout all users except the requesting admin.
+    Requires explicit confirmation.
+    
+    POST /api/force-logout-all/
+    Body: { "confirm": true, "reason": "optional reason" }
+    """
+    # Require explicit confirmation
+    if not request.data.get("confirm"):
+        return Response(
+            {"error": "Confirmation required. Set 'confirm': true in request body."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    reason = request.data.get("reason", "Mass force logout by administrator")
+    
+    # Get current user's JTI to exclude it
+    current_jti = get_jti_from_request(request)
+    
+    with transaction.atomic():
+        # Get all active sessions except current user's
+        active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+            logout_datetime__isnull=True,
+            login_status='S'
+        ).exclude(
+            Q(user_id=request.user) | Q(session_id=current_jti)
+        ).select_related('user_id')
+        
+        session_count = active_sessions.count()
+        revoked_count = 0
+        affected_users = set()
+        
+        # Revoke all sessions
+        for session in active_sessions:
+            if session.session_id:
+                try:
+                    MTTB_REVOKED_SESSIONS.objects.get_or_create(
+                        jti=session.session_id,
+                        defaults={
+                            'user_id': session.user_id,
+                            'revoked_by': request.user,
+                            'reason': reason,
+                            'ip_address': get_client_ip(request)
+                        }
+                    )
+                    revoked_count += 1
+                    if session.user_id:
+                        affected_users.add(session.user_id.user_name)
+                except Exception as e:
+                    logger.error(f"Error revoking session in mass logout: {str(e)}")
+        
+        # Mark all sessions as logged out
+        current_time = timezone.now()
+        active_sessions.update(
+            logout_datetime=current_time,
+            logout_type='F',
+            remarks=f'{reason} by {request.user.user_name}'
+        )
+        
+        # Log the mass logout action
+        MTTB_USER_ACCESS_LOG.objects.create(
+            user_id=request.user,
+            session_id=current_jti,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+            login_status='A',
+            remarks=f'Performed mass force logout: {reason}'
+        )
+    
+    logger.warning(f"Admin {request.user.user_id} performed mass force logout. Affected {len(affected_users)} users.")
+    
+    return Response({
+        "success": True,
+        "message": "Successfully force logged out all users",
+        "details": {
+            "sessions_terminated": session_count,
+            "tokens_revoked": revoked_count,
+            "users_affected": len(affected_users),
+            "reason": reason
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def verify_token(request):
+    """
+    Simple endpoint to verify if a token is still valid.
+    Used by frontend to check authentication status.
+    
+    GET /api/verify-token/
+    """
+    return Response({
+        "valid": True,
+        "user_id": request.user.user_id,
+        "user_name": request.user.user_name,
+        "jti": get_jti_from_request(request),
+        "timestamp": timezone.now()
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def get_revoked_sessions(request):
+    """
+    Get list of revoked sessions (admin only).
+    Useful for audit purposes.
+    
+    GET /api/revoked-sessions/
+    Query params:
+    - user_id: Filter by specific user
+    - days: Number of days to look back (default: 7)
+    """
+    days = int(request.query_params.get('days', 7))
+    cutoff_date = timezone.now() - timezone.timedelta(days=days)
+    
+    query = MTTB_REVOKED_SESSIONS.objects.filter(
+        revoked_at__gte=cutoff_date
+    ).select_related('user_id', 'revoked_by')
+    
+    # Filter by user if specified
+    user_id_filter = request.query_params.get('user_id')
+    if user_id_filter:
+        query = query.filter(user_id__user_id=user_id_filter)
+    
+    revoked_sessions = []
+    for session in query.order_by('-revoked_at')[:100]:  # Limit to 100 most recent
+        revoked_sessions.append({
+            'id': session.id,
+            'user_id': session.user_id.user_id if session.user_id else None,
+            'user_name': session.user_id.user_name if session.user_id else None,
+            'revoked_at': session.revoked_at,
+            'revoked_by': session.revoked_by.user_name if session.revoked_by else 'System',
+            'reason': session.reason,
+            'ip_address': session.ip_address
+        })
+    
+    return Response({
+        "success": True,
+        "revoked_sessions": revoked_sessions,
+        "total_count": len(revoked_sessions),
+        "date_range": {
+            "from": cutoff_date,
+            "to": timezone.now()
+        }
+    }, status=status.HTTP_200_OK)
+
+
+from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from django.db.models import Q
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from .models import MTTB_EOC_MAINTAIN
+from .serializers import EOCMaintainSerializer
+
+class EOCMaintainViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet ສໍາລັບການຈັດການ EOC Maintain
+    ປະກອບດ້ວຍ CRUD operations ແລະ custom actions
+    """
+    queryset = MTTB_EOC_MAINTAIN.objects.all()
+    serializer_class = EOCMaintainSerializer
+    permission_classes = [IsAuthenticated]
+    
+    # Filtering and searching
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['eoc_type', 'Record_Status', 'Auth_Status', 'Once_Auth', 'module_id', 'function_id']
+    search_fields = ['eoc_type', 'module_id__module_name', 'function_id__function_name']
+    ordering_fields = ['eoc_id', 'eoc_seq_no', 'Maker_DT_Stamp', 'Checker_DT_Stamp']
+    ordering = ['-eoc_id']
+
+    def get_queryset(self):
+        """Custom queryset with optimized joins"""
+        return MTTB_EOC_MAINTAIN.objects.select_related(
+            'module_id', 'function_id', 'Maker_Id', 'Checker_Id'
+        ).all()
+
+    def perform_create(self, serializer):
+        """ກໍານົດຄ່າເມື່ອສ້າງ record ໃໝ່"""
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        
+        serializer.save(
+            Maker_Id_id=user_id,  # Use _id for foreign key
+            Maker_DT_Stamp=timezone.now(),
+            Record_Status='C',  # Default to closed
+            Auth_Status='U',  # Default to unauthorized
+            Once_Auth='N'     # Default to not authorized once
+        )
+
+    def perform_update(self, serializer):
+        """ກໍານົດຄ່າເມື່ອອັບເດດ record"""
+        user = self.request.user
+        user_id = getattr(user, 'user_id', None)
+        
+        serializer.save(
+            Checker_Id_id=user_id,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+    def create(self, request, *args, **kwargs):
+        """Override create to add custom response"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response({
+            'message': 'ສ້າງ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        }, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """Override update to add custom response"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Check if record can be updated
+        if instance.Auth_Status == 'A' and instance.Record_Status == 'C':
+            return Response({
+                'error': 'ບໍ່ສາມາດແກ້ໄຂ record ທີ່ຖືກອະນຸມັດແລ້ວ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            'message': 'ອັບເດດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to add validation"""
+        instance = self.get_object()
+        
+        # Check if record can be deleted
+        if instance.Auth_Status == 'A':
+            return Response({
+                'error': 'ບໍ່ສາມາດລຶບ record ທີ່ຖືກອະນຸມັດແລ້ວ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        self.perform_destroy(instance)
+        return Response({
+            'message': 'ລຶບ EOC Maintain ສໍາເລັດແລ້ວ'
+        }, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """ເປີດ record (record_stat = 'O')"""
+        obj = self.get_object()
+        
+        if obj.Record_Status == 'O':
+            return Response({
+                'detail': 'Record ເປີດຢູ່ແລ້ວ'
+            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        if obj.Auth_Status != 'A':
+            return Response({
+                'detail': 'ບໍ່ສາມາດເປີດໄດ້. ສາມາດເປີດໄດ້ເລີມີ record ທີ່ຖືກອະນຸມັດແລ້ວເທົ່ານັ້ນ (Auth_Status = "A")'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        obj.Record_Status = 'O'
+        obj.Checker_Id_id = getattr(request.user, 'user_id', None)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': 'ເປີດ record ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """ປິດ record (record_stat = 'C')"""
+        obj = self.get_object()
+
+        if obj.Record_Status == 'C':
+            return Response({
+                'detail': 'Record ປິດຢູ່ແລ້ວ'
+            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        obj.Record_Status = 'C'
+        obj.Checker_Id_id = getattr(request.user, 'user_id', None)
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': 'ປິດ record ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, pk=None):
+        """ອະນຸມັດ EOC Maintain"""
+        eoc_entry = self.get_object()
+
+        if eoc_entry.Auth_Status == 'A':
+            return Response({
+                'error': 'Record ຖືກອະນຸມັດແລ້ວ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Auth = 'Y', record_stat = 'C'
+        eoc_entry.Auth_Status = 'A'
+        eoc_entry.Once_Auth = 'Y'
+        eoc_entry.record_stat = 'C'
+        eoc_entry.Checker_Id_id = getattr(request.user, 'user_id', None)
+        eoc_entry.Checker_DT_Stamp = timezone.now()
+        eoc_entry.save()
+
+        serializer = self.get_serializer(eoc_entry)
+        return Response({
+            'message': 'ອະນຸມັດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unauthorize(self, request, pk=None):
+        """ຍົກເລີກການອະນຸມັດ EOC Maintain"""
+        eoc_entry = self.get_object()
+
+        if eoc_entry.Auth_Status == 'U':
+            return Response({
+                'error': 'Record ຍັງບໍ່ໄດ້ຮັບການອະນຸມັດ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'U', record_stat = 'C'
+        eoc_entry.Auth_Status = 'U'
+        eoc_entry.Record_Status = 'C'
+        eoc_entry.Checker_Id_id = getattr(request.user, 'user_id', None)
+        eoc_entry.Checker_DT_Stamp = timezone.now()
+        eoc_entry.save()
+
+        serializer = self.get_serializer(eoc_entry)
+        return Response({
+            'message': 'ຍົກເລີກການອະນຸມັດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+    
+# from rest_framework import viewsets, permissions
+# from rest_framework.permissions import AllowAny, IsAuthenticated
+# from django_filters.rest_framework import DjangoFilterBackend
+# from .models import MasterType, MasterCode
+# from .serializers import MasterTypeSerializer, MasterCodeSerializer
+
+# class MasterTypeViewSet(viewsets.ModelViewSet):
+#     queryset = MasterType.objects.all()
+#     serializer_class = MasterTypeSerializer
+#     filter_backends = [DjangoFilterBackend]
+#     filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
+
+#     def get_permissions(self):
+#         # Allow unauthenticated POST, require auth otherwise
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+
+# class MasterCodeViewSet(viewsets.ModelViewSet):
+#     queryset = MasterCode.objects.all()
+#     serializer_class = MasterCodeSerializer
+#     filter_backends = [DjangoFilterBackend]
+#     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
+
+#     def get_permissions(self):
+#         # Allow unauthenticated POST, require auth otherwise
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+    
+
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import MasterType, MasterCode
+from .serializers import MasterTypeSerializer, MasterCodeSerializer
+
+class MasterTypeViewSet(viewsets.ModelViewSet):
+    queryset = MasterType.objects.all()
+    serializer_class = MasterTypeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['M_code', 'M_name_la', 'M_name_en', 'Status']
+    lookup_field = 'M_id'  # Use M_id for standard CRUD operations
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    @action(detail=True, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
+    def get_tree(self, request, m_code=None):
+        """
+        Retrieve MasterType with related MasterCode entries in a tree structure.
+        :param m_code: M_code of the MasterType
+        """
+        try:
+            master_type = MasterType.objects.get(M_code=m_code)  # Fetch by M_code
+            master_codes = MasterCode.objects.filter(M_id=master_type)
+
+            # Serialize MasterType
+            type_serializer = MasterTypeSerializer(master_type)
+            
+            # Serialize related MasterCodes
+            code_serializer = MasterCodeSerializer(master_codes, many=True)
+
+            # Construct tree response
+            tree_data = {
+                'MasterType': type_serializer.data,
+                'MasterCodes': code_serializer.data
+            }
+
+            return Response(tree_data)
+        except MasterType.DoesNotExist:
+            return Response({'error': 'MasterType not found'}, status=404)
+
+class MasterCodeViewSet(viewsets.ModelViewSet):
+    queryset = MasterCode.objects.all()
+    serializer_class = MasterCodeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
+    lookup_field = 'MC_id'  # Use MC_id for MasterCode CRUD operations
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
