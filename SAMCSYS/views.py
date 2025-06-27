@@ -2081,9 +2081,12 @@ class GLSubViewSet(viewsets.ModelViewSet):
     def validate_glsub_selection(self, request):
         """
         Validate if a GL sub-account can be used for a debit or credit transaction based on
-        the outstanding field in the linked MTTB_GLMaster.
+        the post_side and category fields in the linked MTTB_GLMaster.
         Expects 'glsub_code' and 'transaction_side' ('dr' or 'cr') in the request data.
-        MTTB_GLMaster.outstanding can be 'dr', 'cr', or 'dr/cr'.
+        - If post_side = '2', allow both dr and cr transactions.
+        - If post_side = '1', allow based on category:
+          - Assets (1), Expenses (5): Allow dr to increase, cr to decrease.
+          - Liabilities (2), Equity (3), Income (4): Allow cr to increase, dr to decrease.
         """
         glsub_code = request.data.get('glsub_code')
         transaction_side = request.data.get('transaction_side')
@@ -2119,34 +2122,48 @@ class GLSubViewSet(viewsets.ModelViewSet):
                 'debug': {'glsub_id': glsub.glsub_id, 'gl_code': None}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        outstanding = glsub.gl_code.outstanding or ''
+        post_side = glsub.gl_code.post_side or ''
+        category = glsub.gl_code.category or ''
 
-        # Validate outstanding value
-        if outstanding not in ['dr', 'cr', 'dr/cr']:
+        # Validate post_side value
+        if post_side not in ['1', '2']:
             return Response({
                 'valid': False,
-                'message': f'Invalid outstanding value ({outstanding}) for GL Master account linked to {glsub_code}. Must be "dr", "cr", or "dr/cr".',
-                'debug': {'glsub_code': glsub_code, 'outstanding': outstanding}
+                'message': f'Invalid post_side value ({post_side}) for GL Master account linked to {glsub_code}. Must be "1" or "2".',
+                'debug': {'glsub_code': glsub_code, 'post_side': post_side}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate transaction_side against outstanding
-        if outstanding == 'dr' and transaction_side != 'dr':
+        # Validate category value
+        if category not in ['1', '2', '3', '4', '5']:
             return Response({
                 'valid': False,
-                'message': f'Cannot use {glsub_code} for credit transaction. GL Master account allows only debit (outstanding = "dr").',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
+                'message': f'Invalid category value ({category}) for GL Master account linked to {glsub_code}. Must be "1", "2", "3", "4", or "5".',
+                'debug': {'glsub_code': glsub_code, 'category': category}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if outstanding == 'cr' and transaction_side != 'cr':
-            return Response({
-                'valid': False,
-                'message': f'Cannot use {glsub_code} for debit transaction. GL Master account allows only credit (outstanding = "cr").',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # If post_side is '2', allow both dr and cr transactions
+        if post_side == '2':
+            pass  # No further validation needed; both sides are allowed
+        else:
+            # If post_side is '1', validate based on category
+            if category in ['1', '5']:  # Assets, Expenses
+                if transaction_side not in ['dr', 'cr']:  # Allow both dr and cr
+                    return Response({
+                        'valid': False,
+                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Assets/Expenses accounts (category = {category}) allow both dr and cr with post_side = "1".',
+                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            elif category in ['2', '3', '4']:  # Liabilities, Equity, Income
+                if transaction_side not in ['cr', 'dr']:  # Allow both cr and dr
+                    return Response({
+                        'valid': False,
+                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Liabilities/Equity/Income accounts (category = {category}) allow both cr and dr with post_side = "1".',
+                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
         # Relaxed status checks based on sample data
         # Sample shows MTTB_GLSub.Record_Status = 'C' and MTTB_GLMaster.Auth_Status = 'U', which may be valid
-        # Commenting out these checks; uncomment if they are required in your business logic
+        # Uncomment these checks if required by your business logic
         """
         if glsub.Record_Status == 'C':
             return Response({
@@ -2169,70 +2186,14 @@ class GLSubViewSet(viewsets.ModelViewSet):
             'debug': {
                 'glsub_code': glsub_code,
                 'transaction_side': transaction_side,
-                'outstanding': outstanding,
+                'post_side': post_side,
+                'category': category,
                 'glsub_record_status': glsub.Record_Status,
                 'glsub_auth_status': glsub.Auth_Status,
                 'glmaster_auth_status': glsub.gl_code.Auth_Status
             }
         }, status=status.HTTP_200_OK)
 
-
-
-# class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
-#     serializer_class = MTTB_EMPLOYEESerializer
-#     permission_classes = [IsAuthenticated]
-#     lookup_field = 'employee_id'
-
-#     def get_queryset(self):
-#         queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
-#         div_id = self.request.query_params.get('div_id')
-#         if div_id:
-#             queryset = queryset.filter(division_id=div_id)
-#         return queryset
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         if serializer.is_valid():
-#             self.perform_create(serializer)
-#             return Response({
-#                 "status": "success",
-#                 "message": "Employee created successfully.",
-#                 "data": serializer.data
-#             }, status=status.HTTP_201_CREATED)
-#         else:
-#             return Response({
-#                 "status": "error",
-#                 "message": "Failed to create employee.",
-#                 "errors": serializer.errors
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#     def destroy(self, request, *args, **kwargs):
-#         try:
-#             instance = self.get_object()
-#             self.perform_destroy(instance)
-#             return Response({
-#                 "status": "success",
-#                 "message": "Employee deleted successfully."
-#             }, status=status.HTTP_204_NO_CONTENT)
-#         except Exception as e:
-#             return Response({
-#                 "status": "error",
-#                 "message": f"Failed to delete employee: {str(e)}"
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#     def perform_create(self, serializer):
-#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         serializer.save(
-#             Maker_Id=maker,
-#             Maker_DT_Stamp=timezone.now()
-#         )
-
-#     def perform_update(self, serializer):
-#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         serializer.save(
-#             Checker_Id=checker,
-#             Checker_DT_Stamp=timezone.now()
-#         )
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
@@ -3993,82 +3954,82 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         logger.warning(f"GLSub account {entry_data['Account']} not found")
                         gl_master = None
                     
-                    # Create daily log entry
-                    daily_log_entry = ACTB_DAIRY_LOG.objects.create(
-                        module_id=data.get('module_id'),
-                        trn_ref_no=journal_entry,  # FK to the created journal entry
-                        event_sr_no=idx + 1,  # Sequential number for this batch
-                        event='JRNL',  # Journal event type
-                        ac_no_id=entry_data['Account'],
-                        ac_no_full=account_no,
-                        ac_relative=entry_data.get('Ac_relatives'),
-                        ac_ccy_id=data['Ccy_cd'],
-                        drcr_ind=entry_data['Dr_cr'],
-                        trn_code_id=data['Txn_code'],
-                        fcy_amount=fcy_amount,
-                        exch_rate=exchange_rate,
-                        lcy_amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        external_ref_no=data['Reference_No'][:16],  # Truncate to fit max length
-                        addl_text=data.get('Addl_text', ''),
-                        addl_sub_text=addl_sub_text,
-                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        glid=gl_master,  # GLMaster instance for type
-                        category=gl_master.category if gl_master else None,  # category from GLMaster
-                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        financial_cycle_id=data.get('fin_cycle'),
-                        period_code_id=data.get('Period_code'),
-                        user_id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        auth_id=None,  # Will be set during authorization
-                        Checker_DT_Stamp=None,  # Will be set during authorization
-                        Auth_Status='U',  # Unauthorized
-                        product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
-                        entry_seq_no=idx + 1,  # Sequential number in batch
-                        delete_stat=None  # Not deleted
-                    )
+                    # # Create daily log entry
+                    # daily_log_entry = ACTB_DAIRY_LOG.objects.create(
+                    #     module_id=data.get('module_id'),
+                    #     trn_ref_no=journal_entry,  # FK to the created journal entry
+                    #     event_sr_no=idx + 1,  # Sequential number for this batch
+                    #     event='JRNL',  # Journal event type
+                    #     ac_no_id=entry_data['Account'],
+                    #     ac_no_full=account_no,
+                    #     ac_relative=entry_data.get('Ac_relatives'),
+                    #     ac_ccy_id=data['Ccy_cd'],
+                    #     drcr_ind=entry_data['Dr_cr'],
+                    #     trn_code_id=data['Txn_code'],
+                    #     fcy_amount=fcy_amount,
+                    #     exch_rate=exchange_rate,
+                    #     lcy_amount=lcy_amount,
+                    #     fcy_dr=fcy_dr,
+                    #     fcy_cr=fcy_cr,
+                    #     lcy_dr=lcy_dr,
+                    #     lcy_cr=lcy_cr,
+                    #     external_ref_no=data['Reference_No'][:30],  # Truncate to fit max length
+                    #     addl_text=data.get('Addl_text', ''),
+                    #     addl_sub_text=addl_sub_text,
+                    #     trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     glid=gl_master,  # GLMaster instance for type
+                    #     category=gl_master.category if gl_master else None,  # category from GLMaster
+                    #     value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     financial_cycle_id=data.get('fin_cycle'),
+                    #     period_code_id=data.get('Period_code'),
+                    #     user_id=request.user,
+                    #     Maker_DT_Stamp=current_time,
+                    #     auth_id=None,  # Will be set during authorization
+                    #     Checker_DT_Stamp=None,  # Will be set during authorization
+                    #     Auth_Status='U',  # Unauthorized
+                    #     product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
+                    #     entry_seq_no=idx + 1,  # Sequential number in batch
+                    #     delete_stat=None  # Not deleted
+                    # )
                     
-                    daily_log_entries.append(daily_log_entry)
+                    # daily_log_entries.append(daily_log_entry)
 
-                    ACTB_DAIRY_LOG_HISTORY.objects.create(
-                        module_id=data.get('module_id'),
-                        trn_ref_no=journal_entry,  # FK to the created journal entry
-                        event_sr_no=idx + 1,
-                        event='JRNL',
-                        ac_no_id=entry_data['Account'],
-                        ac_no_full=account_no,
-                        ac_relative=entry_data.get('Ac_relatives'),
-                        ac_ccy_id=data['Ccy_cd'],
-                        drcr_ind=entry_data['Dr_cr'],
-                        trn_code_id=data['Txn_code'],
-                        fcy_amount=fcy_amount,
-                        exch_rate=exchange_rate,
-                        lcy_amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        external_ref_no=data['Reference_No'][:16],
-                        addl_text=data.get('Addl_text', ''),
-                        addl_sub_text=addl_sub_text,
-                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        glid=gl_master,
-                        category=gl_master.category if gl_master else None,
-                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        financial_cycle_id=data.get('fin_cycle'),
-                        period_code_id=data.get('Period_code'),
-                        user_id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        auth_id=None,
-                        Checker_DT_Stamp=None,
-                        Auth_Status='U',
-                        product=data.get('product_code', 'GL')[:4],
-                        entry_seq_no=idx + 1,
-                        delete_stat=None
-                    )
+                    # ACTB_DAIRY_LOG_HISTORY.objects.create(
+                    #     module_id=data.get('module_id'),
+                    #     trn_ref_no=journal_entry,  # FK to the created journal entry
+                    #     event_sr_no=idx + 1,
+                    #     event='JRNL',
+                    #     ac_no_id=entry_data['Account'],
+                    #     ac_no_full=account_no,
+                    #     ac_relative=entry_data.get('Ac_relatives'),
+                    #     ac_ccy_id=data['Ccy_cd'],
+                    #     drcr_ind=entry_data['Dr_cr'],
+                    #     trn_code_id=data['Txn_code'],
+                    #     fcy_amount=fcy_amount,
+                    #     exch_rate=exchange_rate,
+                    #     lcy_amount=lcy_amount,
+                    #     fcy_dr=fcy_dr,
+                    #     fcy_cr=fcy_cr,
+                    #     lcy_dr=lcy_dr,
+                    #     lcy_cr=lcy_cr,
+                    #     external_ref_no=data['Reference_No'][:30],
+                    #     addl_text=data.get('Addl_text', ''),
+                    #     addl_sub_text=addl_sub_text,
+                    #     trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     glid=gl_master,
+                    #     category=gl_master.category if gl_master else None,
+                    #     value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+                    #     financial_cycle_id=data.get('fin_cycle'),
+                    #     period_code_id=data.get('Period_code'),
+                    #     user_id=request.user,
+                    #     Maker_DT_Stamp=current_time,
+                    #     auth_id=None,
+                    #     Checker_DT_Stamp=None,
+                    #     Auth_Status='U',
+                    #     product=data.get('product_code', 'GL')[:4],
+                    #     entry_seq_no=idx + 1,
+                    #     delete_stat=None
+                    # )
 
                 if created_entries:
                     # Use the first entry as a reference for shared fields
@@ -5732,7 +5693,6 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
 #             return [AllowAny()]
 #         return [IsAuthenticated()]
     
-
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5753,7 +5713,7 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
+    @action(detail=False, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
     def get_tree(self, request, m_code=None):
         """
         Retrieve MasterType with related MasterCode entries in a tree structure.
@@ -5784,7 +5744,7 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
     serializer_class = MasterCodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
-    lookup_field = 'MC_id'  # Use MC_id for MasterCode CRUD operations
+    lookup_field = 'MC_code'  # Use MC_id for MasterCode CRUD operations
 
     def get_permissions(self):
         if self.request.method == 'POST':

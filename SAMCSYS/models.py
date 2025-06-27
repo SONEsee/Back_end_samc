@@ -641,7 +641,7 @@ class MTTB_DATA_Entry(models.Model):
 class DETB_JRNL_LOG_MASTER(models.Model):
     JRNLLog_id = models.AutoField(primary_key=True)
     module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
-    Reference_No = models.CharField(max_length=20, null=True, blank=True)
+    Reference_No = models.CharField(max_length=30, null=True, blank=True)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Fcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
@@ -744,7 +744,7 @@ class ACTB_DAIRY_LOG(models.Model):
 
 class DETB_JRNL_LOG_HIST(models.Model):
     JRNLLog_id_his = models.AutoField(primary_key=True)
-    Reference_No = models.CharField(max_length=20, null=True, blank=True)
+    Reference_No = models.CharField(max_length=30, null=True, blank=True)
     module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Fcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
