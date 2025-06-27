@@ -661,22 +661,58 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,
     FA_Depreciation_Sub,FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
-    FA_Accounting_Method)
+    FA_Accounting_Method, MasterCode)
 
 class AssetTypeDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Asset_Type
         fields = ['type_id', 'type_code', 'type_name_en', 'type_name_la']
 
-class FAAssetTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FA_Asset_Type
-        fields = '__all__'
+# class FAAssetTypeSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = FA_Asset_Type
+#         fields = '__all__'
 
 class ChartOfAssetDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Chart_Of_Asset
         fields = ['coa_id', 'asset_code', 'asset_name_en', 'asset_name_la']
+
+class MasterCodeDetailSerializer(serializers.ModelSerializer):
+    chart_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MasterCode
+        fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'M_id_id', 'chart_detail']
+
+    def get_chart_detail(self, obj):
+        """
+        use this connect on FA_Chart_Of_Asset from field M_id_id (isn't FK)
+        """
+        if not obj.M_id_id:
+            return None
+        chart = FA_Chart_Of_Asset.objects.filter(coa_id=obj.M_id_id).first()
+        if chart:
+            return ChartOfAssetDetailSerializer(chart).data
+        return None
+
+class FAAssetTypeSerializer(serializers.ModelSerializer):
+    mastercode_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FA_Asset_Type
+        fields = '__all__'
+
+    def get_mastercode_detail(self, obj):
+        """
+        use this connect on MasterCode from is_tangible (isn't FK)
+        """
+        if not obj.is_tangible:
+            return None
+        mc = MasterCode.objects.filter(MC_code=obj.is_tangible).first()
+        if mc:
+            return MasterCodeDetailSerializer(mc).data
+        return None
 
 class FAChartOfAssetSerializer(serializers.ModelSerializer):
     asset_type_detail = AssetTypeDetailSerializer(source='asset_type_id', read_only=True)
