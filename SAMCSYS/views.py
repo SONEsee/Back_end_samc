@@ -4754,13 +4754,17 @@ class FAChartOfAssetViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        
         queryset = FA_Chart_Of_Asset.objects.all().order_by('coa_id')
         asset_code = self.request.query_params.get('asset_code')
         asset_type_id = self.request.query_params.get('asset_type_id')
+        is_tangible = self.request.query_params.get('is_tangible')
         if asset_type_id:
             queryset = queryset.filter(asset_type_id=asset_type_id)
         if asset_code:
             queryset = queryset.filter(asset_code=asset_code)
+        if is_tangible:
+            queryset = queryset.filter(is_tangible=is_tangible)
         return queryset
     
     def perform_create(self, serializer):

@@ -666,7 +666,7 @@ from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA
 class AssetTypeDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Asset_Type
-        fields = ['type_id', 'type_code', 'type_name_en', 'type_name_la']
+        fields = '__all__'
 
 # class FAAssetTypeSerializer(serializers.ModelSerializer):
 #     class Meta:
@@ -713,14 +713,11 @@ class FAAssetTypeSerializer(serializers.ModelSerializer):
         if mc:
             return MasterCodeDetailSerializer(mc).data
         return None
+    
 
-class FAChartOfAssetSerializer(serializers.ModelSerializer):
-    asset_type_detail = AssetTypeDetailSerializer(source='asset_type_id', read_only=True)
 
-    class Meta:
-        model = FA_Chart_Of_Asset
-        fields = '__all__'
-
+        
+    
 class SuppliersDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Suppliers
@@ -837,3 +834,22 @@ class MasterCodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = MasterCode
         fields = ['MC_id', 'M_id', 'MC_code', 'MC_name_la', 'MC_name_en', 'MC_detail', 'Status', 'BOL_code', 'BOL_name']
+
+from rest_framework import serializers
+from .models import FA_Chart_Of_Asset, MasterCode
+from .serializers import AssetTypeDetailSerializer, MasterCodeSerializer
+class FAChartOfAssetSerializer(serializers.ModelSerializer):
+    asset_type_detail = AssetTypeDetailSerializer(source='asset_type_id', read_only=True)
+    tangible_detail = serializers.SerializerMethodField()
+    class Meta:
+        model = FA_Chart_Of_Asset
+        fields = '__all__'
+    def get_tangible_detail(self, obj):
+        try:
+            # Access is_tangible from the related FA_Asset_Type
+            is_tangible = obj.asset_type_id.is_tangible
+            # Fetch MasterCode where MC_code matches is_tangible and M_id_id = '1003'
+            master_code = MasterCode.objects.get(MC_code=is_tangible, M_id_id='1003')
+            return MasterCodeSerializer(master_code).data
+        except (MasterCode.DoesNotExist, AttributeError):
+            return None  # Return None if no matching MasterCode or FA_Asset_Type is found
