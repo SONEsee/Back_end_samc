@@ -604,6 +604,7 @@ class JRNLLogSerializer(serializers.ModelSerializer):
 class JournalEntryBatchSerializer(serializers.Serializer):
     """Serializer for batch journal entry creation"""
     Reference_No = serializers.CharField(max_length=30)
+    Reference_sub_No = serializers.CharField(max_length=35, required=False, allow_blank=True)
     Ccy_cd = serializers.CharField(max_length=20)
     Txn_code = serializers.CharField(max_length=20)
     Value_date = serializers.DateTimeField()
