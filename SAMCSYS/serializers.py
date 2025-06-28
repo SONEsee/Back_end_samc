@@ -714,10 +714,6 @@ class FAAssetTypeSerializer(serializers.ModelSerializer):
             return MasterCodeDetailSerializer(mc).data
         return None
     
-
-
-        
-    
 class SuppliersDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Suppliers
