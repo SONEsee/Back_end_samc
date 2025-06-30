@@ -5780,30 +5780,28 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
 from django.db import transaction
 from django.utils import timezone
+from django.test import RequestFactory
+import json
 
 class YourProcessViewSet(viewsets.ModelViewSet):
-    
+
     @action(detail=False, methods=['post'])
     def process_journal_data(self, request):
-        """
-        ຟັງຊັນປະມວນຜົນຂໍ້ມູນຈາກຟອມ ແລະເອີ້ນ JRNLLogViewSet.batch_create ໂດຍກົງ
-        """
         try:
             data = request.data
             glsub_ids = []
-            
+            glsub_map = {}  # Map Account_no -> glsub_id
+
             with transaction.atomic():
-                
                 for entry in data.get('entries', []):
                     account_no = entry.get('Account_no')
                     addl_sub_text = entry.get('Addl_sub_text')
-                    
-                  
+
                     gl_code_part = account_no.split('.')[0] if '.' in account_no else account_no
-                    
-                    
+
                     try:
                         gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code_part)
                         gl_code_id = gl_master.glid
@@ -5812,19 +5810,32 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                             'success': False,
                             'message': f'ບໍ່ພົບ gl_code: {gl_code_part} ໃນ MTTB_GLMaster'
                         }, status=status.HTTP_400_BAD_REQUEST)
-                    
-                    
-                    current_time = timezone.now()
-                    glsub_record = MTTB_GLSub.objects.create(
-                        glsub_code=account_no,
-                        glsub_Desc_la=addl_sub_text,
-                        gl_code_id=gl_code_id,
-                        Maker_DT_Stamp=current_time,
-                        Checker_DT_Stamp=current_time,
-                    )
-                    glsub_ids.append(glsub_record.glsub_id)
-                
-                
+
+                    # ເງື່ອນໄຂ: ເກັບແຕ່ຂໍ້ມູນ Dr (D) ເທົ່ານັ້ນໃຫ້ສ້າງ
+                    if entry.get("Dr_cr") == "D":
+                        current_time = timezone.now()
+                        glsub_record = MTTB_GLSub.objects.create(
+                            glsub_code=account_no,
+                            glsub_Desc_la=addl_sub_text,
+                            gl_code_id=gl_code_id,
+                            Maker_DT_Stamp=current_time,
+                            Checker_DT_Stamp=current_time,
+                        )
+                        glsub_id = glsub_record.glsub_id
+                    else:
+                        # ຖ້າບໍ່ແມ່ນ Dr, ຄົ້ນຫາຈາກ glsub_code
+                        try:
+                            glsub = MTTB_GLSub.objects.get(glsub_code=account_no)
+                            glsub_id = glsub.glsub_id
+                        except MTTB_GLSub.DoesNotExist:
+                            return Response({
+                                'success': False,
+                                'message': f'ບໍ່ພົບ GLSub ສໍາລັບ Account_no: {account_no}'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+
+                    glsub_ids.append(glsub_id)
+                    glsub_map[account_no] = glsub_id
+
                 processed_data = {
                     "Reference_No": data.get('Reference_No'),
                     "Ccy_cd": data.get('Ccy_cd'),
@@ -5836,83 +5847,96 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                     "module_id": data.get('module_id'),
                     "entries": []
                 }
-                
-               
+
+                # ສ້າງເລກອ້າງອິງ
                 for i, entry in enumerate(data.get('entries', [])):
-                    ac_relatives = glsub_ids[1] if i == 0 else glsub_ids[0]
-                    
+                    acc_no = entry.get("Account_no")
+                    acc_id = glsub_map.get(acc_no)
+                    ac_rel = list(glsub_map.values())[1] if i == 0 else list(glsub_map.values())[0]
+
                     processed_entry = {
-                        "Account": glsub_ids[i],
-                        "Account_no": entry.get('Account_no'),
+                        "Account": acc_id,
+                        "Account_no": acc_no,
                         "Amount": entry.get('Amount'),
                         "Dr_cr": entry.get('Dr_cr'),
                         "Addl_sub_text": entry.get('Addl_sub_text'),
-                        "Ac_relatives": str(ac_relatives)
+                        "Ac_relatives": str(ac_rel)
                     }
                     processed_data["entries"].append(processed_entry)
-                
-               
+
+                # ແກ້ໄຂການເອີ້ນ batch_create ໃຫ້ຖືກຮູບແບບ
                 try:
                     from SAMCSYS.views import JRNLLogViewSet
-                    from rest_framework.test import APIRequestFactory
-                    from django.contrib.auth.models import AnonymousUser
+
+                    factory = RequestFactory()
                     
-                    
-                    viewset = JRNLLogViewSet()
-                    
-                    
-                    factory = APIRequestFactory()
-                    fake_request = factory.post(
-                        '/api/journal/batch_create/',
-                        data=processed_data,
-                        format='json'
+                    # ວິທີທີ 1: ໃຊ້ JSON Content-Type
+                    raw_request = factory.post(
+                        '/api/journal-entries/batch_create/',
+                        data=json.dumps(processed_data),
+                        content_type='application/json'
                     )
-                    
-                    
-                    fake_request.user = request.user if hasattr(request, 'user') else AnonymousUser()
-                    
-                   
-                    if not hasattr(fake_request, 'data'):
-                        fake_request.data = processed_data
-                    
-                    
-                    viewset.request = fake_request
+                    raw_request.user = request.user
+                    drf_request = Request(raw_request)
+
+                    viewset = JRNLLogViewSet()
+                    viewset.request = drf_request
                     viewset.format_kwarg = None
-                    
-                   
-                    batch_response = viewset.batch_create(fake_request)
-                    
-                   
-                    if hasattr(batch_response, 'status_code'):
+
+                    batch_response = viewset.batch_create(drf_request)
+
+                    if batch_response.status_code in [200, 201]:
+                        journal_response = {
+                            'success': True,
+                            'status_code': batch_response.status_code,
+                            'data': batch_response.data,
+                            'method': 'internal_batch_create'
+                        }
+                    else:
+                        journal_response = {
+                            'success': False,
+                            'status_code': batch_response.status_code,
+                            'error': batch_response.data,
+                            'method': 'internal_batch_create_failed'
+                        }
+
+                except Exception as e:
+                    # ວິທີທີ 2: ເອີ້ນໂດຍຕົງ (ຖ້າ JSON ບໍ່ເຮັດວຽກ)
+                    try:
+                        viewset = JRNLLogViewSet()
+                        # ຕັ້ງ mock request
+                        viewset.request = request
+                        viewset.format_kwarg = None
+                        
+                        # ເອີ້ນໂດຍກົງດ້ວຍ processed_data
+                        from unittest.mock import Mock
+                        mock_request = Mock()
+                        mock_request.data = processed_data
+                        mock_request.user = request.user
+                        
+                        batch_response = viewset.batch_create(mock_request)
+                        
                         if batch_response.status_code in [200, 201]:
                             journal_response = {
                                 'success': True,
                                 'status_code': batch_response.status_code,
                                 'data': batch_response.data,
-                                'method': 'internal_batch_create'
+                                'method': 'direct_call'
                             }
                         else:
                             journal_response = {
                                 'success': False,
                                 'status_code': batch_response.status_code,
                                 'error': batch_response.data,
-                                'method': 'internal_batch_create_failed'
+                                'method': 'direct_call_failed'
                             }
-                    else:
-                       
+                    except Exception as e2:
                         journal_response = {
-                            'success': True,
-                            'data': batch_response,
-                            'method': 'internal_batch_create_success'
+                            'success': False,
+                            'error': f'ViewSet Error: {str(e)} | Direct call error: {str(e2)}',
+                            'note': 'GLSub records created. Please create journal entry manually.'
                         }
-                        
-                except Exception as e:
-                    journal_response = {
-                        'success': False,
-                        'error': f'ViewSet Error: {str(e)}',
-                        'note': 'GLSub records created successfully. Please create journal entry manually.'
-                    }
-                
+
                 return Response({
                     'success': True,
                     'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ',
@@ -5920,7 +5944,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                     'glsub_ids': glsub_ids,
                     'journal_response': journal_response
                 }, status=status.HTTP_201_CREATED)
-                
+
         except Exception as e:
             return Response({
                 'success': False,
