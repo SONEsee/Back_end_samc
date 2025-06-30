@@ -2081,9 +2081,12 @@ class GLSubViewSet(viewsets.ModelViewSet):
     def validate_glsub_selection(self, request):
         """
         Validate if a GL sub-account can be used for a debit or credit transaction based on
-        the outstanding field in the linked MTTB_GLMaster.
+        the post_side and category fields in the linked MTTB_GLMaster.
         Expects 'glsub_code' and 'transaction_side' ('dr' or 'cr') in the request data.
-        MTTB_GLMaster.outstanding can be 'dr', 'cr', or 'dr/cr'.
+        - If post_side = '2', allow both dr and cr transactions.
+        - If post_side = '1', allow based on category:
+          - Assets (1), Expenses (5): Allow dr to increase, cr to decrease.
+          - Liabilities (2), Equity (3), Income (4): Allow cr to increase, dr to decrease.
         """
         glsub_code = request.data.get('glsub_code')
         transaction_side = request.data.get('transaction_side')
@@ -2119,34 +2122,48 @@ class GLSubViewSet(viewsets.ModelViewSet):
                 'debug': {'glsub_id': glsub.glsub_id, 'gl_code': None}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        outstanding = glsub.gl_code.outstanding or ''
+        post_side = glsub.gl_code.post_side or ''
+        category = glsub.gl_code.category or ''
 
-        # Validate outstanding value
-        if outstanding not in ['dr', 'cr', 'dr/cr']:
+        # Validate post_side value
+        if post_side not in ['1', '2']:
             return Response({
                 'valid': False,
-                'message': f'Invalid outstanding value ({outstanding}) for GL Master account linked to {glsub_code}. Must be "dr", "cr", or "dr/cr".',
-                'debug': {'glsub_code': glsub_code, 'outstanding': outstanding}
+                'message': f'Invalid post_side value ({post_side}) for GL Master account linked to {glsub_code}. Must be "1" or "2".',
+                'debug': {'glsub_code': glsub_code, 'post_side': post_side}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate transaction_side against outstanding
-        if outstanding == 'dr' and transaction_side != 'dr':
+        # Validate category value
+        if category not in ['1', '2', '3', '4', '5']:
             return Response({
                 'valid': False,
-                'message': f'Cannot use {glsub_code} for credit transaction. GL Master account allows only debit (outstanding = "dr").',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
+                'message': f'Invalid category value ({category}) for GL Master account linked to {glsub_code}. Must be "1", "2", "3", "4", or "5".',
+                'debug': {'glsub_code': glsub_code, 'category': category}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if outstanding == 'cr' and transaction_side != 'cr':
-            return Response({
-                'valid': False,
-                'message': f'Cannot use {glsub_code} for debit transaction. GL Master account allows only credit (outstanding = "cr").',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'outstanding': outstanding}
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # If post_side is '2', allow both dr and cr transactions
+        if post_side == '2':
+            pass  # No further validation needed; both sides are allowed
+        else:
+            # If post_side is '1', validate based on category
+            if category in ['1', '5']:  # Assets, Expenses
+                if transaction_side not in ['dr', 'cr']:  # Allow both dr and cr
+                    return Response({
+                        'valid': False,
+                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Assets/Expenses accounts (category = {category}) allow both dr and cr with post_side = "1".',
+                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            elif category in ['2', '3', '4']:  # Liabilities, Equity, Income
+                if transaction_side not in ['cr', 'dr']:  # Allow both cr and dr
+                    return Response({
+                        'valid': False,
+                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Liabilities/Equity/Income accounts (category = {category}) allow both cr and dr with post_side = "1".',
+                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
         # Relaxed status checks based on sample data
         # Sample shows MTTB_GLSub.Record_Status = 'C' and MTTB_GLMaster.Auth_Status = 'U', which may be valid
-        # Commenting out these checks; uncomment if they are required in your business logic
+        # Uncomment these checks if required by your business logic
         """
         if glsub.Record_Status == 'C':
             return Response({
@@ -2169,70 +2186,14 @@ class GLSubViewSet(viewsets.ModelViewSet):
             'debug': {
                 'glsub_code': glsub_code,
                 'transaction_side': transaction_side,
-                'outstanding': outstanding,
+                'post_side': post_side,
+                'category': category,
                 'glsub_record_status': glsub.Record_Status,
                 'glsub_auth_status': glsub.Auth_Status,
                 'glmaster_auth_status': glsub.gl_code.Auth_Status
             }
         }, status=status.HTTP_200_OK)
 
-
-
-# class MTTB_EMPLOYEEViewSet(viewsets.ModelViewSet):
-#     serializer_class = MTTB_EMPLOYEESerializer
-#     permission_classes = [IsAuthenticated]
-#     lookup_field = 'employee_id'
-
-#     def get_queryset(self):
-#         queryset = MTTB_EMPLOYEE.objects.all().order_by('employee_id')
-#         div_id = self.request.query_params.get('div_id')
-#         if div_id:
-#             queryset = queryset.filter(division_id=div_id)
-#         return queryset
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         if serializer.is_valid():
-#             self.perform_create(serializer)
-#             return Response({
-#                 "status": "success",
-#                 "message": "Employee created successfully.",
-#                 "data": serializer.data
-#             }, status=status.HTTP_201_CREATED)
-#         else:
-#             return Response({
-#                 "status": "error",
-#                 "message": "Failed to create employee.",
-#                 "errors": serializer.errors
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#     def destroy(self, request, *args, **kwargs):
-#         try:
-#             instance = self.get_object()
-#             self.perform_destroy(instance)
-#             return Response({
-#                 "status": "success",
-#                 "message": "Employee deleted successfully."
-#             }, status=status.HTTP_204_NO_CONTENT)
-#         except Exception as e:
-#             return Response({
-#                 "status": "error",
-#                 "message": f"Failed to delete employee: {str(e)}"
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#     def perform_create(self, serializer):
-#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         serializer.save(
-#             Maker_Id=maker,
-#             Maker_DT_Stamp=timezone.now()
-#         )
-
-#     def perform_update(self, serializer):
-#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
-#         serializer.save(
-#             Checker_Id=checker,
-#             Checker_DT_Stamp=timezone.now()
-#         )
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
@@ -3870,6 +3831,271 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             Maker_DT_Stamp=timezone.now()
         )
         
+    # @action(detail=False, methods=['post'])
+    # def batch_create(self, request):
+    #     """Create multiple journal entries in a single transaction"""
+    #     serializer = JournalEntryBatchSerializer(data=request.data)
+        
+    #     if not serializer.is_valid():
+    #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    #     data = serializer.validated_data
+        
+    #     try:
+    #         with transaction.atomic():
+    #             # Auto-generate reference number if not provided
+    #             if not data.get('Reference_No'):
+    #                 data['Reference_No'] = JournalEntryHelper.generate_reference_number(
+    #                     module_id=data.get('module_id', 'GL'),
+    #                     txn_code=data['Txn_code'],
+    #                     date=data['Value_date'].date() if data.get('Value_date') else None
+    #                 )
+                
+    #             # Get exchange rate
+    #             exchange_rate = self.get_exchange_rate(data['Ccy_cd'])
+                
+    #             created_entries = []
+    #             history_entries = []
+    #             daily_log_entries = []
+    #             # hist_daily_log_entries = []
+                
+    #             # Generate base timestamp for unique history references
+    #             base_timestamp = timezone.now().strftime("%H%M%S")  # HHMMSS format (6 chars)
+                
+    #             for idx, entry_data in enumerate(data['entries']):
+    #                 # Calculate amounts based on Dr_cr
+    #                 fcy_amount = Decimal(str(entry_data['Amount']))
+    #                 lcy_amount = fcy_amount * exchange_rate
+                    
+    #                 # Set debit/credit amounts
+    #                 fcy_dr = fcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+    #                 fcy_cr = fcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+    #                 lcy_dr = lcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+    #                 lcy_cr = lcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                    
+    #                 addl_sub_text = (
+    #                     entry_data.get('Addl_sub_text') or 
+    #                     data.get('Addl_sub_text', '') or 
+    #                     f"Entry for {entry_data['Dr_cr']} {fcy_amount}"
+    #                 )
+
+    #                 account_no = entry_data.get('Account_no')
+    #                 current_time = timezone.now()
+
+    #                 # Create journal entry
+    #                 journal_entry = DETB_JRNL_LOG.objects.create(
+    #                     module_id_id=data.get('module_id'),
+    #                     Reference_No=data['Reference_No'],
+    #                     Reference_sub_No=,
+    #                     Ccy_cd_id=data['Ccy_cd'],
+    #                     Fcy_Amount=fcy_amount,
+    #                     Lcy_Amount=lcy_amount,
+    #                     fcy_dr=fcy_dr,
+    #                     fcy_cr=fcy_cr,
+    #                     lcy_dr=lcy_dr,
+    #                     lcy_cr=lcy_cr,
+    #                     Dr_cr=entry_data['Dr_cr'],
+    #                     Ac_relatives=entry_data.get('Ac_relatives'),
+    #                     Account_id=entry_data['Account'],
+    #                     Account_no=account_no,
+    #                     Txn_code_id=data['Txn_code'],
+    #                     Value_date=data['Value_date'],
+    #                     Exch_rate=exchange_rate,
+    #                     fin_cycle_id=data.get('fin_cycle'),
+    #                     Period_code_id=data.get('Period_code'),
+    #                     Addl_text=data.get('Addl_text', ''),
+    #                     Addl_sub_text=addl_sub_text,
+    #                     Maker_Id=request.user,
+    #                     Maker_DT_Stamp=current_time,
+    #                     Auth_Status='U'
+    #                 )
+
+    #                 created_entries.append(journal_entry)
+
+    #                 # Generate shorter history reference number (max 20 chars)
+    #                 # Strategy: Use first part of original ref + timestamp + sequence
+    #                 original_ref = data['Reference_No']
+                    
+    #                 # Method 1: Truncate original and add timestamp + sequence
+                    
+    #                 history_entry = DETB_JRNL_LOG_HIST.objects.create(
+    #                     Reference_No=original_ref,
+    #                     Reference_sub_No=,
+    #                     module_id_id=data.get('module_id'),
+    #                     Ccy_cd_id=data['Ccy_cd'],
+    #                     Fcy_Amount=fcy_amount,
+    #                     Lcy_Amount=lcy_amount,
+    #                     fcy_dr=fcy_dr,
+    #                     fcy_cr=fcy_cr,
+    #                     lcy_dr=lcy_dr,
+    #                     lcy_cr=lcy_cr,
+    #                     Dr_cr=entry_data['Dr_cr'],
+    #                     Ac_relatives=entry_data.get('Ac_relatives'),
+    #                     Account_id=entry_data['Account'],
+    #                     Account_no=account_no,
+    #                     Txn_code_id=data['Txn_code'],
+    #                     Value_date=data['Value_date'],
+    #                     Exch_rate=exchange_rate,
+    #                     fin_cycle_id=data.get('fin_cycle'),
+    #                     Period_code_id=data.get('Period_code'),
+    #                     Addl_text=data.get('Addl_text', ''),
+    #                     Addl_sub_text=addl_sub_text,
+    #                     Maker_Id=request.user,
+    #                     Maker_DT_Stamp=current_time,
+    #                     Auth_Status='U'
+    #                 )
+                    
+    #                 history_entries.append(history_entry)
+
+    #                 try:
+    #                     glsub_account = MTTB_GLSub.objects.select_related('gl_code').get(
+    #                         glsub_id=entry_data['Account']
+    #                     )
+    #                     gl_master = glsub_account.gl_code  # Assuming gl_head is the FK to GLMaster
+    #                 except MTTB_GLSub.DoesNotExist:
+    #                     logger.warning(f"GLSub account {entry_data['Account']} not found")
+    #                     gl_master = None
+                    
+    #                 # # Create daily log entry
+    #                 # daily_log_entry = ACTB_DAIRY_LOG.objects.create(
+    #                 #     module_id=data.get('module_id'),
+    #                 #     trn_ref_no=journal_entry,  # FK to the created journal entry
+    #                 #     event_sr_no=idx + 1,  # Sequential number for this batch
+    #                 #     event='JRNL',  # Journal event type
+    #                 #     ac_no_id=entry_data['Account'],
+    #                 #     ac_no_full=account_no,
+    #                 #     ac_relative=entry_data.get('Ac_relatives'),
+    #                 #     ac_ccy_id=data['Ccy_cd'],
+    #                 #     drcr_ind=entry_data['Dr_cr'],
+    #                 #     trn_code_id=data['Txn_code'],
+    #                 #     fcy_amount=fcy_amount,
+    #                 #     exch_rate=exchange_rate,
+    #                 #     lcy_amount=lcy_amount,
+    #                 #     fcy_dr=fcy_dr,
+    #                 #     fcy_cr=fcy_cr,
+    #                 #     lcy_dr=lcy_dr,
+    #                 #     lcy_cr=lcy_cr,
+    #                 #     external_ref_no=data['Reference_No'][:30],  # Truncate to fit max length
+    #                 #     addl_text=data.get('Addl_text', ''),
+    #                 #     addl_sub_text=addl_sub_text,
+    #                 #     trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+    #                 #     glid=gl_master,  # GLMaster instance for type
+    #                 #     category=gl_master.category if gl_master else None,  # category from GLMaster
+    #                 #     value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+    #                 #     financial_cycle_id=data.get('fin_cycle'),
+    #                 #     period_code_id=data.get('Period_code'),
+    #                 #     user_id=request.user,
+    #                 #     Maker_DT_Stamp=current_time,
+    #                 #     auth_id=None,  # Will be set during authorization
+    #                 #     Checker_DT_Stamp=None,  # Will be set during authorization
+    #                 #     Auth_Status='U',  # Unauthorized
+    #                 #     product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
+    #                 #     entry_seq_no=idx + 1,  # Sequential number in batch
+    #                 #     delete_stat=None  # Not deleted
+    #                 # )
+                    
+    #                 # daily_log_entries.append(daily_log_entry)
+
+    #                 # ACTB_DAIRY_LOG_HISTORY.objects.create(
+    #                 #     module_id=data.get('module_id'),
+    #                 #     trn_ref_no=journal_entry,  # FK to the created journal entry
+    #                 #     event_sr_no=idx + 1,
+    #                 #     event='JRNL',
+    #                 #     ac_no_id=entry_data['Account'],
+    #                 #     ac_no_full=account_no,
+    #                 #     ac_relative=entry_data.get('Ac_relatives'),
+    #                 #     ac_ccy_id=data['Ccy_cd'],
+    #                 #     drcr_ind=entry_data['Dr_cr'],
+    #                 #     trn_code_id=data['Txn_code'],
+    #                 #     fcy_amount=fcy_amount,
+    #                 #     exch_rate=exchange_rate,
+    #                 #     lcy_amount=lcy_amount,
+    #                 #     fcy_dr=fcy_dr,
+    #                 #     fcy_cr=fcy_cr,
+    #                 #     lcy_dr=lcy_dr,
+    #                 #     lcy_cr=lcy_cr,
+    #                 #     external_ref_no=data['Reference_No'][:30],
+    #                 #     addl_text=data.get('Addl_text', ''),
+    #                 #     addl_sub_text=addl_sub_text,
+    #                 #     trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
+    #                 #     glid=gl_master,
+    #                 #     category=gl_master.category if gl_master else None,
+    #                 #     value_dt=data['Value_date'].date() if data.get('Value_date') else None,
+    #                 #     financial_cycle_id=data.get('fin_cycle'),
+    #                 #     period_code_id=data.get('Period_code'),
+    #                 #     user_id=request.user,
+    #                 #     Maker_DT_Stamp=current_time,
+    #                 #     auth_id=None,
+    #                 #     Checker_DT_Stamp=None,
+    #                 #     Auth_Status='U',
+    #                 #     product=data.get('product_code', 'GL')[:4],
+    #                 #     entry_seq_no=idx + 1,
+    #                 #     delete_stat=None
+    #                 # )
+
+    #             if created_entries:
+    #                 # Use the first entry as a reference for shared fields
+    #                 entry_seq_no = len(created_entries) 
+    #                 first = created_entries[0]
+    #                 reference_no = first.Reference_No
+    #                 module_id = first.module_id
+    #                 ccy_cd = first.Ccy_cd
+    #                 txn_code = first.Txn_code
+    #                 value_date = first.Value_date
+    #                 exch_rate = first.Exch_rate
+    #                 fin_cycle = first.fin_cycle
+    #                 period_code = first.Period_code
+    #                 addl_text = first.Addl_text
+
+    #                 # Sum Fcy_Amount and Lcy_Amount for this batch
+    #                 total_fcy = sum(e.fcy_dr  for e in created_entries)
+    #                 total_lcy = sum(e.lcy_dr for e in created_entries)
+                
+
+    #                 master_entry = DETB_JRNL_LOG_MASTER.objects.create(
+    #                     module_id=module_id,
+    #                     Reference_No=reference_no,
+    #                     Ccy_cd=ccy_cd,
+    #                     Fcy_Amount=total_fcy,
+    #                     Lcy_Amount=total_lcy,
+    #                     Txn_code=txn_code,
+    #                     Value_date=value_date,
+    #                     Exch_rate=exch_rate,
+    #                     fin_cycle=fin_cycle,
+    #                     Period_code=period_code,
+    #                     Addl_text=addl_text,
+    #                     Maker_Id=request.user,
+    #                     Maker_DT_Stamp=timezone.now(),
+    #                     Auth_Status='U',
+    #                     entry_seq_no=entry_seq_no 
+    #                 )
+
+    #                 # Log successful creation
+    #                 logger.info(f"Journal batch created - Reference: {reference_no}, Entries: {len(created_entries)}, History: {len(history_entries)}")
+                
+    #             # Serialize response
+    #             response_serializer = JRNLLogSerializer(created_entries, many=True)
+    #             response_data = response_serializer.data
+
+    #             for idx, entry in enumerate(created_entries):
+    #                 response_data[idx]['Account_id'] = entry.Account.glsub_code
+                
+    #             return Response({
+    #                 'message': f'Successfully created {len(created_entries)} journal entries with history',
+    #                 'reference_no': data['Reference_No'],
+    #                 'entries_created': len(created_entries),
+    #                 'history_entries_created': len(history_entries),
+    #                 'daily_log_entries_created': len(daily_log_entries),
+    #                 'entries': response_data
+    #             }, status=status.HTTP_201_CREATED)
+                
+    #     except Exception as e:
+    #         logger.error(f"Error creating batch journal entries with history: {str(e)}")
+    #         return Response({
+    #             'error': 'Failed to create journal entries',
+    #             'detail': str(e)
+    #         }, status=status.HTTP_400_BAD_REQUEST)
+        
     @action(detail=False, methods=['post'])
     def batch_create(self, request):
         """Create multiple journal entries in a single transaction"""
@@ -3896,182 +4122,115 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 created_entries = []
                 history_entries = []
                 daily_log_entries = []
-                # hist_daily_log_entries = []
                 
                 # Generate base timestamp for unique history references
                 base_timestamp = timezone.now().strftime("%H%M%S")  # HHMMSS format (6 chars)
                 
-                for idx, entry_data in enumerate(data['entries']):
-                    # Calculate amounts based on Dr_cr
-                    fcy_amount = Decimal(str(entry_data['Amount']))
-                    lcy_amount = fcy_amount * exchange_rate
+                # Counter for Reference_sub_No, incrementing for each pair
+                pair_counter = 1
+                
+                # Process entries in pairs (assuming entries are ordered as D, C pairs)
+                for idx in range(0, len(data['entries']), 2):  # Step by 2 for pairs
+                    ref_sub_no = f"{data['Reference_No']}-{pair_counter:03d}"
                     
-                    # Set debit/credit amounts
-                    fcy_dr = fcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
-                    fcy_cr = fcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
-                    lcy_dr = lcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
-                    lcy_cr = lcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
-                    
-                    addl_sub_text = (
-                        entry_data.get('Addl_sub_text') or 
-                        data.get('Addl_sub_text', '') or 
-                        f"Entry for {entry_data['Dr_cr']} {fcy_amount}"
-                    )
-
-                    account_no = entry_data.get('Account_no')
-                    current_time = timezone.now()
-
-                    # Create journal entry
-                    journal_entry = DETB_JRNL_LOG.objects.create(
-                        module_id_id=data.get('module_id'),
-                        Reference_No=data['Reference_No'],
-                        Ccy_cd_id=data['Ccy_cd'],
-                        Fcy_Amount=fcy_amount,
-                        Lcy_Amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        Dr_cr=entry_data['Dr_cr'],
-                        Ac_relatives=entry_data.get('Ac_relatives'),
-                        Account_id=entry_data['Account'],
-                        Account_no=account_no,
-                        Txn_code_id=data['Txn_code'],
-                        Value_date=data['Value_date'],
-                        Exch_rate=exchange_rate,
-                        fin_cycle_id=data.get('fin_cycle'),
-                        Period_code_id=data.get('Period_code'),
-                        Addl_text=data.get('Addl_text', ''),
-                        Addl_sub_text=addl_sub_text,
-                        Maker_Id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        Auth_Status='U'
-                    )
-
-                    created_entries.append(journal_entry)
-
-                    # Generate shorter history reference number (max 20 chars)
-                    # Strategy: Use first part of original ref + timestamp + sequence
-                    original_ref = data['Reference_No']
-                    
-                    # Method 1: Truncate original and add timestamp + sequence
-                    
-                    history_entry = DETB_JRNL_LOG_HIST.objects.create(
-                        Reference_No=original_ref,
-                        module_id_id=data.get('module_id'),
-                        Ccy_cd_id=data['Ccy_cd'],
-                        Fcy_Amount=fcy_amount,
-                        Lcy_Amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        Dr_cr=entry_data['Dr_cr'],
-                        Ac_relatives=entry_data.get('Ac_relatives'),
-                        Account_id=entry_data['Account'],
-                        Account_no=account_no,
-                        Txn_code_id=data['Txn_code'],
-                        Value_date=data['Value_date'],
-                        Exch_rate=exchange_rate,
-                        fin_cycle_id=data.get('fin_cycle'),
-                        Period_code_id=data.get('Period_code'),
-                        Addl_text=data.get('Addl_text', ''),
-                        Addl_sub_text=addl_sub_text,
-                        Maker_Id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        Auth_Status='U'
-                    )
-                    
-                    history_entries.append(history_entry)
-
-                    try:
-                        glsub_account = MTTB_GLSub.objects.select_related('gl_code').get(
-                            glsub_id=entry_data['Account']
+                    # Process each entry in the pair (usually D and C)
+                    for pair_idx in range(2):
+                        if idx + pair_idx >= len(data['entries']):
+                            break  # Avoid index out of range if odd number of entries
+                        entry_data = data['entries'][idx + pair_idx]
+                        
+                        # Calculate amounts based on Dr_cr
+                        fcy_amount = Decimal(str(entry_data['Amount']))
+                        lcy_amount = fcy_amount * exchange_rate
+                        
+                        # Set debit/credit amounts
+                        fcy_dr = fcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+                        fcy_cr = fcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                        lcy_dr = lcy_amount if entry_data['Dr_cr'] == 'D' else Decimal('0.00')
+                        lcy_cr = lcy_amount if entry_data['Dr_cr'] == 'C' else Decimal('0.00')
+                        
+                        addl_sub_text = (
+                            entry_data.get('Addl_sub_text') or 
+                            data.get('Addl_sub_text', '') or 
+                            f"Entry for {entry_data['Dr_cr']} {fcy_amount}"
                         )
-                        gl_master = glsub_account.gl_code  # Assuming gl_head is the FK to GLMaster
-                    except MTTB_GLSub.DoesNotExist:
-                        logger.warning(f"GLSub account {entry_data['Account']} not found")
-                        gl_master = None
-                    
-                    # Create daily log entry
-                    daily_log_entry = ACTB_DAIRY_LOG.objects.create(
-                        module_id=data.get('module_id'),
-                        trn_ref_no=journal_entry,  # FK to the created journal entry
-                        event_sr_no=idx + 1,  # Sequential number for this batch
-                        event='JRNL',  # Journal event type
-                        ac_no_id=entry_data['Account'],
-                        ac_no_full=account_no,
-                        ac_relative=entry_data.get('Ac_relatives'),
-                        ac_ccy_id=data['Ccy_cd'],
-                        drcr_ind=entry_data['Dr_cr'],
-                        trn_code_id=data['Txn_code'],
-                        fcy_amount=fcy_amount,
-                        exch_rate=exchange_rate,
-                        lcy_amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        external_ref_no=data['Reference_No'][:16],  # Truncate to fit max length
-                        addl_text=data.get('Addl_text', ''),
-                        addl_sub_text=addl_sub_text,
-                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        glid=gl_master,  # GLMaster instance for type
-                        category=gl_master.category if gl_master else None,  # category from GLMaster
-                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        financial_cycle_id=data.get('fin_cycle'),
-                        period_code_id=data.get('Period_code'),
-                        user_id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        auth_id=None,  # Will be set during authorization
-                        Checker_DT_Stamp=None,  # Will be set during authorization
-                        Auth_Status='U',  # Unauthorized
-                        product=data.get('product_code', 'GL')[:4],  # Truncate to fit max length
-                        entry_seq_no=idx + 1,  # Sequential number in batch
-                        delete_stat=None  # Not deleted
-                    )
-                    
-                    daily_log_entries.append(daily_log_entry)
 
-                    ACTB_DAIRY_LOG_HISTORY.objects.create(
-                        module_id=data.get('module_id'),
-                        trn_ref_no=journal_entry,  # FK to the created journal entry
-                        event_sr_no=idx + 1,
-                        event='JRNL',
-                        ac_no_id=entry_data['Account'],
-                        ac_no_full=account_no,
-                        ac_relative=entry_data.get('Ac_relatives'),
-                        ac_ccy_id=data['Ccy_cd'],
-                        drcr_ind=entry_data['Dr_cr'],
-                        trn_code_id=data['Txn_code'],
-                        fcy_amount=fcy_amount,
-                        exch_rate=exchange_rate,
-                        lcy_amount=lcy_amount,
-                        fcy_dr=fcy_dr,
-                        fcy_cr=fcy_cr,
-                        lcy_dr=lcy_dr,
-                        lcy_cr=lcy_cr,
-                        external_ref_no=data['Reference_No'][:16],
-                        addl_text=data.get('Addl_text', ''),
-                        addl_sub_text=addl_sub_text,
-                        trn_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        glid=gl_master,
-                        category=gl_master.category if gl_master else None,
-                        value_dt=data['Value_date'].date() if data.get('Value_date') else None,
-                        financial_cycle_id=data.get('fin_cycle'),
-                        period_code_id=data.get('Period_code'),
-                        user_id=request.user,
-                        Maker_DT_Stamp=current_time,
-                        auth_id=None,
-                        Checker_DT_Stamp=None,
-                        Auth_Status='U',
-                        product=data.get('product_code', 'GL')[:4],
-                        entry_seq_no=idx + 1,
-                        delete_stat=None
-                    )
+                        account_no = entry_data.get('Account_no')
+                        current_time = timezone.now()
+
+                        # Create journal entry
+                        journal_entry = DETB_JRNL_LOG.objects.create(
+                            module_id_id=data.get('module_id'),
+                            Reference_No=data['Reference_No'],
+                            Reference_sub_No=ref_sub_no,
+                            Ccy_cd_id=data['Ccy_cd'],
+                            Fcy_Amount=fcy_amount,
+                            Lcy_Amount=lcy_amount,
+                            fcy_dr=fcy_dr,
+                            fcy_cr=fcy_cr,
+                            lcy_dr=lcy_dr,
+                            lcy_cr=lcy_cr,
+                            Dr_cr=entry_data['Dr_cr'],
+                            Ac_relatives=entry_data.get('Ac_relatives'),
+                            Account_id=entry_data['Account'],
+                            Account_no=account_no,
+                            Txn_code_id=data['Txn_code'],
+                            Value_date=data['Value_date'],
+                            Exch_rate=exchange_rate,
+                            fin_cycle_id=data.get('fin_cycle'),
+                            Period_code_id=data.get('Period_code'),
+                            Addl_text=data.get('Addl_text', ''),
+                            Addl_sub_text=addl_sub_text,
+                            Maker_Id=request.user,
+                            Maker_DT_Stamp=current_time,
+                            Auth_Status='U'
+                        )
+
+                        created_entries.append(journal_entry)
+
+                        # Create history entry
+                        history_entry = DETB_JRNL_LOG_HIST.objects.create(
+                            Reference_No=data['Reference_No'],
+                            Reference_sub_No=ref_sub_no,
+                            module_id_id=data.get('module_id'),
+                            Ccy_cd_id=data['Ccy_cd'],
+                            Fcy_Amount=fcy_amount,
+                            Lcy_Amount=lcy_amount,
+                            fcy_dr=fcy_dr,
+                            fcy_cr=fcy_cr,
+                            lcy_dr=lcy_dr,
+                            lcy_cr=lcy_cr,
+                            Dr_cr=entry_data['Dr_cr'],
+                            Ac_relatives=entry_data.get('Ac_relatives'),
+                            Account_id=entry_data['Account'],
+                            Account_no=account_no,
+                            Txn_code_id=data['Txn_code'],
+                            Value_date=data['Value_date'],
+                            Exch_rate=exchange_rate,
+                            fin_cycle_id=data.get('fin_cycle'),
+                            Period_code_id=data.get('Period_code'),
+                            Addl_text=data.get('Addl_text', ''),
+                            Addl_sub_text=addl_sub_text,
+                            Maker_Id=request.user,
+                            Maker_DT_Stamp=current_time,
+                            Auth_Status='U'
+                        )
+                        
+                        history_entries.append(history_entry)
+
+                        try:
+                            glsub_account = MTTB_GLSub.objects.select_related('gl_code').get(
+                                glsub_id=entry_data['Account']
+                            )
+                            gl_master = glsub_account.gl_code
+                        except MTTB_GLSub.DoesNotExist:
+                            logger.warning(f"GLSub account {entry_data['Account']} not found")
+                            gl_master = None
+                    
+                    # Increment pair counter after processing each pair
+                    pair_counter += 1
 
                 if created_entries:
-                    # Use the first entry as a reference for shared fields
                     entry_seq_no = len(created_entries) 
                     first = created_entries[0]
                     reference_no = first.Reference_No
@@ -4084,11 +4243,9 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     period_code = first.Period_code
                     addl_text = first.Addl_text
 
-                    # Sum Fcy_Amount and Lcy_Amount for this batch
-                    total_fcy = sum(e.fcy_dr  for e in created_entries)
+                    total_fcy = sum(e.fcy_dr for e in created_entries)
                     total_lcy = sum(e.lcy_dr for e in created_entries)
                 
-
                     master_entry = DETB_JRNL_LOG_MASTER.objects.create(
                         module_id=module_id,
                         Reference_No=reference_no,
@@ -4107,10 +4264,8 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         entry_seq_no=entry_seq_no 
                     )
 
-                    # Log successful creation
                     logger.info(f"Journal batch created - Reference: {reference_no}, Entries: {len(created_entries)}, History: {len(history_entries)}")
                 
-                # Serialize response
                 response_serializer = JRNLLogSerializer(created_entries, many=True)
                 response_data = response_serializer.data
 
@@ -4130,6 +4285,94 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             logger.error(f"Error creating batch journal entries with history: {str(e)}")
             return Response({
                 'error': 'Failed to create journal entries',
+                'detail': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Pherm  Fucttion Delete by Pair 
+    # --------------------------------------
+    @action(detail=False, methods=['delete'], url_path='delete-by-pair-account')
+    def delete_by_pair_account(self, request):
+        """Delete journal entries by Reference_sub_No with related records"""
+        reference_sub_no = request.data.get('Reference_sub_No')
+
+        if not reference_sub_no:
+            return Response({
+                'error': 'Missing required field',
+                'detail': 'Reference_sub_No is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                # Find journal entries matching the Reference_sub_No
+                journal_entries = DETB_JRNL_LOG.objects.filter(
+                    Reference_sub_No=reference_sub_no
+                )
+
+                if not journal_entries.exists():
+                    return Response({
+                        'error': 'No matching journal entries found',
+                        'detail': f'No entries found for Reference_sub_No: {reference_sub_no}'
+                    }, status=status.HTTP_404_NOT_FOUND)
+
+                # Verify exactly two entries (debit and credit pair)
+                if len(journal_entries) != 2:
+                    return Response({
+                        'error': 'Incomplete pair found',
+                        'detail': 'Expected exactly two paired entries (debit and credit)'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Verify debit/credit pairing
+                dr_cr_values = {entry.Dr_cr for entry in journal_entries}
+                if dr_cr_values != {'D', 'C'}:
+                    return Response({
+                        'error': 'Invalid debit/credit pair',
+                        'detail': 'Paired entries must include one debit (D) and one credit (C)'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Get Reference_No for master entry deletion and logging
+                reference_no = journal_entries.first().Reference_No
+
+                # Delete related records
+                deleted_counts = {
+                    'journal_entries': 0,
+                    'history_entries': 0,
+                    'daily_log_entries': 0,
+                    'daily_log_history_entries': 0,
+                    'master_entry': 0
+                }
+
+                # Delete journal entries
+                deleted_counts['journal_entries'] = journal_entries.delete()[0]
+
+                # Delete corresponding history entries
+                history_entries = DETB_JRNL_LOG_HIST.objects.filter(
+                    Reference_sub_No=reference_sub_no
+                )
+                deleted_counts['history_entries'] = history_entries.delete()[0]
+
+                # Delete master entry if it exists and no other journal entries remain for the Reference_No
+                if not DETB_JRNL_LOG.objects.filter(Reference_No=reference_no).exists():
+                    master_entry = DETB_JRNL_LOG_MASTER.objects.filter(
+                        Reference_No=reference_no
+                    )
+                    deleted_counts['master_entry'] = master_entry.delete()[0]
+
+                # Log deletion
+                logger.info(f"Deleted journal batch - Reference_sub_No: {reference_sub_no}, "
+                            f"Reference_No: {reference_no}, "
+                            f"Counts: {deleted_counts}")
+
+                return Response({
+                    'message': 'Successfully deleted journal entries and related records',
+                    'reference_sub_no': reference_sub_no,
+                    'reference_no': reference_no,
+                    'deleted_counts': deleted_counts
+                }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error deleting journal entries for Reference_sub_No: {reference_sub_no}: {str(e)}")
+            return Response({
+                'error': 'Failed to delete journal entries',
                 'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -4511,13 +4754,17 @@ class FAChartOfAssetViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        
         queryset = FA_Chart_Of_Asset.objects.all().order_by('coa_id')
         asset_code = self.request.query_params.get('asset_code')
         asset_type_id = self.request.query_params.get('asset_type_id')
+        is_tangible = self.request.query_params.get('is_tangible')
         if asset_type_id:
             queryset = queryset.filter(asset_type_id=asset_type_id)
         if asset_code:
             queryset = queryset.filter(asset_code=asset_code)
+        if is_tangible:
+            queryset = queryset.filter(is_tangible=is_tangible)
         return queryset
     
     def perform_create(self, serializer):
@@ -5732,7 +5979,6 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
 #             return [AllowAny()]
 #         return [IsAuthenticated()]
     
-
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5753,7 +5999,7 @@ class MasterTypeViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
+    @action(detail=False, methods=['get'], url_path='tree/(?P<m_code>[^/.]+)')
     def get_tree(self, request, m_code=None):
         """
         Retrieve MasterType with related MasterCode entries in a tree structure.
@@ -5784,7 +6030,7 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
     serializer_class = MasterCodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['MC_code', 'MC_name_la', 'MC_name_en', 'Status', 'BOL_code', 'BOL_name', 'M_id']
-    lookup_field = 'MC_id'  # Use MC_id for MasterCode CRUD operations
+    lookup_field = 'MC_code'  # Use MC_id for MasterCode CRUD operations
 
     def get_permissions(self):
         if self.request.method == 'POST':
