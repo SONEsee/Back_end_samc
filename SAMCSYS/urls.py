@@ -71,8 +71,9 @@ from .views import (
     FAMaintenanceLogsViewSet,
     FAAccountingMethodViewSet,
     MasterTypeViewSet,
-    MasterCodeViewSet
-
+    MasterCodeViewSet,
+    YourProcessViewSet,
+    YourProcessViewSet
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -162,7 +163,10 @@ urlpatterns = [
     path('api/active-sessions/',get_active_sessions, name='active-sessions'),
     path('api/force-logout-all/',force_logout_all_users, name='force-logout-all'),
     path('api/revoked-sessions/',get_revoked_sessions, name='revoked-sessions'),
-    
+    # ໃນ urls.py
+path('api/process-journal/', YourProcessViewSet.as_view({'post': 'process_journal_data'})),
+# ຫຼື
+
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
