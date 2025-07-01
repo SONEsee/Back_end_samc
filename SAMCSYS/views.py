@@ -6182,7 +6182,18 @@ class YourProcessViewSet(viewsets.ModelViewSet):
         try:
             data = request.data
             glsub_ids = []
-            glsub_map = {}  # Map Account_no -> glsub_id
+            glsub_map = {}  
+
+            
+            ccy_cd = data.get('Ccy_cd')
+            try:
+                ccy_record = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_cd)
+                alt_ccy_code = ccy_record.ALT_Ccy_Code
+            except MTTB_Ccy_DEFN.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'message': f'ບໍ່ພົບ currency code: {ccy_cd} ໃນ MTTB_Ccy_DEFN'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             with transaction.atomic():
                 for entry in data.get('entries', []):
@@ -6200,7 +6211,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                             'message': f'ບໍ່ພົບ gl_code: {gl_code_part} ໃນ MTTB_GLMaster'
                         }, status=status.HTTP_400_BAD_REQUEST)
 
-                    # ເງື່ອນໄຂ: ເກັບແຕ່ຂໍ້ມູນ Dr (D) ເທົ່ານັ້ນໃຫ້ສ້າງ
+                    
                     if entry.get("Dr_cr") == "D":
                         current_time = timezone.now()
                         glsub_record = MTTB_GLSub.objects.create(
@@ -6212,7 +6223,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                         )
                         glsub_id = glsub_record.glsub_id
                     else:
-                        # ຖ້າບໍ່ແມ່ນ Dr, ຄົ້ນຫາຈາກ glsub_code
+                       
                         try:
                             glsub = MTTB_GLSub.objects.get(glsub_code=account_no)
                             glsub_id = glsub.glsub_id
@@ -6237,15 +6248,18 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                     "entries": []
                 }
 
-                # ສ້າງເລກອ້າງອິງ
+              
                 for i, entry in enumerate(data.get('entries', [])):
-                    acc_no = entry.get("Account_no")
-                    acc_id = glsub_map.get(acc_no)
+                    original_acc_no = entry.get("Account_no")
+                    acc_id = glsub_map.get(original_acc_no)
                     ac_rel = list(glsub_map.values())[1] if i == 0 else list(glsub_map.values())[0]
+
+                    
+                    modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
 
                     processed_entry = {
                         "Account": acc_id,
-                        "Account_no": acc_no,
+                        "Account_no": modified_acc_no, 
                         "Amount": entry.get('Amount'),
                         "Dr_cr": entry.get('Dr_cr'),
                         "Addl_sub_text": entry.get('Addl_sub_text'),
@@ -6253,13 +6267,13 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                     }
                     processed_data["entries"].append(processed_entry)
 
-                # ແກ້ໄຂການເອີ້ນ batch_create ໃຫ້ຖືກຮູບແບບ
+                
                 try:
                     from SAMCSYS.views import JRNLLogViewSet
 
                     factory = RequestFactory()
                     
-                    # ວິທີທີ 1: ໃຊ້ JSON Content-Type
+                   
                     raw_request = factory.post(
                         '/api/journal-entries/batch_create/',
                         data=json.dumps(processed_data),
@@ -6290,14 +6304,14 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                         }
 
                 except Exception as e:
-                    # ວິທີທີ 2: ເອີ້ນໂດຍຕົງ (ຖ້າ JSON ບໍ່ເຮັດວຽກ)
+                    
                     try:
                         viewset = JRNLLogViewSet()
-                        # ຕັ້ງ mock request
+                        
                         viewset.request = request
                         viewset.format_kwarg = None
                         
-                        # ເອີ້ນໂດຍກົງດ້ວຍ processed_data
+                        
                         from unittest.mock import Mock
                         mock_request = Mock()
                         mock_request.data = processed_data
@@ -6331,6 +6345,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                     'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ',
                     'processed_data': processed_data,
                     'glsub_ids': glsub_ids,
+                    'alt_ccy_code': alt_ccy_code,  
                     'journal_response': journal_response
                 }, status=status.HTTP_201_CREATED)
 
