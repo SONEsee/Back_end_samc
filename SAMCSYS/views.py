@@ -5136,6 +5136,53 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
     
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, pk=None):
+        """ອະນຸມັດ"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+
+        if obj.Auth_Status == 'A':
+            return Response({
+                'error': 'Record ຖືກອະນຸມັດແລ້ວ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Set Auth_Status = 'A', Once_Auth = 'Y', record_stat = 'C'
+        obj.Auth_Status = 'A'
+        obj.record_stat = 'C'
+        obj.Checker_Id_id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': 'ອະນຸມັດ ສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unauthorize(self, request, pk=None):
+        """ຍົກເລີກການອະນຸມັດ """
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+
+        if obj.Auth_Status == 'U':
+            return Response({
+                'error': 'Record ຍັງບໍ່ໄດ້ຮັບການອະນຸມັດ'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        obj.Auth_Status = 'U'
+        obj.Record_Status = 'C'
+        obj.Checker_Id_id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+
+        serializer = self.get_serializer(obj)
+        return Response({
+            'message': 'ຍົກເລີກການອະນຸມັດສໍາເລັດແລ້ວ',
+            'data': serializer.data
+        })
+    
 class FADepreciationMainViewSet(viewsets.ModelViewSet):
     serializer_class = FADepreciationMainSerializer
     permission_classes = [IsAuthenticated]
