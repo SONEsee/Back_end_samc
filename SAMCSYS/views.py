@@ -4760,61 +4760,249 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             'overall_balanced': lcy_balanced and fcy_balanced
         })
 
-    @action(detail=True, methods=['post'])
-    def authorize(self, request, pk=None):
-        """Authorize a journal entry"""
-        journal_entry = self.get_object()
+    @action(detail=False, methods=['post'], url_path='approve-all')
+    def approve_all(self, request):
+        """Approve all records (MASTER, LOG, HIST) for a Reference_No"""
+        reference_no = request.data.get('Reference_No')
         
-        if journal_entry.Auth_Status == 'A':
-            return Response({'error': 'Entry is already authorized'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+        if not reference_no:
+            return Response({'error': 'Reference_No is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
         
-        journal_entry.Auth_Status = 'A'
-        journal_entry.Checker_Id = request.user
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
+        # Check if any LOG entries have status 'P' or 'R'
+        log_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+        if not log_entries.exists():
+            return Response({'error': 'No entries found for this reference number'}, 
+                        status=status.HTTP_404_NOT_FOUND)
         
-        serializer = self.get_serializer(journal_entry)
-        return Response({
-            'message': 'Entry authorized successfully',
-            'entry': serializer.data
-        })
+        # Check for problematic entries
+        problematic_entries = log_entries.filter(Auth_Status__in=['P', 'R'])
+        if problematic_entries.exists():
+            return Response({'error': 'Cannot approve: entries with status P or R found'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if already approved
+        if log_entries.filter(Auth_Status='A').exists():
+            return Response({'error': 'Entries are already approved'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from django.db import transaction
+            
+            with transaction.atomic():
+                # Update DETB_JRNL_LOG
+                log_updated = log_entries.update(
+                    Auth_Status='A',
+                    Checker_Id=request.user,
+                    Checker_DT_Stamp=timezone.now()
+                )
+                
+                # Update DETB_JRNL_LOG_MASTER
+                try:
+                    from .models import DETB_JRNL_LOG_MASTER
+                    master_record = DETB_JRNL_LOG_MASTER.objects.get(Reference_No=reference_no)
+                    master_record.Auth_Status = 'A'
+                    master_record.Checker_Id = request.user
+                    master_record.Checker_DT_Stamp = timezone.now()
+                    master_record.save()
+                    master_updated = 1
+                except DETB_JRNL_LOG_MASTER.DoesNotExist:
+                    master_updated = 0
+                
+                # Update DETB_JRNL_LOG_HIST (if exists)
+                hist_updated = 0
+                try:
+                    from .models import DETB_JRNL_LOG_HIST
+                    hist_updated = DETB_JRNL_LOG_HIST.objects.filter(
+                        Reference_No=reference_no
+                    ).update(
+                        Auth_Status='A',
+                        Checker_Id=request.user,
+                        Checker_DT_Stamp=timezone.now()
+                    )
+                except:
+                    pass  # HIST table might not exist
+            
+            return Response({
+                'message': f'Successfully approved {log_updated} LOG entries, {master_updated} MASTER record, {hist_updated} HIST records',
+                'reference_no': reference_no
+            })
+            
+        except Exception as e:
+            return Response({'error': f'Error during approval: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['post'], url_path='reject-all')  
+    def reject_all(self, request):
+        """Reject all records (MASTER, LOG, HIST) for a Reference_No"""
+        reference_no = request.data.get('Reference_No')
+        rejection_reason = request.data.get('rejection_reason')
+        
+        if not reference_no:
+            return Response({'error': 'Reference_No is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
+        
+        if not rejection_reason:
+            return Response({'error': 'rejection_reason is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if entries exist
+        log_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+        if not log_entries.exists():
+            return Response({'error': 'No entries found for this reference number'}, 
+                        status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            from django.db import transaction
+            
+            with transaction.atomic():
+                # Update DETB_JRNL_LOG
+                log_updated = log_entries.update(
+                    Auth_Status='R',
+                    Checker_Id=request.user,
+                    Checker_DT_Stamp=timezone.now(),
+                    # comments=request.data.get('comments') + f'\nRejection: {rejection_reason}'
+                )
+                
+                # Update DETB_JRNL_LOG_MASTER
+                try:
+                    from .models import DETB_JRNL_LOG_MASTER
+                    master_record = DETB_JRNL_LOG_MASTER.objects.get(Reference_No=reference_no)
+                    master_record.Auth_Status = 'R'
+                    master_record.Checker_Id = request.user
+                    master_record.Checker_DT_Stamp = timezone.now()
+                    master_record.Addl_text = (master_record.Addl_text or '') + f'\nRejection: {rejection_reason}'
+                    master_record.save()
+                    master_updated = 1
+                except DETB_JRNL_LOG_MASTER.DoesNotExist:
+                    master_updated = 0
+                
+                # Update DETB_JRNL_LOG_HIST (if exists)
+                hist_updated = 0
+                try:
+                    from .models import DETB_JRNL_LOG_HIST
+                    hist_updated = DETB_JRNL_LOG_HIST.objects.filter(
+                        Reference_No=reference_no
+                    ).update(
+                        Auth_Status='R',
+                        Checker_Id=request.user,
+                        Checker_DT_Stamp=timezone.now()
+                    )
+                except:
+                    pass  # HIST table might not exist
+            
+            return Response({
+                'message': f'Successfully rejected {log_updated} LOG entries, {master_updated} MASTER record, {hist_updated} HIST records',
+                'reference_no': reference_no,
+                'rejection_reason': rejection_reason
+            })
+            
+        except Exception as e:
+            return Response({'error': f'Error during rejection: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # @action(detail=True, methods=['post'])
+    # def authorize(self, request, pk=None):
+    #     """Authorize a journal entry"""
+    #     journal_entry = self.get_object()
+        
+    #     if journal_entry.Auth_Status == 'A':
+    #         return Response({'error': 'Entry is already authorized'}, 
+    #                       status=status.HTTP_400_BAD_REQUEST)
+        
+    #     journal_entry.Auth_Status = 'A'
+    #     journal_entry.Checker_Id = request.user
+    #     journal_entry.Checker_DT_Stamp = timezone.now()
+    #     journal_entry.save()
+        
+    #     serializer = self.get_serializer(journal_entry)
+    #     return Response({
+    #         'message': 'Entry authorized successfully',
+    #         'entry': serializer.data
+    #     })
+
+    # @action(detail=False, methods=['post'])
+    # def authorize_batch(self, request):
+    #     """Authorize multiple journal entries by reference number"""
+    #     reference_no = request.data.get('reference_no')
+        
+    #     if not reference_no:
+    #         return Response({'error': 'reference_no is required'}, 
+    #                       status=status.HTTP_400_BAD_REQUEST)
+        
+    #     entries = DETB_JRNL_LOG.objects.filter(
+    #         Reference_No=reference_no,
+    #     )
+        
+    #     if not entries.exists():
+    #         return Response({'error': 'No unauthorized entries found for this reference number'}, 
+    #                       status=status.HTTP_404_NOT_FOUND)
+        
+    #     # Check if balanced before authorization
+    #     balance_info = self.balance_check(request)
+    #     if not balance_info.data.get('overall_balanced'):
+    #         return Response({'error': 'Cannot authorize unbalanced entries'}, 
+    #                       status=status.HTTP_400_BAD_REQUEST)
+        
+    #     updated_count = entries.update(
+    #         Auth_Status='A',
+    #         Checker_Id=request.user,
+    #         Checker_DT_Stamp=timezone.now()
+    #     )
+        
+    #     return Response({
+    #         'message': f'Successfully authorized {updated_count} entries',
+    #         'reference_no': reference_no
+    #     })
     @action(detail=False, methods=['post'])
-    def authorize_batch(self, request):
-        """Authorize multiple journal entries by reference number"""
+    def reject_batch(self, request):
+        """Reject multiple journal entries by reference number"""
         reference_no = request.data.get('reference_no')
+        rejection_reason = request.data.get('rejection_reason')
         
         if not reference_no:
             return Response({'error': 'reference_no is required'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_400_BAD_REQUEST)
+        
+        if not rejection_reason:
+            return Response({'error': 'rejection_reason is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
         
         entries = DETB_JRNL_LOG.objects.filter(
             Reference_No=reference_no,
-            Auth_Status='U'
+            Auth_Status='U'  # Only reject unauthorized entries
         )
         
         if not entries.exists():
             return Response({'error': 'No unauthorized entries found for this reference number'}, 
-                          status=status.HTTP_404_NOT_FOUND)
+                        status=status.HTTP_404_NOT_FOUND)
         
-        # Check if balanced before authorization
-        balance_info = self.balance_check(request)
-        if not balance_info.data.get('overall_balanced'):
-            return Response({'error': 'Cannot authorize unbalanced entries'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-        
+        # Update entries with rejection status and reason
         updated_count = entries.update(
-            Auth_Status='A',
+            Auth_Status='R',
             Checker_Id=request.user,
-            Checker_DT_Stamp=timezone.now()
+            Checker_DT_Stamp=timezone.now(),
+            # You might want to add rejection reason to a specific field
+            # or append it to existing additional text
+            comments=('Addl_text') + '\nRejection Reason: ' + rejection_reason
         )
         
+        # Also update the master record if it exists
+        try:
+            master_record = DETB_JRNL_LOG_MASTER.objects.get(Reference_No=reference_no)
+            master_record.Auth_Status = 'R'
+            master_record.Checker_Id = request.user
+            master_record.Checker_DT_Stamp = timezone.now()
+            master_record.Addl_text = (master_record.Addl_text or '') + f'\nRejection Reason: {rejection_reason}'
+            master_record.save()
+        except DETB_JRNL_LOG_MASTER.DoesNotExist:
+            pass  # Master record doesn't exist, which is okay
+        
         return Response({
-            'message': f'Successfully authorized {updated_count} entries',
-            'reference_no': reference_no
+            'message': f'Successfully rejected {updated_count} entries',
+            'reference_no': reference_no,
+            'rejection_reason': rejection_reason
         })
-
     @action(detail=False, methods=['get'])
     def summary_report(self, request):
         """Generate summary report for journal entries"""
@@ -4925,14 +5113,15 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     serializer_class = DETB_JRNL_LOG_MASTER_Serializer
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status', 'delete_stat']  # Add more as needed
-    search_fields = ['Reference_No', 'Addl_text']  # Optional
-    ordering_fields = ['Maker_DT_Stamp', 'Value_date']  # Optional
+    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status']  # Removed 'delete_stat' from filter
+    search_fields = ['Reference_No', 'Addl_text']
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date']
+
+    def get_queryset(self):
+        return DETB_JRNL_LOG_MASTER.objects.filter(delete_stat__isnull=True).exclude(delete_stat='D')
+
 
     def perform_update(self, serializer):
-        """
-        If Auth_Status is set to 'A', set all DETB_JRNL_LOG rows with the same Reference_No to 'A'.
-        """
         instance = serializer.save()
         if instance.Auth_Status == 'A':
             from .models import DETB_JRNL_LOG
@@ -4946,6 +5135,54 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         instance.delete_stat = 'D'
         instance.save()
         return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    @action(detail=False, methods=['patch'], url_path='approve-by-reference')
+    def approve_by_reference(self, request):
+        reference_no = request.data.get('Reference_No')
+        if not reference_no:
+            return Response({'detail': 'Reference_No is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            master_record = self.queryset.get(Reference_No=reference_no)
+            
+            # Update master record
+            master_record.Auth_Status = 'A'
+            master_record.Checker_Id = request.data.get('Checker_Id')
+            master_record.Checker_DT_Stamp = request.data.get('Checker_DT_Stamp')
+            master_record.save()
+            
+            # Update all related detail records (this will be handled by perform_update)
+            serializer = self.get_serializer(master_record)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except DETB_JRNL_LOG_MASTER.DoesNotExist:
+            return Response({'detail': 'Master record not found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=False, methods=['patch'], url_path='reject-by-reference')
+    def reject_by_reference(self, request):
+        reference_no = request.data.get('Reference_No')
+        if not reference_no:
+            return Response({'detail': 'Reference_No is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            master_record = self.queryset.get(Reference_No=reference_no)
+            
+            # Update master record
+            master_record.Auth_Status = 'R'
+            master_record.Checker_Id = request.data.get('Checker_Id')
+            master_record.Checker_DT_Stamp = request.data.get('Checker_DT_Stamp')
+            if request.data.get('Addl_text'):
+                master_record.Addl_text = request.data.get('Addl_text')
+            master_record.save()
+            
+            serializer = self.get_serializer(master_record)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except DETB_JRNL_LOG_MASTER.DoesNotExist:
+            return Response({'detail': 'Master record not found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
     
     
 from rest_framework.decorators import api_view, permission_classes
