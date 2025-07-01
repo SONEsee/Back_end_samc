@@ -1152,7 +1152,7 @@ def AllModule(request):
                 # 8) Fetch active functions for this sub-menu
                 functions = (
                     MTTB_Function_Desc.objects
-                    .filter(sub_menu_id=sub, is_active='O')
+                    .filter(Record_Status='O')
                     .order_by('function_order')
                 )
 
@@ -1163,7 +1163,7 @@ def AllModule(request):
                         'description_la': func.description_la,
                         'description_en': func.description_en,
                         'function_order': func.function_order,
-                        'Record_Status': func.is_active
+                        'Record_Status': func.Record_Status
                     }
                     sub_menu_data['functions'].append(function_data)
 
