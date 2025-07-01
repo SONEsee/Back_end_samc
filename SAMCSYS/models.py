@@ -666,6 +666,7 @@ class DETB_JRNL_LOG(models.Model):
     module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
     Reference_No = models.CharField(max_length=30, null=True, blank=True)
     Reference_sub_No = models.CharField(max_length=35, null=True, blank=True)
+    comments = models.CharField(max_length=1000, null=True, blank=True)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Fcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     Lcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
@@ -747,6 +748,7 @@ class DETB_JRNL_LOG_HIST(models.Model):
     JRNLLog_id_his = models.AutoField(primary_key=True)
     Reference_No = models.CharField(max_length=30, null=True, blank=True)
     Reference_sub_No = models.CharField(max_length=35, null=True, blank=True)
+    comments = models.CharField(max_length=255, null=True, blank=True)
     module_id = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
     Ccy_cd = models.ForeignKey(MTTB_Ccy_DEFN,null=True,blank=True,on_delete=models.CASCADE)
     Fcy_Amount = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
@@ -1206,6 +1208,7 @@ class FA_Asset_Lists(models.Model):
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_lists')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
 
     class Meta:
         verbose_name_plural = 'AssestLists'
