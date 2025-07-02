@@ -1963,7 +1963,7 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
 from .models import MTTB_GLSub
-from .serializers import GLSubSerializer
+from .serializers import GLSubSerializer, GLSubDisplaySerializer
 
 class GLSubViewSet(viewsets.ModelViewSet):
     """
@@ -2077,122 +2077,50 @@ class GLSubViewSet(viewsets.ModelViewSet):
             'message': 'Entry unauthorized successfully',
             'entry': serializer.data
         })
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='validate-selection')
-    def validate_glsub_selection(self, request):
-        """
-        Validate if a GL sub-account can be used for a debit or credit transaction based on
-        the post_side and category fields in the linked MTTB_GLMaster.
-        Expects 'glsub_code' and 'transaction_side' ('dr' or 'cr') in the request data.
-        - If post_side = '2', allow both dr and cr transactions.
-        - If post_side = '1', allow based on category:
-          - Assets (1), Expenses (5): Allow dr to increase, cr to decrease.
-          - Liabilities (2), Equity (3), Income (4): Allow cr to increase, dr to decrease.
-        """
-        glsub_code = request.data.get('glsub_code')
-        transaction_side = request.data.get('transaction_side')
+    
+    @action(detail=False, methods=['post'])
+    def display_item_by_postside(self, request):
+        """Retrieve GLSub items filtered by post_side (dr or cr) from GLMaster"""
+        post_side = request.data.get('post_side')
 
-        if not glsub_code or not transaction_side:
+        # Validate post_side
+        if post_side not in ['dr', 'cr']:
             return Response({
-                'valid': False,
-                'message': 'Both glsub_code and transaction_side are required.',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        if transaction_side not in ['dr', 'cr']:
-            return Response({
-                'valid': False,
-                'message': 'Transaction side must be "dr" (debit) or "cr" (credit).',
-                'debug': {'transaction_side': transaction_side}
+                'error': 'Invalid post_side',
+                'detail': 'post_side must be either "dr" or "cr"'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            glsub = MTTB_GLSub.objects.select_related('gl_code').get(glsub_code=glsub_code)
-        except MTTB_GLSub.DoesNotExist:
-            return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} does not exist.',
-                'debug': {'glsub_code': glsub_code}
-            }, status=status.HTTP_404_NOT_FOUND)
+            # Map post_side to filter values
+            post_side_filter = ['dr', 'drcr'] if post_side == 'dr' else ['cr', 'drcr']
 
-        # Check if gl_code exists (since it's nullable)
-        if not glsub.gl_code:
+            # Query GLSub joined with GLMaster
+            items = MTTB_GLSub.objects.select_related('gl_code').filter(
+                gl_code__post_side__in=post_side_filter
+            ).order_by('glsub_code')
+
+            if not items.exists():
+                return Response({
+                    'message': f'No GLSub items found for post_side: {post_side}',
+                    'items': []
+                }, status=status.HTTP_200_OK)
+
+            # Serialize the results
+            serializer = GLSubDisplaySerializer(items, many=True)
+            logger.info(f"Retrieved {len(items)} GLSub items for post_side: {post_side}")
+
             return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} is not linked to any GL Master account.',
-                'debug': {'glsub_id': glsub.glsub_id, 'gl_code': None}
+                'message': f'Successfully retrieved {len(items)} GLSub items for post_side: {post_side}',
+                'items': serializer.data
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error retrieving GLSub items for post_side {post_side}: {str(e)}")
+            return Response({
+                'error': 'Failed to retrieve GLSub items',
+                'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        post_side = glsub.gl_code.post_side or ''
-        category = glsub.gl_code.category or ''
-
-        # Validate post_side value
-        if post_side not in ['1', '2']:
-            return Response({
-                'valid': False,
-                'message': f'Invalid post_side value ({post_side}) for GL Master account linked to {glsub_code}. Must be "1" or "2".',
-                'debug': {'glsub_code': glsub_code, 'post_side': post_side}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Validate category value
-        if category not in ['1', '2', '3', '4', '5']:
-            return Response({
-                'valid': False,
-                'message': f'Invalid category value ({category}) for GL Master account linked to {glsub_code}. Must be "1", "2", "3", "4", or "5".',
-                'debug': {'glsub_code': glsub_code, 'category': category}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # If post_side is '2', allow both dr and cr transactions
-        if post_side == '2':
-            pass  # No further validation needed; both sides are allowed
-        else:
-            # If post_side is '1', validate based on category
-            if category in ['1', '5']:  # Assets, Expenses
-                if transaction_side not in ['dr', 'cr']:  # Allow both dr and cr
-                    return Response({
-                        'valid': False,
-                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Assets/Expenses accounts (category = {category}) allow both dr and cr with post_side = "1".',
-                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
-                    }, status=status.HTTP_400_BAD_REQUEST)
-            elif category in ['2', '3', '4']:  # Liabilities, Equity, Income
-                if transaction_side not in ['cr', 'dr']:  # Allow both cr and dr
-                    return Response({
-                        'valid': False,
-                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Liabilities/Equity/Income accounts (category = {category}) allow both cr and dr with post_side = "1".',
-                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Relaxed status checks based on sample data
-        # Sample shows MTTB_GLSub.Record_Status = 'C' and MTTB_GLMaster.Auth_Status = 'U', which may be valid
-        # Uncomment these checks if required by your business logic
-        """
-        if glsub.Record_Status == 'C':
-            return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} is closed and cannot be used.',
-                'debug': {'glsub_code': glsub_code, 'Record_Status': glsub.Record_Status}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        if glsub.Auth_Status != 'A':
-            return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} is not authorized (Auth_Status must be "A").',
-                'debug': {'glsub_code': glsub_code, 'Auth_Status': glsub.Auth_Status}
-            }, status=status.HTTP_400_BAD_REQUEST)
-        """
-
-        return Response({
-            'valid': True,
-            'message': f'GL sub-account {glsub_code} is valid for {transaction_side} transaction.',
-            'debug': {
-                'glsub_code': glsub_code,
-                'transaction_side': transaction_side,
-                'post_side': post_side,
-                'category': category,
-                'glsub_record_status': glsub.Record_Status,
-                'glsub_auth_status': glsub.Auth_Status,
-                'glmaster_auth_status': glsub.gl_code.Auth_Status
-            }
-        }, status=status.HTTP_200_OK)
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
