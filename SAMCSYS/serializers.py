@@ -663,7 +663,7 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,
     FA_Depreciation_Sub,FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
-    FA_Accounting_Method, MasterCode)
+    FA_Accounting_Method, MasterCode, MasterType)
 
 class AssetTypeDetailSerializer(serializers.ModelSerializer):
     class Meta:
@@ -674,6 +674,16 @@ class AssetTypeDetailSerializer(serializers.ModelSerializer):
 #     class Meta:
 #         model = FA_Asset_Type
 #         fields = '__all__'
+
+class MasterTypeDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MasterType
+        fields = ['M_id', 'M_code', 'M_name_la', 'M_name_en', 'M_detail', 'Status']
+
+class MasterCodeDetail_Serializer(serializers.ModelSerializer):
+    class Meta:
+        model = MasterCode
+        fields = ['MC_id', 'M_id', 'MC_code', 'MC_name_la', 'MC_name_en']
 
 class ChartOfAssetDetailSerializer(serializers.ModelSerializer):
     class Meta:
@@ -745,9 +755,26 @@ class FAAssetListSerializer(serializers.ModelSerializer):
     asset_id_detail = ChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
     supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
+    type_of_pay_detail = serializers.SerializerMethodField()
+    asset_status_detail = serializers.SerializerMethodField()
+
     class Meta:
         model = FA_Asset_Lists
         fields = '__all__'
+
+    def get_type_of_pay_detail(self, obj):
+        from .models import MasterCode
+        mc = MasterCode.objects.filter(MC_code=obj.type_of_pay).first()
+        if mc:
+            return MasterCodeDetail_Serializer(mc).data
+        return None
+
+    def get_asset_status_detail(self, obj):
+        from .models import MasterCode
+        mc = MasterCode.objects.filter(MC_code=obj.asset_status).first()
+        if mc:
+            return MasterCodeDetail_Serializer(mc).data
+        return None
 
 class FADepreciationMainSerializer(serializers.ModelSerializer):
     class Meta:
