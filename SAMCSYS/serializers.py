@@ -653,6 +653,8 @@ from rest_framework import serializers
 from .models import DETB_JRNL_LOG_MASTER
 
 class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
     class Meta:
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
