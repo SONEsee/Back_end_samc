@@ -6499,9 +6499,9 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                     "fin_cycle": data.get('fin_cycle'),
                     "Period_code": data.get('Period_code'),
                     "module_id": data.get('module_id'),
-                    "Maker_Id": request.user.user_id,  # ໃຊ້ user_id ຈາກ JWT token
-                    "Record_Status": "O",  # ເພີ່ມ Record_Status = "O"
-                    "Auth_Status": "A",    # ເພີ່ມ Auth_Status = "A"
+                    "Maker_Id": request.user.user_id, 
+                    "Record_Status": "O",  
+                    "Auth_Status": "A",   
                     "entries": []
                 }
 
@@ -6521,9 +6521,9 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                         "Dr_cr": entry.get('Dr_cr'),
                         "Addl_sub_text": entry.get('Addl_sub_text'),
                         "Ac_relatives": str(ac_rel),
-                        "Maker_Id": request.user.user_id,  # ໃຊ້ user_id ຈາກ JWT token
-                        "Record_Status": "O",  # ເພີ່ມ Record_Status = "O"
-                        "Auth_Status": "A"     # ເພີ່ມ Auth_Status = "A"
+                        "Maker_Id": request.user.user_id,  
+                        "Record_Status": "O", 
+                        "Auth_Status": "A"    
                     }
                     processed_data["entries"].append(processed_entry)
 

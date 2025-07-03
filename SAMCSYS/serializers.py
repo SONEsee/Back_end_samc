@@ -688,7 +688,7 @@ class MasterCodeDetail_Serializer(serializers.ModelSerializer):
 class ChartOfAssetDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Chart_Of_Asset
-        fields = ['coa_id', 'asset_code', 'asset_name_en', 'asset_name_la']
+        fields = ['coa_id', 'asset_code', 'asset_name_en', 'asset_name_la','type_code']
 
 class MasterCodeDetailSerializer(serializers.ModelSerializer):
     chart_detail = serializers.SerializerMethodField()
