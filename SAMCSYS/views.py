@@ -6444,7 +6444,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
 
                     try:
                         gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code_part)
-                        gl_code_obj = gl_master  # ໃຊ້ object ແທນ ID
+                        gl_code_obj = gl_master  
                     except MTTB_GLMaster.DoesNotExist:
                         return Response({
                             'success': False,
@@ -6455,7 +6455,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                     if entry.get("Dr_cr") == "D":
                         current_time = timezone.now()
                         
-                        # ຊອກຫາ User object ສໍາລັບ Maker_Id
+                        
                         try:
                             maker_user = MTTB_Users.objects.get(user_id=request.user.user_id)
                         except MTTB_Users.DoesNotExist:
@@ -6467,11 +6467,11 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                         glsub_record = MTTB_GLSub.objects.create(
                             glsub_code=account_no,
                             glsub_Desc_la=addl_sub_text,
-                            gl_code=gl_code_obj,  # ໃຊ້ ForeignKey object
+                            gl_code=gl_code_obj, 
                             Maker_DT_Stamp=current_time,
                             Checker_DT_Stamp=current_time,
-                            Maker_Id=maker_user,  # ໃຊ້ User object
-                            Checker_Id=maker_user,  # ເພີ່ມ Checker_Id ດ້ວຍ
+                            Maker_Id=maker_user,  
+                            Checker_Id=maker_user, 
                             Record_Status="O",
                             Auth_Status="A"
                         )
