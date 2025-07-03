@@ -4690,7 +4690,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_all(self, request):
-        """Approve all records (MASTER, LOG, HIST) for a Reference_No"""
+        """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
         reference_no = request.data.get('Reference_No')
         
         if not reference_no:
@@ -4716,6 +4716,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         
         try:
             from django.db import transaction
+            from django.utils import timezone
             
             with transaction.atomic():
                 # Update DETB_JRNL_LOG
@@ -4750,16 +4751,116 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
                 except:
                     pass  # HIST table might not exist
+                
+                # After successful approval, insert into daily log tables
+                daily_log_entries_created = 0
+                daily_log_hist_entries_created = 0
+                
+                try:
+                    from .models import ACTB_DAIRY_LOG, ACTB_DAIRY_LOG_HISTORY
+                    current_time = timezone.now()
+                    
+                    # Get the updated approved entries from DETB_JRNL_LOG
+                    approved_entries = DETB_JRNL_LOG.objects.filter(
+                        Reference_No=reference_no,
+                        Auth_Status='A'
+                    ).order_by('JRNLLog_id')
+                    
+                    for idx, entry in enumerate(approved_entries):
+                        # Get GL Master info through the relationship chain:
+                        # entry.Account (MTTB_GLSub) -> entry.Account.gl_code (MTTB_GLMaster)
+                        gl_master = None
+                        gl_type = None
+                        category = None
+                        
+                        try:
+                            if entry.Account and entry.Account.gl_code:
+                                gl_master = entry.Account.gl_code  # This is the MTTB_GLMaster instance
+                                gl_type = gl_master.glType
+                                category = gl_master.category
+                                print(f"Found GLMaster: {gl_master.glid}, Type: {gl_type}, Category: {category}")
+                        except Exception as gl_error:
+                            print(f"GLMaster lookup error: {gl_error}")
+                        
+                        # Calculate amounts based on Dr_cr indicator
+                        fcy_amount = entry.Fcy_Amount or 0
+                        lcy_amount = entry.Lcy_Amount or 0
+                        exchange_rate = entry.Exch_rate or 1
+                        
+                        fcy_dr = fcy_amount if entry.Dr_cr == 'D' else 0
+                        fcy_cr = fcy_amount if entry.Dr_cr == 'C' else 0
+                        lcy_dr = lcy_amount if entry.Dr_cr == 'D' else 0
+                        lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
+                        
+                        # Prepare additional sub text
+                        addl_sub_text = f"Approved Entry - {entry.Dr_cr} - {entry.Account_no}"
+                        
+                        # Common data for both ACTB_DAIRY_LOG and ACTB_DAIRY_LOG_HISTORY tables
+                        daily_log_data = {
+                            'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
+                            'trn_ref_no': entry,  # ForeignKey to DETB_JRNL_LOG entry
+                            'trn_ref_sub_no': entry.Reference_sub_No,
+                            'event_sr_no': idx + 1,
+                            'event': 'JRNL',
+                            'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
+                            'ac_no_full': entry.Account_no,
+                            'ac_relative': entry.Ac_relatives,
+                            'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
+                            'drcr_ind': entry.Dr_cr,
+                            'trn_code': entry.Txn_code,  # ForeignKey to MTTB_TRN_Code
+                            'fcy_amount': fcy_amount,
+                            'exch_rate': exchange_rate,
+                            'lcy_amount': lcy_amount,
+                            'fcy_dr': fcy_dr,
+                            'fcy_cr': fcy_cr,
+                            'lcy_dr': lcy_dr,
+                            'lcy_cr': lcy_cr,
+                            'external_ref_no': entry.Reference_No[:30],
+                            'addl_text': entry.Addl_text or '',
+                            'addl_sub_text': addl_sub_text,
+                            'trn_dt': entry.Value_date.date() if entry.Value_date else None,
+                            'glid': gl_master,  # ForeignKey to MTTB_GLMaster
+                            'glType': gl_type,  # CharField from GLMaster
+                            'category': category,  # CharField from GLMaster
+                            'value_dt': entry.Value_date.date() if entry.Value_date else None,
+                            'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
+                            'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
+                            'user_id': request.user,  # ForeignKey to MTTB_Users
+                            'Maker_DT_Stamp': current_time,
+                            'auth_id': request.user,  # ForeignKey to MTTB_Users (approver)
+                            'Checker_DT_Stamp': current_time,
+                            'Auth_Status': 'A',  # Authorized
+                            'product': 'GL',
+                            'entry_seq_no': idx + 1,
+                            'delete_stat': None
+                        }
+                        
+                        # Create ACTB_DAIRY_LOG entry
+                        daily_log_entry = ACTB_DAIRY_LOG.objects.create(**daily_log_data)
+                        daily_log_entries_created += 1
+                        
+                        # Create ACTB_DAIRY_LOG_HISTORY entry  
+                        daily_log_hist_entry = ACTB_DAIRY_LOG_HISTORY.objects.create(**daily_log_data)
+                        daily_log_hist_entries_created += 1
+                        
+                except Exception as daily_log_error:
+                    # Log the error but don't fail the entire approval process
+                    print(f"Error creating daily log entries: {str(daily_log_error)}")
+                    import traceback
+                    traceback.print_exc()
             
             return Response({
                 'message': f'Successfully approved {log_updated} LOG entries, {master_updated} MASTER record, {hist_updated} HIST records',
+                'daily_log_created': daily_log_entries_created,
+                'daily_log_hist_created': daily_log_hist_entries_created,
                 'reference_no': reference_no
             })
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return Response({'error': f'Error during approval: {str(e)}'}, 
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     @action(detail=False, methods=['post'], url_path='reject-all')  
     def reject_all(self, request):
         """Reject all records (MASTER, LOG, HIST) for a Reference_No"""
@@ -5030,23 +5131,109 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
 
 from rest_framework import viewsets, status
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-
+from django.db.models import Q
 from .models import DETB_JRNL_LOG_MASTER
 from .serializers import DETB_JRNL_LOG_MASTER_Serializer
+
 
 class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     queryset = DETB_JRNL_LOG_MASTER.objects.all()
     serializer_class = DETB_JRNL_LOG_MASTER_Serializer
+    permission_classes = [IsAuthenticated]
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status']  # Removed 'delete_stat' from filter
+    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status','Reference_No']  # Removed 'delete_stat' from filter
     search_fields = ['Reference_No', 'Addl_text']
     ordering_fields = ['Maker_DT_Stamp', 'Value_date']
+    
 
+    # def get_queryset(self):
+    #     return DETB_JRNL_LOG_MASTER.objects.filter(delete_stat__isnull=True).exclude(delete_stat='D')
     def get_queryset(self):
-        return DETB_JRNL_LOG_MASTER.objects.filter(delete_stat__isnull=True).exclude(delete_stat='D')
+        """
+        Filter queryset based on show_all parameter (from frontend canAuthorize permission)
+        - If show_all='true' (canAuthorize=1): Show all records (except deleted)
+        - If show_all='false' (canAuthorize=0): Show only records created by current user
+        """
+        user = self.request.user
+        
+        # Base queryset - exclude deleted records
+        base_queryset = DETB_JRNL_LOG_MASTER.objects.filter(
+            Q(delete_stat__isnull=True) | ~Q(delete_stat='D')
+        )
+        
+        # Get show_all parameter from request
+        show_all = self.request.query_params.get('show_all', 'false').lower()
+        
+        # Apply permission-based filtering
+        if show_all == 'true':
+            # User has canAuthorize permission - show all records
+            return base_queryset
+        else:
+            # User doesn't have canAuthorize permission - show only their own records
+            return base_queryset.filter(Maker_Id=user)
+
+    def list(self, request, *args, **kwargs):
+        """
+        Override list to add debugging information (optional)
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Apply date range filters if provided
+        date_from = request.query_params.get('Value_date__gte')
+        date_to = request.query_params.get('Value_date__lte')
+        
+        if date_from:
+            queryset = queryset.filter(Value_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(Value_date__lte=date_to)
+        
+        # Get page from pagination
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Override retrieve method to check if user can view specific record
+        """
+        instance = self.get_object()
+        user = request.user
+        
+        try:
+            user_auth_detail = self.get_user_auth_detail(user, request)
+            
+            print(f"DEBUG RETRIEVE: User {getattr(user, 'user_name', 'unknown')} requesting record {instance.pk}")
+            print(f"DEBUG RETRIEVE: Record Maker_Id: {instance.Maker_Id}")
+            print(f"DEBUG RETRIEVE: User Auth_Detail: {user_auth_detail}")
+            
+            # If user doesn't have Auth_Detail permission, check if they own the record
+            if user_auth_detail != 1 and instance.Maker_Id != user:
+                print(f"DEBUG RETRIEVE: Access denied - user doesn't own record and no auth permission")
+                return Response(
+                    {"detail": "You don't have permission to view this record."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+                
+        except Exception as e:
+            print(f"ERROR in retrieve permission check: {e}")
+            # If error checking permissions, check ownership
+            if instance.Maker_Id != user:
+                return Response(
+                    {"detail": "You don't have permission to view this record."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        return super().retrieve(request, *args, **kwargs)
+
 
 
     def perform_update(self, serializer):
@@ -5063,6 +5250,26 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         instance.delete_stat = 'D'
         instance.save()
         return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    
+
+    @action(detail=False, methods=['get'], url_path='journal-log-active')
+    def journal_log_active(self, request):
+        """
+        Get all active (not deleted) journal log master records, optionally filtered by Reference_No.
+        """
+        reference_no = request.query_params.get('Reference_No')
+        
+        queryset = DETB_JRNL_LOG_MASTER.objects.filter(
+            delete_stat__isnull=True
+        ).exclude(delete_stat='D')
+
+        if reference_no:
+            queryset = queryset.filter(Reference_No=reference_no)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+
     @action(detail=False, methods=['patch'], url_path='approve-by-reference')
     def approve_by_reference(self, request):
         reference_no = request.data.get('Reference_No')
