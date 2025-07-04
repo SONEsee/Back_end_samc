@@ -678,7 +678,7 @@ class AssetTypeDetailSerializer(serializers.ModelSerializer):
 class MasterTypeDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = MasterType
-        fields = ['M_id', 'M_code', 'M_name_la', 'M_name_en', 'M_detail', 'Status','type_code']
+        fields = ['M_id', 'M_code', 'M_name_la', 'M_name_en', 'M_detail', 'Status']
 
 class MasterCodeDetail_Serializer(serializers.ModelSerializer):
     class Meta:
