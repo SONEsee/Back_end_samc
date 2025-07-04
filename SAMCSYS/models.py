@@ -1190,6 +1190,7 @@ class FA_Asset_Lists(models.Model):
     asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
     dpca_start_date = models.DateField(null=True, blank=True)  
     dpca_end_date = models.DateField(null=True, blank=True) 
+    accu_dpca_value_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
     asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
     asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
