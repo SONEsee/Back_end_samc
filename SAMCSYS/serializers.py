@@ -670,6 +670,11 @@ class AssetTypeDetailSerializer(serializers.ModelSerializer):
         model = FA_Asset_Type
         fields = '__all__'
 
+class AssetTypeDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Type
+        fields = ['type_code', 'type_name_la', 'type_name_en']
+
 # class FAAssetTypeSerializer(serializers.ModelSerializer):
 #     class Meta:
 #         model = FA_Asset_Type
@@ -684,6 +689,14 @@ class MasterCodeDetail_Serializer(serializers.ModelSerializer):
     class Meta:
         model = MasterCode
         fields = ['MC_id', 'M_id', 'MC_code', 'MC_name_la', 'MC_name_en']
+
+class FAChartOfAssetDetailSerializer(serializers.ModelSerializer):
+    asset_type_detail = AssetTypeDetailsSerializer(source='asset_type_id', read_only=True)
+
+    class Meta:
+        model = FA_Chart_Of_Asset
+        fields = ['coa_id', 'asset_code', 'asset_name_en', 'asset_name_la', 'asset_type_detail']
+
 
 class ChartOfAssetDetailSerializer(serializers.ModelSerializer):
     class Meta:
@@ -752,7 +765,7 @@ class FAExpenseCategorySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FAAssetListSerializer(serializers.ModelSerializer):
-    asset_id_detail = ChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
+    asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
     supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
     type_of_pay_detail = serializers.SerializerMethodField()

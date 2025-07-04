@@ -1180,7 +1180,7 @@ class FA_Asset_Lists(models.Model):
     asset_date = models.DateField(null=True, blank=True)
     asset_currency = models.CharField(max_length=5, null=True, blank=True)
     asset_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_status  = models.CharField(max_length=20, null=True, blank=True, default='ACTIVE')  
+    asset_status  = models.CharField(max_length=20, null=True, blank=True, default='UC')  
     warranty_end_date = models.DateField(null=True, blank=True)
     supplier_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
     has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')  # Y or N
@@ -1190,6 +1190,7 @@ class FA_Asset_Lists(models.Model):
     asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
     dpca_start_date = models.DateField(null=True, blank=True)  
     dpca_end_date = models.DateField(null=True, blank=True) 
+    accu_dpca_value_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
     asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
     asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
