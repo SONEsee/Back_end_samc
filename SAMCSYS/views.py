@@ -6509,10 +6509,16 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                 for i, entry in enumerate(data.get('entries', [])):
                     original_acc_no = entry.get("Account_no")
                     acc_id = glsub_map.get(original_acc_no)
-                    ac_rel = list(glsub_map.values())[1] if i == 0 else list(glsub_map.values())[0]
+                    # ac_rel = list(glsub_map.values())[1] if i == 0 else list(glsub_map.values())[0]
+                    # ac_rel = list(glsub_map.keys())[1] if i == 0 else list(glsub_map.keys())[0]
+                    ac_rel = list(glsub_map.keys())[1] if i == 0 else list(glsub_map.keys())[0]
 
                     
+                    # modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+                    # modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
                     modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+                    all_modified_accounts = [f"{alt_ccy_code}.{acc}" for acc in glsub_map.keys()]
+                    ac_rel = all_modified_accounts[1] if i == 0 else all_modified_accounts[0]
 
                     processed_entry = {
                         "Account": acc_id,
@@ -6520,7 +6526,8 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                         "Amount": entry.get('Amount'),
                         "Dr_cr": entry.get('Dr_cr'),
                         "Addl_sub_text": entry.get('Addl_sub_text'),
-                        "Ac_relatives": str(ac_rel),
+                        # "Ac_relatives": str(ac_rel),
+                        "Ac_relatives": ac_rel,
                         "Maker_Id": request.user.user_id,  
                         "Record_Status": "O", 
                         "Auth_Status": "A"    
