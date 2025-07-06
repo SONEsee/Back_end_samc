@@ -35,7 +35,7 @@ class JournalEntryHelper:
         else:
             next_seq = 1
         
-        return f"{date_prefix}-{next_seq:05d}"
+        return f"{date_prefix}-{next_seq:07d}"
     
     @staticmethod
     def validate_balanced_entries(entries):
