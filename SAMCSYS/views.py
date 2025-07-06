@@ -5328,7 +5328,7 @@ from django.utils.timezone import make_aware
 from .models import STTB_Dates, MTTB_LCL_Holiday
 
 
-@api_view(['POST'])  # or ['GET'] if you want it triggered without payload
+@api_view(['GET'])  # or ['GET'] if you want it triggered without payload
 @permission_classes([IsAuthenticated])
 def submit_eod_journal(request):
     today = datetime.today().date()
@@ -6144,11 +6144,13 @@ class IsAdminUser(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # Check if user has admin role
-        if hasattr(request.user, 'Role_ID') and request.user.Role_ID:
-            # Adjust this condition based on your role structure
-            role_name = getattr(request.user.Role_ID, 'role_name', '')
-            return role_name.lower() in ['SYA', 'SYS']
+        print(f"User: {request.user}")
+        print(f"Has role attr: {hasattr(request.user, 'role')}")
+        if hasattr(request.user, 'role'):
+            print(f"Role: {request.user.role}")
+            print(f"Role ID: {getattr(request.user.role, 'role_id', 'NOT_FOUND')}")
+        
+        # Your permission logic here...
         
         return False
 
