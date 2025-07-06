@@ -5894,6 +5894,8 @@ from datetime import datetime
 # views.py - Add these views to your existing views
 
 from rest_framework.decorators import api_view, permission_classes
+from django.db.models import OuterRef, Subquery, Max
+from datetime import timedelta
 from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework import status, viewsets
@@ -6039,40 +6041,46 @@ def force_logout_user(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_active_sessions(request):
-    """
-    Get all active sessions (users currently logged in).
-    Regular users can only see their own sessions.
-    Admins can see all sessions.
-    
-    GET /api/active-sessions/
-    Optional query params:
-    - user_id: Filter by specific user (admin only)
-    - include_details: Include detailed session info
-    """
-    # Check if user is admin
-    is_admin = IsAdminUser().has_permission(request, None)
-    
-    # Base query for active sessions
-    query = MTTB_USER_ACCESS_LOG.objects.filter(
+    user = request.user
+
+    allowed_roles = ['SYS', 'SYA']
+    user_role_id = None
+    if hasattr(user, 'Role_ID') and user.Role_ID:
+        user_role_id = getattr(user.Role_ID, 'role_id', None)
+
+    if user_role_id not in allowed_roles:
+        return Response({
+            "success": False,
+            "message": "You do not have permission to access this API."
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    # user info เพิ่มไว้ใน response
+    own_user_info = {
+        "own_user_id": getattr(user, 'user_id', None),
+        "own_user_name": getattr(user, 'user_name', None),
+        "own_role_id": user_role_id,
+    }
+
+    SESSION_TIMEOUT_MINUTES = 30
+    time_limit = timezone.now() - timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+
+    latest_log_id_subquery = MTTB_USER_ACCESS_LOG.objects.filter(
+        user_id=OuterRef('user_id')
+    ).order_by('-login_datetime').values('log_id')[:1]
+
+    latest_logs = MTTB_USER_ACCESS_LOG.objects.filter(
+        log_id__in=Subquery(latest_log_id_subquery),
+        login_status='S',
         logout_datetime__isnull=True,
-        login_status='S'
-    ).select_related('user_id')
-    
-    # Non-admins can only see their own sessions
-    if not is_admin:
-        query = query.filter(user_id=request.user)
-    else:
-        # Admins can filter by user_id if provided
-        filter_user_id = request.query_params.get('user_id')
-        if filter_user_id:
-            query = query.filter(user_id__user_id=filter_user_id)
-    
-    # Order by login time (most recent first)
-    query = query.order_by('-login_datetime')
-    
-    # Prepare response data
+        login_datetime__gte=time_limit
+    ).select_related('user_id').order_by('-login_datetime')
+
+    active_user_ids = list(
+        latest_logs.values_list('user_id__user_id', flat=True).distinct()
+    )
+
     sessions_data = []
-    for session in query:
+    for session in latest_logs:
         session_info = {
             'log_id': session.log_id,
             'user_id': session.user_id.user_id if session.user_id else None,
@@ -6081,25 +6089,84 @@ def get_active_sessions(request):
             'session_duration': str(timezone.now() - session.login_datetime) if session.login_datetime else None,
             'ip_address': session.ip_address,
         }
-        
-        # Include additional details if requested
-        if request.query_params.get('include_details') == 'true':
-            session_info.update({
-                'user_agent': session.user_agent,
-                'session_id': session.session_id[:10] + '...' if session.session_id else None,  # Partial JTI for security
-                'user_email': session.user_id.user_email if session.user_id else None,
-                'user_status': session.user_id.User_Status if session.user_id else None,
-            })
-        
         sessions_data.append(session_info)
-    
+
     return Response({
         "success": True,
+        **own_user_info,  # แสดง user_id / user_name / role_id ของผู้เรียกดู
         "active_sessions": sessions_data,
         "total_count": len(sessions_data),
-        "is_admin_view": is_admin,
+        "total_active_users_all": len(active_user_ids),
+        "active_user_ids": active_user_ids,
         "current_time": timezone.now()
     }, status=status.HTTP_200_OK)
+
+
+
+# @api_view(["GET"])
+# @permission_classes([IsAuthenticated])
+# def get_active_sessions(request):
+#     """
+#     Get all active sessions (users currently logged in).
+#     Regular users can only see their own sessions.
+#     Admins can see all sessions.
+    
+#     GET /api/active-sessions/
+#     Optional query params:
+#     - user_id: Filter by specific user (admin only)
+#     - include_details: Include detailed session info
+#     """
+#     # Check if user is admin
+#     is_admin = IsAdminUser().has_permission(request, None)
+    
+#     # Base query for active sessions
+#     query = MTTB_USER_ACCESS_LOG.objects.filter(
+#         logout_datetime__isnull=True,
+#         login_status='S'
+#     ).select_related('user_id')
+    
+#     # Non-admins can only see their own sessions
+#     if not is_admin:
+#         query = query.filter(user_id=request.user)
+#     else:
+#         # Admins can filter by user_id if provided
+#         filter_user_id = request.query_params.get('user_id')
+#         if filter_user_id:
+#             query = query.filter(user_id__user_id=filter_user_id)
+    
+#     # Order by login time (most recent first)
+#     query = query.order_by('-login_datetime')
+    
+#     # Prepare response data
+#     sessions_data = []
+#     for session in query:
+#         session_info = {
+#             'log_id': session.log_id,
+#             'user_id': session.user_id.user_id if session.user_id else None,
+#             'user_name': session.user_id.user_name if session.user_id else None,
+#             'login_datetime': session.login_datetime,
+#             'session_duration': str(timezone.now() - session.login_datetime) if session.login_datetime else None,
+#             'ip_address': session.ip_address,
+#         }
+        
+#         # Include additional details if requested
+#         if request.query_params.get('include_details') == 'true':
+#             session_info.update({
+#                 'user_agent': session.user_agent,
+#                 'session_id': session.session_id[:10] + '...' if session.session_id else None,  # Partial JTI for security
+#                 'user_email': session.user_id.user_email if session.user_id else None,
+#                 'user_status': session.user_id.User_Status if session.user_id else None,
+#             })
+        
+#         sessions_data.append(session_info)
+    
+#     return Response({
+#         "success": True,
+#         "active_sessions": sessions_data,
+#         "total_count": len(sessions_data),
+#         "is_admin_view": is_admin,
+#         "current_time": timezone.now()
+#     }, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
