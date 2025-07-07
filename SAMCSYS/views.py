@@ -4996,6 +4996,7 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         Get all active (not deleted) journal log master records, optionally filtered by Reference_No.
         """
         reference_no = request.query_params.get('Reference_No')
+        auth_status = request.query_params.get('Auth_Status')
         
         queryset = DETB_JRNL_LOG_MASTER.objects.filter(
             delete_stat__isnull=True
@@ -5003,6 +5004,8 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
 
         if reference_no:
             queryset = queryset.filter(Reference_No=reference_no)
+        if auth_status:
+            queryset = queryset.filter(Auth_Status=auth_status)
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -5940,6 +5943,15 @@ class IsAdminUser(BasePermission):
         # Your permission logic here...
         
         return False
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def session_check(request):
+    # Optional: verify against revoked session table
+    jti = get_jti_from_request(request)
+    if MTTB_REVOKED_SESSIONS.objects.filter(jti=jti).exists():
+        return Response({"error": "Session revoked"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    return Response({"success": True}, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -6037,6 +6049,91 @@ def force_logout_user(request):
         }
     }, status=status.HTTP_200_OK)
 
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def force_logout_user_test(request, user_id):
+    """
+    Force logout a user by their user_id from the URL.
+    Revokes all their active sessions and tokens.
+
+    POST /api/force-logout/<user_id>/
+    """
+    # Check if the target user exists
+    try:
+        target_user = MTTB_Users.objects.get(user_id=user_id)
+    except MTTB_Users.DoesNotExist:
+        return Response(
+            {"error": f"User with id {user_id} not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Prevent users from force logging out themselves
+    if request.user.user_id == user_id:
+        return Response(
+            {"error": "Cannot force logout yourself. Use normal logout instead."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    with transaction.atomic():
+        # Find all active sessions for this user
+        active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+            user_id=target_user,
+            logout_datetime__isnull=True,
+            login_status='S'  # Only successful logins
+        )
+
+        session_count = active_sessions.count()
+        revoked_count = 0
+
+        # Revoke all active sessions
+        for session in active_sessions:
+            if session.session_id:  # session_id contains the JTI
+                try:
+                    MTTB_REVOKED_SESSIONS.objects.get_or_create(
+                        jti=session.session_id,
+                        defaults={
+                            'user_id': target_user,
+                            'revoked_by': request.user,
+                            'reason': f'Force logged out by {request.user.user_name}',
+                            'ip_address': get_client_ip(request)
+                        }
+                    )
+                    revoked_count += 1
+                except Exception as e:
+                    logger.error(f"Error revoking session {session.session_id}: {str(e)}")
+
+        # Update all active sessions to mark them as force logged out
+        current_time = timezone.now()
+        active_sessions.update(
+            logout_datetime=current_time,
+            logout_type='F',
+            remarks=f'Force logged out by {request.user.user_name} ({request.user.user_id})'
+        )
+
+        # Log the admin action
+        MTTB_USER_ACCESS_LOG.objects.create(
+            user_id=request.user,
+            session_id=get_jti_from_request(request),
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+            login_status='A',
+            remarks=f'Force logged out user {target_user.user_name} ({user_id})'
+        )
+
+    logger.info(f"Admin {request.user.user_id} force logged out user {user_id}")
+
+    return Response({
+        "success": True,
+        "message": f"Successfully force logged out user {user_id}",
+        "details": {
+            "user_id": user_id,
+            "user_name": target_user.user_name,
+            "sessions_terminated": session_count,
+            "tokens_revoked": revoked_count
+        }
+    }, status=status.HTTP_200_OK)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

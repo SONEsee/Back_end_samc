@@ -45,6 +45,7 @@ ALLOWED_HOSTS = ['*']
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'SAMCSYS.authentication.MTTBJWTAuthentication',
+        # "SAMCSYS.middleware.ForceLogoutMiddleware"
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
