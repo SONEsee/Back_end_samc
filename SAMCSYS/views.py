@@ -4426,6 +4426,66 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             'overall_balanced': lcy_balanced and fcy_balanced
         })
 
+    @action(detail=False, methods=["post"], url_path="approve-asset")
+    def approve_asset(self, request):
+        reference_no = request.data.get("Ac_relatives")
+        module_id = request.data.get("module_id", "AS")
+
+        if not reference_no:
+            return Response({"error": "Ac_relatives is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if module_id != "AS":
+            return Response({"error": "Invalid module_id. This endpoint only supports module_id = 'AS'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            asset = FA_Asset_Lists.objects.get(
+                asset_list_id=reference_no,
+                asset_status__in=["UC", "AC"]  # Look for both UC and AC status
+            )
+        except FA_Asset_Lists.DoesNotExist:
+            return Response(
+                {"error": f"No asset found with Ac_relatives={reference_no} in status UC or AC"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Determine which field to update based on asset_status
+        if asset.asset_status == "UC":
+            # Check if already approved
+            if asset.Auth_Status == "A" and asset.Auth_Status_ARC == "A":
+                return Response(
+                    {"error": f"Asset {reference_no} (UC) has already been approved."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status for UC assets
+            asset.Auth_Status = "A"
+            message = f"Asset {reference_no} (UC) has been approved successfully."
+            
+        elif asset.asset_status == "AC":
+            # Check if already approved
+            if hasattr(asset, 'Auth_Status_ARC') and asset.Auth_Status_ARC == "A":
+                return Response(
+                    {"error": f"Asset {reference_no} (AC) has already been approved."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status_ARC for AC assets
+            asset.Auth_Status_ARC = "A"
+            message = f"Asset {reference_no} (AC) has been approved successfully."
+
+        # Set common fields
+        asset.Checker_Id = request.user
+        asset.Checker_DT_Stamp = timezone.now()
+        asset.save()
+
+        return Response({
+            "success": True,
+            "message": message,
+            "asset_status": asset.asset_status,
+            "updated_field": "Auth_Status" if asset.asset_status == "UC" else "Auth_Status_ARC"
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_all(self, request):
         """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
@@ -6188,10 +6248,6 @@ def force_logout_user(request, user_id=None):
         "tokens_revoked": revoked_count
     }, status=status.HTTP_200_OK)
 
-<<<<<<< HEAD
-=======
-
-
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def force_logout_user_test(request, user_id):
@@ -6276,7 +6332,6 @@ def force_logout_user_test(request, user_id):
         }
     }, status=status.HTTP_200_OK)
 
->>>>>>> f1794f72a80af94566108e3b4e451b0e845da841
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_active_sessions(request):
