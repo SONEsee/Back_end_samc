@@ -74,7 +74,9 @@ from .views import (
     MasterCodeViewSet,
     YourProcessViewSet,
     force_logout_user_test,
-    session_check
+    session_check,
+    JournalProcessV2ViewSet
+
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -168,6 +170,9 @@ urlpatterns = [
 
     # ໃນ urls.py
 path('api/process-journal/', YourProcessViewSet.as_view({'post': 'process_journal_data'})),
+path('journal/process-v2/', 
+         JournalProcessV2ViewSet.as_view({'post': 'process_journal_data'}), 
+         name='journal-process-v2'),
 # ຫຼື
 
 ]
