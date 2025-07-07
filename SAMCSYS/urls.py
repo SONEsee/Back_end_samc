@@ -73,13 +73,10 @@ from .views import (
     MasterTypeViewSet,
     MasterCodeViewSet,
     YourProcessViewSet,
-<<<<<<< HEAD
-    YourProcessViewSet,
-    JournalProcessV2ViewSet,
-=======
     force_logout_user_test,
-    session_check
->>>>>>> f1794f72a80af94566108e3b4e451b0e845da841
+    session_check,
+    JournalProcessV2ViewSet
+
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
