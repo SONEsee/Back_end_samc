@@ -1963,7 +1963,7 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
 from .models import MTTB_GLSub
-from .serializers import GLSubSerializer
+from .serializers import GLSubSerializer, GLSubDisplaySerializer
 
 class GLSubViewSet(viewsets.ModelViewSet):
     """
@@ -2077,122 +2077,50 @@ class GLSubViewSet(viewsets.ModelViewSet):
             'message': 'Entry unauthorized successfully',
             'entry': serializer.data
         })
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='validate-selection')
-    def validate_glsub_selection(self, request):
-        """
-        Validate if a GL sub-account can be used for a debit or credit transaction based on
-        the post_side and category fields in the linked MTTB_GLMaster.
-        Expects 'glsub_code' and 'transaction_side' ('dr' or 'cr') in the request data.
-        - If post_side = '2', allow both dr and cr transactions.
-        - If post_side = '1', allow based on category:
-          - Assets (1), Expenses (5): Allow dr to increase, cr to decrease.
-          - Liabilities (2), Equity (3), Income (4): Allow cr to increase, dr to decrease.
-        """
-        glsub_code = request.data.get('glsub_code')
-        transaction_side = request.data.get('transaction_side')
+    
+    @action(detail=False, methods=['post'])
+    def display_item_by_postside(self, request):
+        """Retrieve GLSub items filtered by post_side (dr or cr) from GLMaster"""
+        post_side = request.data.get('post_side')
 
-        if not glsub_code or not transaction_side:
+        # Validate post_side
+        if post_side not in ['dr', 'cr']:
             return Response({
-                'valid': False,
-                'message': 'Both glsub_code and transaction_side are required.',
-                'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        if transaction_side not in ['dr', 'cr']:
-            return Response({
-                'valid': False,
-                'message': 'Transaction side must be "dr" (debit) or "cr" (credit).',
-                'debug': {'transaction_side': transaction_side}
+                'error': 'Invalid post_side',
+                'detail': 'post_side must be either "dr" or "cr"'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            glsub = MTTB_GLSub.objects.select_related('gl_code').get(glsub_code=glsub_code)
-        except MTTB_GLSub.DoesNotExist:
-            return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} does not exist.',
-                'debug': {'glsub_code': glsub_code}
-            }, status=status.HTTP_404_NOT_FOUND)
+            # Map post_side to filter values
+            post_side_filter = ['dr', 'drcr'] if post_side == 'dr' else ['cr', 'drcr']
 
-        # Check if gl_code exists (since it's nullable)
-        if not glsub.gl_code:
+            # Query GLSub joined with GLMaster
+            items = MTTB_GLSub.objects.select_related('gl_code').filter(
+                gl_code__post_side__in=post_side_filter
+            ).order_by('glsub_code')
+
+            if not items.exists():
+                return Response({
+                    'message': f'No GLSub items found for post_side: {post_side}',
+                    'items': []
+                }, status=status.HTTP_200_OK)
+
+            # Serialize the results
+            serializer = GLSubDisplaySerializer(items, many=True)
+            logger.info(f"Retrieved {len(items)} GLSub items for post_side: {post_side}")
+
             return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} is not linked to any GL Master account.',
-                'debug': {'glsub_id': glsub.glsub_id, 'gl_code': None}
+                'message': f'Successfully retrieved {len(items)} GLSub items for post_side: {post_side}',
+                'items': serializer.data
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error retrieving GLSub items for post_side {post_side}: {str(e)}")
+            return Response({
+                'error': 'Failed to retrieve GLSub items',
+                'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        post_side = glsub.gl_code.post_side or ''
-        category = glsub.gl_code.category or ''
-
-        # Validate post_side value
-        if post_side not in ['1', '2']:
-            return Response({
-                'valid': False,
-                'message': f'Invalid post_side value ({post_side}) for GL Master account linked to {glsub_code}. Must be "1" or "2".',
-                'debug': {'glsub_code': glsub_code, 'post_side': post_side}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Validate category value
-        if category not in ['1', '2', '3', '4', '5']:
-            return Response({
-                'valid': False,
-                'message': f'Invalid category value ({category}) for GL Master account linked to {glsub_code}. Must be "1", "2", "3", "4", or "5".',
-                'debug': {'glsub_code': glsub_code, 'category': category}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # If post_side is '2', allow both dr and cr transactions
-        if post_side == '2':
-            pass  # No further validation needed; both sides are allowed
-        else:
-            # If post_side is '1', validate based on category
-            if category in ['1', '5']:  # Assets, Expenses
-                if transaction_side not in ['dr', 'cr']:  # Allow both dr and cr
-                    return Response({
-                        'valid': False,
-                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Assets/Expenses accounts (category = {category}) allow both dr and cr with post_side = "1".',
-                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
-                    }, status=status.HTTP_400_BAD_REQUEST)
-            elif category in ['2', '3', '4']:  # Liabilities, Equity, Income
-                if transaction_side not in ['cr', 'dr']:  # Allow both cr and dr
-                    return Response({
-                        'valid': False,
-                        'message': f'Cannot use {glsub_code} for {transaction_side} transaction. Liabilities/Equity/Income accounts (category = {category}) allow both cr and dr with post_side = "1".',
-                        'debug': {'glsub_code': glsub_code, 'transaction_side': transaction_side, 'post_side': post_side, 'category': category}
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Relaxed status checks based on sample data
-        # Sample shows MTTB_GLSub.Record_Status = 'C' and MTTB_GLMaster.Auth_Status = 'U', which may be valid
-        # Uncomment these checks if required by your business logic
-        """
-        if glsub.Record_Status == 'C':
-            return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} is closed and cannot be used.',
-                'debug': {'glsub_code': glsub_code, 'Record_Status': glsub.Record_Status}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        if glsub.Auth_Status != 'A':
-            return Response({
-                'valid': False,
-                'message': f'GL sub-account {glsub_code} is not authorized (Auth_Status must be "A").',
-                'debug': {'glsub_code': glsub_code, 'Auth_Status': glsub.Auth_Status}
-            }, status=status.HTTP_400_BAD_REQUEST)
-        """
-
-        return Response({
-            'valid': True,
-            'message': f'GL sub-account {glsub_code} is valid for {transaction_side} transaction.',
-            'debug': {
-                'glsub_code': glsub_code,
-                'transaction_side': transaction_side,
-                'post_side': post_side,
-                'category': category,
-                'glsub_record_status': glsub.Record_Status,
-                'glsub_auth_status': glsub.Auth_Status,
-                'glmaster_auth_status': glsub.gl_code.Auth_Status
-            }
-        }, status=status.HTTP_200_OK)
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -4500,7 +4428,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_all(self, request):
-        """Approve all records (MASTER, LOG, HIST) for a Reference_No"""
+        """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
         reference_no = request.data.get('Reference_No')
         
         if not reference_no:
@@ -4526,6 +4454,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         
         try:
             from django.db import transaction
+            from django.utils import timezone
             
             with transaction.atomic():
                 # Update DETB_JRNL_LOG
@@ -4560,16 +4489,116 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     )
                 except:
                     pass  # HIST table might not exist
+                
+                # After successful approval, insert into daily log tables
+                daily_log_entries_created = 0
+                daily_log_hist_entries_created = 0
+                
+                try:
+                    from .models import ACTB_DAIRY_LOG, ACTB_DAIRY_LOG_HISTORY
+                    current_time = timezone.now()
+                    
+                    # Get the updated approved entries from DETB_JRNL_LOG
+                    approved_entries = DETB_JRNL_LOG.objects.filter(
+                        Reference_No=reference_no,
+                        Auth_Status='A'
+                    ).order_by('JRNLLog_id')
+                    
+                    for idx, entry in enumerate(approved_entries):
+                        # Get GL Master info through the relationship chain:
+                        # entry.Account (MTTB_GLSub) -> entry.Account.gl_code (MTTB_GLMaster)
+                        gl_master = None
+                        gl_type = None
+                        category = None
+                        
+                        try:
+                            if entry.Account and entry.Account.gl_code:
+                                gl_master = entry.Account.gl_code  # This is the MTTB_GLMaster instance
+                                gl_type = gl_master.glType
+                                category = gl_master.category
+                                print(f"Found GLMaster: {gl_master.glid}, Type: {gl_type}, Category: {category}")
+                        except Exception as gl_error:
+                            print(f"GLMaster lookup error: {gl_error}")
+                        
+                        # Calculate amounts based on Dr_cr indicator
+                        fcy_amount = entry.Fcy_Amount or 0
+                        lcy_amount = entry.Lcy_Amount or 0
+                        exchange_rate = entry.Exch_rate or 1
+                        
+                        fcy_dr = fcy_amount if entry.Dr_cr == 'D' else 0
+                        fcy_cr = fcy_amount if entry.Dr_cr == 'C' else 0
+                        lcy_dr = lcy_amount if entry.Dr_cr == 'D' else 0
+                        lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
+                        
+                        # Prepare additional sub text
+                        addl_sub_text = f"Approved Entry - {entry.Dr_cr} - {entry.Account_no}"
+                        
+                        # Common data for both ACTB_DAIRY_LOG and ACTB_DAIRY_LOG_HISTORY tables
+                        daily_log_data = {
+                            'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
+                            'trn_ref_no': entry,  # ForeignKey to DETB_JRNL_LOG entry
+                            'trn_ref_sub_no': entry.Reference_sub_No,
+                            'event_sr_no': idx + 1,
+                            'event': 'JRNL',
+                            'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
+                            'ac_no_full': entry.Account_no,
+                            'ac_relative': entry.Ac_relatives,
+                            'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
+                            'drcr_ind': entry.Dr_cr,
+                            'trn_code': entry.Txn_code,  # ForeignKey to MTTB_TRN_Code
+                            'fcy_amount': fcy_amount,
+                            'exch_rate': exchange_rate,
+                            'lcy_amount': lcy_amount,
+                            'fcy_dr': fcy_dr,
+                            'fcy_cr': fcy_cr,
+                            'lcy_dr': lcy_dr,
+                            'lcy_cr': lcy_cr,
+                            'external_ref_no': entry.Reference_No[:30],
+                            'addl_text': entry.Addl_text or '',
+                            'addl_sub_text': addl_sub_text,
+                            'trn_dt': entry.Value_date.date() if entry.Value_date else None,
+                            'glid': gl_master,  # ForeignKey to MTTB_GLMaster
+                            'glType': gl_type,  # CharField from GLMaster
+                            'category': category,  # CharField from GLMaster
+                            'value_dt': entry.Value_date.date() if entry.Value_date else None,
+                            'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
+                            'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
+                            'user_id': request.user,  # ForeignKey to MTTB_Users
+                            'Maker_DT_Stamp': current_time,
+                            'auth_id': request.user,  # ForeignKey to MTTB_Users (approver)
+                            'Checker_DT_Stamp': current_time,
+                            'Auth_Status': 'A',  # Authorized
+                            'product': 'GL',
+                            'entry_seq_no': idx + 1,
+                            'delete_stat': None
+                        }
+                        
+                        # Create ACTB_DAIRY_LOG entry
+                        daily_log_entry = ACTB_DAIRY_LOG.objects.create(**daily_log_data)
+                        daily_log_entries_created += 1
+                        
+                        # Create ACTB_DAIRY_LOG_HISTORY entry  
+                        daily_log_hist_entry = ACTB_DAIRY_LOG_HISTORY.objects.create(**daily_log_data)
+                        daily_log_hist_entries_created += 1
+                        
+                except Exception as daily_log_error:
+                    # Log the error but don't fail the entire approval process
+                    print(f"Error creating daily log entries: {str(daily_log_error)}")
+                    import traceback
+                    traceback.print_exc()
             
             return Response({
                 'message': f'Successfully approved {log_updated} LOG entries, {master_updated} MASTER record, {hist_updated} HIST records',
+                'daily_log_created': daily_log_entries_created,
+                'daily_log_hist_created': daily_log_hist_entries_created,
                 'reference_no': reference_no
             })
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return Response({'error': f'Error during approval: {str(e)}'}, 
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     @action(detail=False, methods=['post'], url_path='reject-all')  
     def reject_all(self, request):
         """Reject all records (MASTER, LOG, HIST) for a Reference_No"""
@@ -4840,23 +4869,109 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
 
 from rest_framework import viewsets, status
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-
+from django.db.models import Q
 from .models import DETB_JRNL_LOG_MASTER
 from .serializers import DETB_JRNL_LOG_MASTER_Serializer
+
 
 class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     queryset = DETB_JRNL_LOG_MASTER.objects.all()
     serializer_class = DETB_JRNL_LOG_MASTER_Serializer
+    permission_classes = [IsAuthenticated]
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status']  # Removed 'delete_stat' from filter
+    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status','Reference_No']  # Removed 'delete_stat' from filter
     search_fields = ['Reference_No', 'Addl_text']
     ordering_fields = ['Maker_DT_Stamp', 'Value_date']
+    
 
+    # def get_queryset(self):
+    #     return DETB_JRNL_LOG_MASTER.objects.filter(delete_stat__isnull=True).exclude(delete_stat='D')
     def get_queryset(self):
-        return DETB_JRNL_LOG_MASTER.objects.filter(delete_stat__isnull=True).exclude(delete_stat='D')
+        """
+        Filter queryset based on show_all parameter (from frontend canAuthorize permission)
+        - If show_all='true' (canAuthorize=1): Show all records (except deleted)
+        - If show_all='false' (canAuthorize=0): Show only records created by current user
+        """
+        user = self.request.user
+        
+        # Base queryset - exclude deleted records
+        base_queryset = DETB_JRNL_LOG_MASTER.objects.filter(
+            Q(delete_stat__isnull=True) | ~Q(delete_stat='D')
+        )
+        
+        # Get show_all parameter from request
+        show_all = self.request.query_params.get('show_all', 'false').lower()
+        
+        # Apply permission-based filtering
+        if show_all == 'true':
+            # User has canAuthorize permission - show all records
+            return base_queryset
+        else:
+            # User doesn't have canAuthorize permission - show only their own records
+            return base_queryset.filter(Maker_Id=user)
+
+    def list(self, request, *args, **kwargs):
+        """
+        Override list to add debugging information (optional)
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Apply date range filters if provided
+        date_from = request.query_params.get('Value_date__gte')
+        date_to = request.query_params.get('Value_date__lte')
+        
+        if date_from:
+            queryset = queryset.filter(Value_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(Value_date__lte=date_to)
+        
+        # Get page from pagination
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Override retrieve method to check if user can view specific record
+        """
+        instance = self.get_object()
+        user = request.user
+        
+        try:
+            user_auth_detail = self.get_user_auth_detail(user, request)
+            
+            print(f"DEBUG RETRIEVE: User {getattr(user, 'user_name', 'unknown')} requesting record {instance.pk}")
+            print(f"DEBUG RETRIEVE: Record Maker_Id: {instance.Maker_Id}")
+            print(f"DEBUG RETRIEVE: User Auth_Detail: {user_auth_detail}")
+            
+            # If user doesn't have Auth_Detail permission, check if they own the record
+            if user_auth_detail != 1 and instance.Maker_Id != user:
+                print(f"DEBUG RETRIEVE: Access denied - user doesn't own record and no auth permission")
+                return Response(
+                    {"detail": "You don't have permission to view this record."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+                
+        except Exception as e:
+            print(f"ERROR in retrieve permission check: {e}")
+            # If error checking permissions, check ownership
+            if instance.Maker_Id != user:
+                return Response(
+                    {"detail": "You don't have permission to view this record."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        return super().retrieve(request, *args, **kwargs)
+
 
 
     def perform_update(self, serializer):
@@ -4873,6 +4988,26 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         instance.delete_stat = 'D'
         instance.save()
         return Response({'detail': 'Marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    
+
+    @action(detail=False, methods=['get'], url_path='journal-log-active')
+    def journal_log_active(self, request):
+        """
+        Get all active (not deleted) journal log master records, optionally filtered by Reference_No.
+        """
+        reference_no = request.query_params.get('Reference_No')
+        
+        queryset = DETB_JRNL_LOG_MASTER.objects.filter(
+            delete_stat__isnull=True
+        ).exclude(delete_stat='D')
+
+        if reference_no:
+            queryset = queryset.filter(Reference_No=reference_no)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+
     @action(detail=False, methods=['patch'], url_path='approve-by-reference')
     def approve_by_reference(self, request):
         reference_no = request.data.get('Reference_No')
@@ -4931,7 +5066,7 @@ from django.utils.timezone import make_aware
 from .models import STTB_Dates, MTTB_LCL_Holiday
 
 
-@api_view(['POST'])  # or ['GET'] if you want it triggered without payload
+@api_view(['GET'])  # or ['GET'] if you want it triggered without payload
 @permission_classes([IsAuthenticated])
 def submit_eod_journal(request):
     today = datetime.today().date()
@@ -5759,6 +5894,8 @@ from datetime import datetime
 # views.py - Add these views to your existing views
 
 from rest_framework.decorators import api_view, permission_classes
+from django.db.models import OuterRef, Subquery, Max
+from datetime import timedelta
 from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework import status, viewsets
@@ -5794,11 +5931,13 @@ class IsAdminUser(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # Check if user has admin role
-        if hasattr(request.user, 'Role_ID') and request.user.Role_ID:
-            # Adjust this condition based on your role structure
-            role_name = getattr(request.user.Role_ID, 'role_name', '')
-            return role_name.lower() in ['SYA', 'SYS']
+        print(f"User: {request.user}")
+        print(f"Has role attr: {hasattr(request.user, 'role')}")
+        if hasattr(request.user, 'role'):
+            print(f"Role: {request.user.role}")
+            print(f"Role ID: {getattr(request.user.role, 'role_id', 'NOT_FOUND')}")
+        
+        # Your permission logic here...
         
         return False
 
@@ -5902,40 +6041,46 @@ def force_logout_user(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_active_sessions(request):
-    """
-    Get all active sessions (users currently logged in).
-    Regular users can only see their own sessions.
-    Admins can see all sessions.
-    
-    GET /api/active-sessions/
-    Optional query params:
-    - user_id: Filter by specific user (admin only)
-    - include_details: Include detailed session info
-    """
-    # Check if user is admin
-    is_admin = IsAdminUser().has_permission(request, None)
-    
-    # Base query for active sessions
-    query = MTTB_USER_ACCESS_LOG.objects.filter(
+    user = request.user
+
+    allowed_roles = ['SYS', 'SYA']
+    user_role_id = None
+    if hasattr(user, 'Role_ID') and user.Role_ID:
+        user_role_id = getattr(user.Role_ID, 'role_id', None)
+
+    if user_role_id not in allowed_roles:
+        return Response({
+            "success": False,
+            "message": "You do not have permission to access this API."
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    # user info เพิ่มไว้ใน response
+    own_user_info = {
+        "own_user_id": getattr(user, 'user_id', None),
+        "own_user_name": getattr(user, 'user_name', None),
+        "own_role_id": user_role_id,
+    }
+
+    SESSION_TIMEOUT_MINUTES = 30
+    time_limit = timezone.now() - timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+
+    latest_log_id_subquery = MTTB_USER_ACCESS_LOG.objects.filter(
+        user_id=OuterRef('user_id')
+    ).order_by('-login_datetime').values('log_id')[:1]
+
+    latest_logs = MTTB_USER_ACCESS_LOG.objects.filter(
+        log_id__in=Subquery(latest_log_id_subquery),
+        login_status='S',
         logout_datetime__isnull=True,
-        login_status='S'
-    ).select_related('user_id')
-    
-    # Non-admins can only see their own sessions
-    if not is_admin:
-        query = query.filter(user_id=request.user)
-    else:
-        # Admins can filter by user_id if provided
-        filter_user_id = request.query_params.get('user_id')
-        if filter_user_id:
-            query = query.filter(user_id__user_id=filter_user_id)
-    
-    # Order by login time (most recent first)
-    query = query.order_by('-login_datetime')
-    
-    # Prepare response data
+        login_datetime__gte=time_limit
+    ).select_related('user_id').order_by('-login_datetime')
+
+    active_user_ids = list(
+        latest_logs.values_list('user_id__user_id', flat=True).distinct()
+    )
+
     sessions_data = []
-    for session in query:
+    for session in latest_logs:
         session_info = {
             'log_id': session.log_id,
             'user_id': session.user_id.user_id if session.user_id else None,
@@ -5944,25 +6089,84 @@ def get_active_sessions(request):
             'session_duration': str(timezone.now() - session.login_datetime) if session.login_datetime else None,
             'ip_address': session.ip_address,
         }
-        
-        # Include additional details if requested
-        if request.query_params.get('include_details') == 'true':
-            session_info.update({
-                'user_agent': session.user_agent,
-                'session_id': session.session_id[:10] + '...' if session.session_id else None,  # Partial JTI for security
-                'user_email': session.user_id.user_email if session.user_id else None,
-                'user_status': session.user_id.User_Status if session.user_id else None,
-            })
-        
         sessions_data.append(session_info)
-    
+
     return Response({
         "success": True,
+        **own_user_info,  # แสดง user_id / user_name / role_id ของผู้เรียกดู
         "active_sessions": sessions_data,
         "total_count": len(sessions_data),
-        "is_admin_view": is_admin,
+        "total_active_users_all": len(active_user_ids),
+        "active_user_ids": active_user_ids,
         "current_time": timezone.now()
     }, status=status.HTTP_200_OK)
+
+
+
+# @api_view(["GET"])
+# @permission_classes([IsAuthenticated])
+# def get_active_sessions(request):
+#     """
+#     Get all active sessions (users currently logged in).
+#     Regular users can only see their own sessions.
+#     Admins can see all sessions.
+    
+#     GET /api/active-sessions/
+#     Optional query params:
+#     - user_id: Filter by specific user (admin only)
+#     - include_details: Include detailed session info
+#     """
+#     # Check if user is admin
+#     is_admin = IsAdminUser().has_permission(request, None)
+    
+#     # Base query for active sessions
+#     query = MTTB_USER_ACCESS_LOG.objects.filter(
+#         logout_datetime__isnull=True,
+#         login_status='S'
+#     ).select_related('user_id')
+    
+#     # Non-admins can only see their own sessions
+#     if not is_admin:
+#         query = query.filter(user_id=request.user)
+#     else:
+#         # Admins can filter by user_id if provided
+#         filter_user_id = request.query_params.get('user_id')
+#         if filter_user_id:
+#             query = query.filter(user_id__user_id=filter_user_id)
+    
+#     # Order by login time (most recent first)
+#     query = query.order_by('-login_datetime')
+    
+#     # Prepare response data
+#     sessions_data = []
+#     for session in query:
+#         session_info = {
+#             'log_id': session.log_id,
+#             'user_id': session.user_id.user_id if session.user_id else None,
+#             'user_name': session.user_id.user_name if session.user_id else None,
+#             'login_datetime': session.login_datetime,
+#             'session_duration': str(timezone.now() - session.login_datetime) if session.login_datetime else None,
+#             'ip_address': session.ip_address,
+#         }
+        
+#         # Include additional details if requested
+#         if request.query_params.get('include_details') == 'true':
+#             session_info.update({
+#                 'user_agent': session.user_agent,
+#                 'session_id': session.session_id[:10] + '...' if session.session_id else None,  # Partial JTI for security
+#                 'user_email': session.user_id.user_email if session.user_id else None,
+#                 'user_status': session.user_id.User_Status if session.user_id else None,
+#             })
+        
+#         sessions_data.append(session_info)
+    
+#     return Response({
+#         "success": True,
+#         "active_sessions": sessions_data,
+#         "total_count": len(sessions_data),
+#         "is_admin_view": is_admin,
+#         "current_time": timezone.now()
+#     }, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])

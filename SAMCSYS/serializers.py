@@ -891,3 +891,19 @@ class FAChartOfAssetSerializer(serializers.ModelSerializer):
             return MasterCodeSerializer(master_code).data
         except (MasterCode.DoesNotExist, AttributeError):
             return None  # Return None if no matching MasterCode or FA_Asset_Type is found
+        
+
+class GLSubDisplaySerializer(serializers.ModelSerializer):
+    outstanding = serializers.CharField(source='gl_code.outstanding', read_only=True)
+    gl_code = serializers.CharField(source='gl_code.gl_code', read_only=True)
+    gl_Desc_la = serializers.CharField(source='gl_code.gl_Desc_la', read_only=True)
+    gl_Desc_en = serializers.CharField(source='gl_code.gl_Desc_en', read_only=True)
+
+    class Meta:
+        model = MTTB_GLSub
+        fields = [
+            'glsub_id', 'glsub_code', 'glsub_Desc_la', 'glsub_Desc_en',
+            'outstanding', 'gl_code', 'gl_Desc_la', 'gl_Desc_en',
+            'Record_Status', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id',
+            'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth'
+        ]
