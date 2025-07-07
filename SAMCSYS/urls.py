@@ -158,8 +158,8 @@ urlpatterns = [
     
     # Force logout endpoints (standalone)
     path('api/verify-token/',verify_token, name='verify-token'),
-
-    path('api/force-logout/',force_logout_user, name='force-logout'),
+    path('api/force-logout/<str:user_id>/', force_logout_user, name='force-logout-with-id'),
+    # path('api/force-logout/',force_logout_user, name='force-logout'),
     path('api/active-sessions/',get_active_sessions, name='active-sessions'),
     path('api/force-logout-all/',force_logout_all_users, name='force-logout-all'),
     path('api/revoked-sessions/',get_revoked_sessions, name='revoked-sessions'),

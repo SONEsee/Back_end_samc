@@ -5942,61 +5942,158 @@ class IsAdminUser(BasePermission):
         return False
 
 
+# @api_view(["POST"])
+# @permission_classes([IsAuthenticated])
+# def force_logout_user(request):
+#     """
+#     Force logout a user by their user_id.
+#     Revokes all their active sessions and tokens.
+    
+#     POST /api/force-logout/
+#     Body: { "user_id": "<user_id_to_logout>" }
+#     """
+#     target_user_id = request.data.get("user_id")
+    
+#     # Validation
+#     if not target_user_id:
+#         return Response(
+#             {"error": "user_id is required"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # Check if the target user exists
+#     try:
+#         target_user = MTTB_Users.objects.get(user_id=target_user_id)
+#     except MTTB_Users.DoesNotExist:
+#         return Response(
+#             {"error": f"User with id {target_user_id} not found"},
+#             status=status.HTTP_404_NOT_FOUND
+#         )
+    
+#     # Prevent users from force logging out themselves
+#     if request.user.user_id == target_user_id:
+#         return Response(
+#             {"error": "Cannot force logout yourself. Use normal logout instead."},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     with transaction.atomic():
+#         # Find all active sessions for this user
+#         active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+#             user_id=target_user,
+#             logout_datetime__isnull=True,
+#             login_status='S'  # Only successful logins
+#         )
+        
+#         session_count = active_sessions.count()
+#         revoked_count = 0
+        
+#         # Revoke all active sessions
+#         for session in active_sessions:
+#             if session.session_id:  # session_id contains the JTI
+#                 try:
+#                     # Create revoked session entry
+#                     MTTB_REVOKED_SESSIONS.objects.get_or_create(
+#                         jti=session.session_id,
+#                         defaults={
+#                             'user_id': target_user,
+#                             'revoked_by': request.user,
+#                             'reason': f'Force logged out by {request.user.user_name}',
+#                             'ip_address': get_client_ip(request)
+#                         }
+#                     )
+#                     revoked_count += 1
+#                 except Exception as e:
+#                     logger.error(f"Error revoking session {session.session_id}: {str(e)}")
+        
+#         # Update all active sessions to mark them as force logged out
+#         current_time = timezone.now()
+#         active_sessions.update(
+#             logout_datetime=current_time,
+#             logout_type='F',  # F = Force logout
+#             remarks=f'Force logged out by {request.user.user_name} ({request.user.user_id})'
+#         )
+        
+#         # Log the admin action
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=request.user,
+#             session_id=get_jti_from_request(request),
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+#             login_status='A',  # A = Admin action
+#             remarks=f'Force logged out user {target_user.user_name} ({target_user_id})'
+#         )
+    
+#     logger.info(f"Admin {request.user.user_id} force logged out user {target_user_id}")
+    
+#     return Response({
+#         "success": True,
+#         "message": f"Successfully force logged out user {target_user_id}",
+#         "details": {
+#             "user_id": target_user_id,
+#             "user_name": target_user.user_name,
+#             "sessions_terminated": session_count,
+#             "tokens_revoked": revoked_count
+#         }
+#     }, status=status.HTTP_200_OK)
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def force_logout_user(request):
-    """
-    Force logout a user by their user_id.
-    Revokes all their active sessions and tokens.
-    
-    POST /api/force-logout/
-    Body: { "user_id": "<user_id_to_logout>" }
-    """
-    target_user_id = request.data.get("user_id")
-    
-    # Validation
+def force_logout_user(request, user_id=None):
+    allowed_roles = ['SYS', 'SYA']
+    user_role_id = getattr(getattr(request.user, 'Role_ID', None), 'role_id', None)
+
+    if user_role_id not in allowed_roles:
+        return Response({
+            "success": False,
+            "message": "You do not have permission to perform this action."
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    target_user_id = user_id or request.data.get("user_id")
     if not target_user_id:
-        return Response(
-            {"error": "user_id is required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Check if the target user exists
+        return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.user.user_id == target_user_id:
+        return Response({"error": "Cannot force logout yourself. Please use normal logout."}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         target_user = MTTB_Users.objects.get(user_id=target_user_id)
     except MTTB_Users.DoesNotExist:
-        return Response(
-            {"error": f"User with id {target_user_id} not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
-    # Prevent users from force logging out themselves
-    if request.user.user_id == target_user_id:
-        return Response(
-            {"error": "Cannot force logout yourself. Use normal logout instead."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
+        return Response({"error": f"User with id {target_user_id} not found"}, status=status.HTTP_404_NOT_FOUND)
+
     with transaction.atomic():
-        # Find all active sessions for this user
-        active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+        latest_session = MTTB_USER_ACCESS_LOG.objects.filter(
             user_id=target_user,
             logout_datetime__isnull=True,
-            login_status='S'  # Only successful logins
+            login_status='S'
+        ).order_by('-login_datetime').first()
+
+        if not latest_session:
+            return Response({
+                "success": False,
+                "message": "No active session found for this user."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        same_session_logs = MTTB_USER_ACCESS_LOG.objects.filter(
+            session_id=latest_session.session_id,
+            logout_datetime__isnull=True,
+            login_status='S'
         )
-        
-        session_count = active_sessions.count()
+
+        forced_users = []
         revoked_count = 0
-        
-        # Revoke all active sessions
-        for session in active_sessions:
-            if session.session_id:  # session_id contains the JTI
+        current_time = timezone.now()
+
+        for log in same_session_logs:
+            uid = log.user_id.user_id if log.user_id else "??"
+            forced_users.append(f"({uid})")
+
+            if log.session_id:
                 try:
-                    # Create revoked session entry
                     MTTB_REVOKED_SESSIONS.objects.get_or_create(
-                        jti=session.session_id,
+                        jti=log.session_id,
                         defaults={
-                            'user_id': target_user,
+                            'user_id': log.user_id,
                             'revoked_by': request.user,
                             'reason': f'Force logged out by {request.user.user_name}',
                             'ip_address': get_client_ip(request)
@@ -6004,39 +6101,80 @@ def force_logout_user(request):
                     )
                     revoked_count += 1
                 except Exception as e:
-                    logger.error(f"Error revoking session {session.session_id}: {str(e)}")
-        
-        # Update all active sessions to mark them as force logged out
-        current_time = timezone.now()
-        active_sessions.update(
-            logout_datetime=current_time,
-            logout_type='F',  # F = Force logout
-            remarks=f'Force logged out by {request.user.user_name} ({request.user.user_id})'
-        )
-        
-        # Log the admin action
-        MTTB_USER_ACCESS_LOG.objects.create(
+                    logger.error(f"Error revoking session {log.session_id}: {str(e)}")
+
+            # update remark of user who  force logout
+            log.logout_datetime = current_time
+            log.logout_type = 'F'
+            log.remarks = f"Force logged out by {request.user.user_name} ({request.user.user_id})"
+            log.save()
+
+        # update remark in log latest admin (who force logout)
+        admin_log = MTTB_USER_ACCESS_LOG.objects.filter(
             user_id=request.user,
-            session_id=get_jti_from_request(request),
-            ip_address=get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
-            login_status='A',  # A = Admin action
-            remarks=f'Force logged out user {target_user.user_name} ({target_user_id})'
-        )
-    
-    logger.info(f"Admin {request.user.user_id} force logged out user {target_user_id}")
-    
+            logout_datetime__isnull=True,
+            login_status='S'
+        ).order_by('-login_datetime').first()
+
+        if admin_log:
+            existing_remark = admin_log.remarks or ''
+
+            prefix_all = "Force logout all user"
+            prefix_forced = "Force logged out user "
+
+            part_all = ""
+            part_forced = ""
+
+            # แยกข้อความ existing_remark
+            if existing_remark.startswith(prefix_all):
+                if ',' in existing_remark:
+                    parts = existing_remark.split(',', 1)
+                    part_all = parts[0].strip()
+                    part_forced = parts[1].strip()
+                else:
+                    part_all = existing_remark.strip()
+                    part_forced = ""
+            else:
+                part_forced = existing_remark.strip()
+
+            # แยก user เก่าใน part_forced
+            old_users = []
+            if part_forced.startswith(prefix_forced):
+                old_users_str = part_forced[len(prefix_forced):].strip()
+                old_users = [u.strip() for u in old_users_str.split(',') if u.strip()]
+            elif part_forced:
+                # in case hvae old message is keep it
+                pass
+
+            # list user old + new
+            combined_users_set = set(old_users)
+            combined_users_set.update(forced_users)
+            combined_users = sorted(combined_users_set)
+
+            combined_forced_part = prefix_forced + ", ".join(combined_users)
+
+            if part_all:
+                combined_remark = f"{part_all}, {combined_forced_part}"
+            else:
+                combined_remark = combined_forced_part
+
+            # update when have change
+            if combined_remark != existing_remark:
+                admin_log.remarks = combined_remark
+                admin_log.save()
+        else:
+            logger.warning("No active admin log found to update remarks for force logout action.")
+
+    logger.info(f"Admin {request.user.user_id} force logged out users: {', '.join(forced_users)}")
+
     return Response({
         "success": True,
-        "message": f"Successfully force logged out user {target_user_id}",
-        "details": {
-            "user_id": target_user_id,
-            "user_name": target_user.user_name,
-            "sessions_terminated": session_count,
-            "tokens_revoked": revoked_count
-        }
+        "message": f"Successfully force logged out session {latest_session.log_id}",
+        "log_ids": [log.log_id for log in same_session_logs],
+        "forced_users": forced_users,
+        "admin_remark": admin_log.remarks if admin_log else None,
+        "tokens_revoked": revoked_count
     }, status=status.HTTP_200_OK)
-
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -6054,7 +6192,7 @@ def get_active_sessions(request):
             "message": "You do not have permission to access this API."
         }, status=status.HTTP_403_FORBIDDEN)
 
-    # user info เพิ่มไว้ใน response
+    # user info add on response
     own_user_info = {
         "own_user_id": getattr(user, 'user_id', None),
         "own_user_name": getattr(user, 'user_name', None),
@@ -6093,7 +6231,7 @@ def get_active_sessions(request):
 
     return Response({
         "success": True,
-        **own_user_info,  # แสดง user_id / user_name / role_id ของผู้เรียกดู
+        **own_user_info,  # show user_id / user_name / role_id is own
         "active_sessions": sessions_data,
         "total_count": len(sessions_data),
         "total_active_users_all": len(active_user_ids),
@@ -6168,91 +6306,165 @@ def get_active_sessions(request):
 #         "current_time": timezone.now()
 #     }, status=status.HTTP_200_OK)
 
-
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def force_logout_all_users(request):
-    """
-    Force logout all users except the requesting admin.
-    Requires explicit confirmation.
-    
-    POST /api/force-logout-all/
-    Body: { "confirm": true, "reason": "optional reason" }
-    """
-    # Require explicit confirmation
-    if not request.data.get("confirm"):
-        return Response(
-            {"error": "Confirmation required. Set 'confirm': true in request body."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    reason = request.data.get("reason", "Mass force logout by administrator")
-    
-    # Get current user's JTI to exclude it
-    current_jti = get_jti_from_request(request)
-    
+    allowed_roles = ['SYS', 'SYA']
+    user = request.user
+    user_role_id = getattr(getattr(user, 'Role_ID', None), 'role_id', None)
+
+    if user_role_id not in allowed_roles:
+        return Response({
+            "success": False,
+            "message": "You do not have permission to perform this action."
+        }, status=status.HTTP_403_FORBIDDEN)
+
     with transaction.atomic():
-        # Get all active sessions except current user's
-        active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+        now = timezone.now()
+
+        # log latest of admin
+        admin_log = MTTB_USER_ACCESS_LOG.objects.filter(
+            user_id=user,
             logout_datetime__isnull=True,
             login_status='S'
-        ).exclude(
-            Q(user_id=request.user) | Q(session_id=current_jti)
-        ).select_related('user_id')
-        
-        session_count = active_sessions.count()
-        revoked_count = 0
-        affected_users = set()
-        
-        # Revoke all sessions
-        for session in active_sessions:
-            if session.session_id:
-                try:
-                    MTTB_REVOKED_SESSIONS.objects.get_or_create(
-                        jti=session.session_id,
-                        defaults={
-                            'user_id': session.user_id,
-                            'revoked_by': request.user,
-                            'reason': reason,
-                            'ip_address': get_client_ip(request)
-                        }
-                    )
-                    revoked_count += 1
-                    if session.user_id:
-                        affected_users.add(session.user_id.user_name)
-                except Exception as e:
-                    logger.error(f"Error revoking session in mass logout: {str(e)}")
-        
-        # Mark all sessions as logged out
-        current_time = timezone.now()
-        active_sessions.update(
-            logout_datetime=current_time,
-            logout_type='F',
-            remarks=f'{reason} by {request.user.user_name}'
-        )
-        
-        # Log the mass logout action
-        MTTB_USER_ACCESS_LOG.objects.create(
-            user_id=request.user,
-            session_id=current_jti,
-            ip_address=get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
-            login_status='A',
-            remarks=f'Performed mass force logout: {reason}'
-        )
-    
-    logger.warning(f"Admin {request.user.user_id} performed mass force logout. Affected {len(affected_users)} users.")
-    
+        ).order_by('-login_datetime').first()
+
+        # log lest of other user (ยกเว้น admin)
+        latest_logs = {}
+        sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+            logout_datetime__isnull=True,
+            login_status='S'
+        ).exclude(user_id=user).order_by('user_id', '-login_datetime')
+
+        for log in sessions:
+            if log.user_id_id not in latest_logs:
+                latest_logs[log.user_id_id] = log
+
+        forced_users = []
+
+        for log in latest_logs.values():
+            # Revoke token
+            if log.session_id:
+                MTTB_REVOKED_SESSIONS.objects.get_or_create(
+                    jti=log.session_id,
+                    defaults={
+                        'user_id': log.user_id,
+                        'revoked_by': user,
+                        'reason': f'Force logged out by {user.user_name}',
+                        'ip_address': get_client_ip(request)
+                    }
+                )
+
+            # update logout
+            log.logout_datetime = now
+            log.logout_type = 'F'
+            log.remarks = (log.remarks or '') + f' Force logged out by {user.user_name} ({user.user_id})'
+            log.save()
+
+            forced_users.append(f"{log.user_id.user_name} ({log.user_id.user_id})")
+
+        # update remark of admin session
+        if admin_log:
+            old_remark = admin_log.remarks or ''
+            if 'Force logout all user' not in old_remark:
+                if old_remark.strip():
+                    admin_log.remarks = f'Force logout all user, {old_remark}'
+                else:
+                    admin_log.remarks = 'Force logout all user'
+                admin_log.save()
+
     return Response({
         "success": True,
-        "message": "Successfully force logged out all users",
-        "details": {
-            "sessions_terminated": session_count,
-            "tokens_revoked": revoked_count,
-            "users_affected": len(affected_users),
-            "reason": reason
-        }
+        "message": "All users have been forcefully logged out.",
+        "forced_user_count": len(forced_users),
+        "forced_users": forced_users
     }, status=status.HTTP_200_OK)
+
+
+# @api_view(["POST"])
+# @permission_classes([IsAuthenticated])
+# def force_logout_all_users(request):
+#     """
+#     Force logout all users except the requesting admin.
+#     Requires explicit confirmation.
+    
+#     POST /api/force-logout-all/
+#     Body: { "confirm": true, "reason": "optional reason" }
+#     """
+#     # Require explicit confirmation
+#     if not request.data.get("confirm"):
+#         return Response(
+#             {"error": "Confirmation required. Set 'confirm': true in request body."},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     reason = request.data.get("reason", "Mass force logout by administrator")
+    
+#     # Get current user's JTI to exclude it
+#     current_jti = get_jti_from_request(request)
+    
+#     with transaction.atomic():
+#         # Get all active sessions except current user's
+#         active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
+#             logout_datetime__isnull=True,
+#             login_status='S'
+#         ).exclude(
+#             Q(user_id=request.user) | Q(session_id=current_jti)
+#         ).select_related('user_id')
+        
+#         session_count = active_sessions.count()
+#         revoked_count = 0
+#         affected_users = set()
+        
+#         # Revoke all sessions
+#         for session in active_sessions:
+#             if session.session_id:
+#                 try:
+#                     MTTB_REVOKED_SESSIONS.objects.get_or_create(
+#                         jti=session.session_id,
+#                         defaults={
+#                             'user_id': session.user_id,
+#                             'revoked_by': request.user,
+#                             'reason': reason,
+#                             'ip_address': get_client_ip(request)
+#                         }
+#                     )
+#                     revoked_count += 1
+#                     if session.user_id:
+#                         affected_users.add(session.user_id.user_name)
+#                 except Exception as e:
+#                     logger.error(f"Error revoking session in mass logout: {str(e)}")
+        
+#         # Mark all sessions as logged out
+#         current_time = timezone.now()
+#         active_sessions.update(
+#             logout_datetime=current_time,
+#             logout_type='F',
+#             remarks=f'{reason} by {request.user.user_name}'
+#         )
+        
+#         # Log the mass logout action
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=request.user,
+#             session_id=current_jti,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+#             login_status='A',
+#             remarks=f'Performed mass force logout: {reason}'
+#         )
+    
+#     logger.warning(f"Admin {request.user.user_id} performed mass force logout. Affected {len(affected_users)} users.")
+    
+#     return Response({
+#         "success": True,
+#         "message": "Successfully force logged out all users",
+#         "details": {
+#             "sessions_terminated": session_count,
+#             "tokens_revoked": revoked_count,
+#             "users_affected": len(affected_users),
+#             "reason": reason
+#         }
+#     }, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])
