@@ -1,25 +1,4 @@
-# from rest_framework_simplejwt.authentication import JWTAuthentication
-# from rest_framework_simplejwt.exceptions import AuthenticationFailed
-# from .models import MTTB_Users, MTTB_USER_ACCESS_LOG
 
-# class MTTBJWTAuthentication(JWTAuthentication):
-#     """
-#     Extend the default to look up MTTB_User instead of Django's auth user.
-#     """
-#     def get_user(self, validated_token):
-#         """
-#         validated_token is the JWT payload after signature/exp check.
-#         We override this to fetch from MTTB_User.
-#         """
-#         try:
-#             user_id = validated_token['user_id']
-#         except KeyError:
-#             raise AuthenticationFailed('Token contained no recognizable user identification', 'token_no_user_id')
-
-#         try:
-#             return MTTB_Users.objects.get(pk=user_id)
-#         except MTTB_Users.DoesNotExist:
-#             raise AuthenticationFailed('User not found', 'user_not_found')
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
 from rest_framework_simplejwt.settings import api_settings
@@ -36,26 +15,21 @@ class MTTBJWTAuthentication(JWTAuthentication):
     """
     
     def get_validated_token(self, raw_token):
-        """
-        Validates the token and checks if it's been revoked
-        """
-        # First, validate the token normally (checks signature, expiry, etc.)
         try:
             validated_token = super().get_validated_token(raw_token)
         except TokenError as e:
             raise AuthenticationFailed(str(e))
-        
-        # Extract JTI from the token
+
         try:
             jti = validated_token[api_settings.JTI_CLAIM]
+            logger.info(f"[AUTH] Token JTI: {jti}")
         except KeyError:
             raise AuthenticationFailed('Token has no JTI claim')
-        
-        # Check if this token has been revoked
+
         if MTTB_REVOKED_SESSIONS.objects.filter(jti=jti).exists():
-            logger.info(f"Attempted to use revoked token with JTI: {jti}")
+            logger.warning(f"[AUTH] Token revoked: {jti}")
             raise AuthenticationFailed('Your session has been terminated. Please login again.')
-        
+
         return validated_token
     
     def get_user(self, validated_token):
@@ -89,26 +63,6 @@ class MTTBJWTAuthentication(JWTAuthentication):
             raise AuthenticationFailed('Authentication failed')
 
 
-# Optional: Token generation with custom claims
-from rest_framework_simplejwt.tokens import RefreshToken
-
-class CustomRefreshToken(RefreshToken):
-    """
-    Custom refresh token that adds additional claims
-    """
-    @classmethod
-    def for_user(cls, user):
-        token = super().for_user(user)
-        
-        # Add custom claims
-        token['user_name'] = user.user_name
-        token['user_email'] = getattr(user, 'user_email', '')
-        
-        # Add role information if available
-        if hasattr(user, 'Role_ID') and user.Role_ID:
-            token['role'] = getattr(user.Role_ID, 'role_name', '')
-            
-        return token
 
 
 # Utility function to extract JTI from request
@@ -126,3 +80,26 @@ def get_jti_from_request(request):
         return token.get(api_settings.JTI_CLAIM)
     except Exception:
         return None
+    
+
+
+# # Optional: Token generation with custom claims
+# from rest_framework_simplejwt.tokens import RefreshToken
+
+# class CustomRefreshToken(RefreshToken):
+#     """
+#     Custom refresh token that adds additional claims
+#     """
+#     @classmethod
+#     def for_user(cls, user):
+#         token = super().for_user(user)
+        
+#         # Add custom claims
+#         token['user_name'] = user.user_name
+#         token['user_email'] = getattr(user, 'user_email', '')
+        
+#         # Add role information if available
+#         if hasattr(user, 'Role_ID') and user.Role_ID:
+#             token['role'] = getattr(user.Role_ID, 'role_name', '')
+            
+#         return token
