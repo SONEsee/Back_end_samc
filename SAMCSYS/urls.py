@@ -73,7 +73,8 @@ from .views import (
     MasterTypeViewSet,
     MasterCodeViewSet,
     YourProcessViewSet,
-    YourProcessViewSet
+    YourProcessViewSet,
+    JournalProcessV2ViewSet,
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -165,6 +166,9 @@ urlpatterns = [
     path('api/revoked-sessions/',get_revoked_sessions, name='revoked-sessions'),
     # ໃນ urls.py
 path('api/process-journal/', YourProcessViewSet.as_view({'post': 'process_journal_data'})),
+path('journal/process-v2/', 
+         JournalProcessV2ViewSet.as_view({'post': 'process_journal_data'}), 
+         name='journal-process-v2'),
 # ຫຼື
 
 ]
