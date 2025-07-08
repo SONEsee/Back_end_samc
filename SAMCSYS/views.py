@@ -6188,8 +6188,6 @@ def force_logout_user(request, user_id=None):
         "tokens_revoked": revoked_count
     }, status=status.HTTP_200_OK)
 
-<<<<<<< HEAD
-=======
 
 
 @api_view(["POST"])
@@ -6276,7 +6274,6 @@ def force_logout_user_test(request, user_id):
         }
     }, status=status.HTTP_200_OK)
 
->>>>>>> f1794f72a80af94566108e3b4e451b0e845da841
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_active_sessions(request):
