@@ -4426,6 +4426,66 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             'overall_balanced': lcy_balanced and fcy_balanced
         })
 
+    @action(detail=False, methods=["post"], url_path="approve-asset")
+    def approve_asset(self, request):
+        reference_no = request.data.get("Ac_relatives")
+        module_id = request.data.get("module_id", "AS")
+
+        if not reference_no:
+            return Response({"error": "Ac_relatives is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if module_id != "AS":
+            return Response({"error": "Invalid module_id. This endpoint only supports module_id = 'AS'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            asset = FA_Asset_Lists.objects.get(
+                asset_list_id=reference_no,
+                asset_status__in=["UC", "AC"]  # Look for both UC and AC status
+            )
+        except FA_Asset_Lists.DoesNotExist:
+            return Response(
+                {"error": f"No asset found with Ac_relatives={reference_no} in status UC or AC"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Determine which field to update based on asset_status
+        if asset.asset_status == "UC":
+            # Check if already approved
+            if asset.Auth_Status == "A" and asset.Auth_Status_ARC == "A":
+                return Response(
+                    {"error": f"Asset {reference_no} (UC) has already been approved."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status for UC assets
+            asset.Auth_Status = "A"
+            message = f"Asset {reference_no} (UC) has been approved successfully."
+            
+        elif asset.asset_status == "AC":
+            # Check if already approved
+            if hasattr(asset, 'Auth_Status_ARC') and asset.Auth_Status_ARC == "A":
+                return Response(
+                    {"error": f"Asset {reference_no} (AC) has already been approved."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status_ARC for AC assets
+            asset.Auth_Status_ARC = "A"
+            message = f"Asset {reference_no} (AC) has been approved successfully."
+
+        # Set common fields
+        asset.Checker_Id = request.user
+        asset.Checker_DT_Stamp = timezone.now()
+        asset.save()
+
+        return Response({
+            "success": True,
+            "message": message,
+            "asset_status": asset.asset_status,
+            "updated_field": "Auth_Status" if asset.asset_status == "UC" else "Auth_Status_ARC"
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_all(self, request):
         """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
@@ -6188,8 +6248,11 @@ def force_logout_user(request, user_id=None):
         "tokens_revoked": revoked_count
     }, status=status.HTTP_200_OK)
 
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> d8baee690bf4ef5dae4a15aea516187eff3599b9
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def force_logout_user_test(request, user_id):
@@ -6919,6 +6982,222 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
 
 
 
+# from rest_framework import viewsets, status
+# from rest_framework.decorators import action
+# from rest_framework.response import Response
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.request import Request
+# from django.db import transaction
+# from django.utils import timezone
+# from django.test import RequestFactory
+# import json
+
+# class YourProcessViewSet(viewsets.ModelViewSet):
+
+#     @action(detail=False, methods=['post'])
+#     def process_journal_data(self, request):
+#         try:
+#             data = request.data
+#             glsub_ids = []
+#             glsub_map = {}  
+
+            
+#             ccy_cd = data.get('Ccy_cd')
+#             try:
+#                 ccy_record = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_cd)
+#                 alt_ccy_code = ccy_record.ALT_Ccy_Code
+#             except MTTB_Ccy_DEFN.DoesNotExist:
+#                 return Response({
+#                     'success': False,
+#                     'message': f'ບໍ່ພົບ currency code: {ccy_cd} ໃນ MTTB_Ccy_DEFN'
+#                 }, status=status.HTTP_400_BAD_REQUEST)
+
+#             with transaction.atomic():
+#                 for entry in data.get('entries', []):
+#                     account_no = entry.get('Account_no')
+#                     addl_sub_text = entry.get('Addl_sub_text')
+
+#                     gl_code_part = account_no.split('.')[0] if '.' in account_no else account_no
+
+#                     try:
+#                         gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code_part)
+#                         gl_code_obj = gl_master  
+#                     except MTTB_GLMaster.DoesNotExist:
+#                         return Response({
+#                             'success': False,
+#                             'message': f'ບໍ່ພົບ gl_code: {gl_code_part} ໃນ MTTB_GLMaster'
+#                         }, status=status.HTTP_400_BAD_REQUEST)
+
+                    
+#                     if entry.get("Dr_cr") == "D":
+#                         current_time = timezone.now()
+                        
+                        
+#                         try:
+#                             maker_user = MTTB_Users.objects.get(user_id=request.user.user_id)
+#                         except MTTB_Users.DoesNotExist:
+#                             return Response({
+#                                 'success': False,
+#                                 'message': f'ບໍ່ພົບຜູ້ໃຊ້: {request.user.user_id}'
+#                             }, status=status.HTTP_400_BAD_REQUEST)
+                        
+#                         glsub_record = MTTB_GLSub.objects.create(
+#                             glsub_code=account_no,
+#                             glsub_Desc_la=addl_sub_text,
+#                             gl_code=gl_code_obj, 
+#                             Maker_DT_Stamp=current_time,
+#                             Checker_DT_Stamp=current_time,
+#                             Maker_Id=maker_user,  
+#                             Checker_Id=maker_user, 
+#                             Record_Status="O",
+#                             Auth_Status="A"
+#                         )
+#                         glsub_id = glsub_record.glsub_id
+#                     else:
+                       
+#                         try:
+#                             glsub = MTTB_GLSub.objects.get(glsub_code=account_no)
+#                             glsub_id = glsub.glsub_id
+#                         except MTTB_GLSub.DoesNotExist:
+#                             return Response({
+#                                 'success': False,
+#                                 'message': f'ບໍ່ພົບ GLSub ສໍາລັບ Account_no: {account_no}'
+#                             }, status=status.HTTP_400_BAD_REQUEST)
+
+#                     glsub_ids.append(glsub_id)
+#                     glsub_map[account_no] = glsub_id
+
+#                 processed_data = {
+#                     "Reference_No": data.get('Reference_No'),
+#                     "Ccy_cd": data.get('Ccy_cd'),
+#                     "Txn_code": data.get('Txn_code'),
+#                     "Value_date": data.get('Value_date'),
+#                     "Addl_text": data.get('Addl_text'),
+#                     "fin_cycle": data.get('fin_cycle'),
+#                     "Period_code": data.get('Period_code'),
+#                     "module_id": data.get('module_id'),
+#                     "Maker_Id": request.user.user_id, 
+#                     "Record_Status": "O",  
+#                     "Auth_Status": "A",   
+#                     "entries": []
+#                 }
+
+              
+#                 for i, entry in enumerate(data.get('entries', [])):
+#                     original_acc_no = entry.get("Account_no")
+#                     acc_id = glsub_map.get(original_acc_no)
+#                     # ac_rel = list(glsub_map.values())[1] if i == 0 else list(glsub_map.values())[0]
+#                     # ac_rel = list(glsub_map.keys())[1] if i == 0 else list(glsub_map.keys())[0]
+#                     ac_rel = list(glsub_map.keys())[1] if i == 0 else list(glsub_map.keys())[0]
+
+                    
+#                     # modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+#                     # modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+#                     modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+#                     all_modified_accounts = [f"{alt_ccy_code}.{acc}" for acc in glsub_map.keys()]
+#                     ac_rel = all_modified_accounts[1] if i == 0 else all_modified_accounts[0]
+
+#                     processed_entry = {
+#                         "Account": acc_id,
+#                         "Account_no": modified_acc_no, 
+#                         "Amount": entry.get('Amount'),
+#                         "Dr_cr": entry.get('Dr_cr'),
+#                         "Addl_sub_text": entry.get('Addl_sub_text'),
+#                         # "Ac_relatives": str(ac_rel),
+#                         "Ac_relatives": ac_rel,
+#                         "Maker_Id": request.user.user_id,  
+#                         "Record_Status": "O", 
+#                         "Auth_Status": "A"    
+#                     }
+#                     processed_data["entries"].append(processed_entry)
+
+                
+#                 try:
+#                     from SAMCSYS.views import JRNLLogViewSet
+
+#                     factory = RequestFactory()
+                    
+                   
+#                     raw_request = factory.post(
+#                         '/api/journal-entries/batch_create/',
+#                         data=json.dumps(processed_data),
+#                         content_type='application/json'
+#                     )
+#                     raw_request.user = request.user
+#                     drf_request = Request(raw_request)
+
+#                     viewset = JRNLLogViewSet()
+#                     viewset.request = drf_request
+#                     viewset.format_kwarg = None
+
+#                     batch_response = viewset.batch_create(drf_request)
+
+#                     if batch_response.status_code in [200, 201]:
+#                         journal_response = {
+#                             'success': True,
+#                             'status_code': batch_response.status_code,
+#                             'data': batch_response.data,
+#                             'method': 'internal_batch_create'
+#                         }
+#                     else:
+#                         journal_response = {
+#                             'success': False,
+#                             'status_code': batch_response.status_code,
+#                             'error': batch_response.data,
+#                             'method': 'internal_batch_create_failed'
+#                         }
+
+#                 except Exception as e:
+                    
+#                     try:
+#                         viewset = JRNLLogViewSet()
+                        
+#                         viewset.request = request
+#                         viewset.format_kwarg = None
+                        
+                        
+#                         from unittest.mock import Mock
+#                         mock_request = Mock()
+#                         mock_request.data = processed_data
+#                         mock_request.user = request.user
+                        
+#                         batch_response = viewset.batch_create(mock_request)
+                        
+#                         if batch_response.status_code in [200, 201]:
+#                             journal_response = {
+#                                 'success': True,
+#                                 'status_code': batch_response.status_code,
+#                                 'data': batch_response.data,
+#                                 'method': 'direct_call'
+#                             }
+#                         else:
+#                             journal_response = {
+#                                 'success': False,
+#                                 'status_code': batch_response.status_code,
+#                                 'error': batch_response.data,
+#                                 'method': 'direct_call_failed'
+#                             }
+#                     except Exception as e2:
+#                         journal_response = {
+#                             'success': False,
+#                             'error': f'ViewSet Error: {str(e)} | Direct call error: {str(e2)}',
+#                             'note': 'GLSub records created. Please create journal entry manually.'
+#                         }
+
+#                 return Response({
+#                     'success': True,
+#                     'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ',
+#                     'processed_data': processed_data,
+#                     'glsub_ids': glsub_ids,
+#                     'alt_ccy_code': alt_ccy_code,  
+#                     'journal_response': journal_response
+#                 }, status=status.HTTP_201_CREATED)
+
+#         except Exception as e:
+#             return Response({
+#                 'success': False,
+#                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+#             }, status=status.HTTP_400_BAD_REQUEST)
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7023,8 +7302,9 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                 for i, entry in enumerate(data.get('entries', [])):
                     original_acc_no = entry.get("Account_no")
                     acc_id = glsub_map.get(original_acc_no)
-                    ac_rel = list(glsub_map.values())[1] if i == 0 else list(glsub_map.values())[0]
-
+                    
+                    # ໃຊ້ Ac_relatives ທີ່ສົ່ງມາຈາກ frontend
+                    ac_relatives = entry.get('Ac_relatives', '')
                     
                     modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
 
@@ -7034,7 +7314,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                         "Amount": entry.get('Amount'),
                         "Dr_cr": entry.get('Dr_cr'),
                         "Addl_sub_text": entry.get('Addl_sub_text'),
-                        "Ac_relatives": str(ac_rel),
+                        "Ac_relatives": ac_relatives,  # ໃຊ້ຄ່າຈາກ frontend
                         "Maker_Id": request.user.user_id,  
                         "Record_Status": "O", 
                         "Auth_Status": "A"    
@@ -7128,7 +7408,6 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
-
 # from rest_framework import viewsets, status
 # from rest_framework.decorators import action
 # from rest_framework.response import Response
@@ -7309,6 +7588,367 @@ class YourProcessViewSet(viewsets.ModelViewSet):
 #                 return Response({
 #                     'success': True,
 #                     'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ',
+#                     'processed_data': processed_data,
+#                     'glsub_ids': glsub_ids,
+#                     'alt_ccy_code': alt_ccy_code,  
+#                     'journal_response': journal_response
+#                 }, status=status.HTTP_201_CREATED)
+
+#         except Exception as e:
+#             return Response({
+#                 'success': False,
+#                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+#             }, status=status.HTTP_400_BAD_REQUEST)
+class JournalProcessV2ViewSet(viewsets.ModelViewSet):
+
+    @action(detail=False, methods=['post'])
+    def process_journal_data(self, request):
+        try:
+            data = request.data
+            glsub_ids = []
+            glsub_map = {}  
+
+            ccy_cd = data.get('Ccy_cd')
+            try:
+                ccy_record = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_cd)
+                alt_ccy_code = ccy_record.ALT_Ccy_Code
+            except MTTB_Ccy_DEFN.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'message': f'ບໍ່ພົບ currency code: {ccy_cd} ໃນ MTTB_Ccy_DEFN'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            with transaction.atomic():
+                for entry in data.get('entries', []):
+                    account_no = entry.get('Account_no')
+                    addl_sub_text = entry.get('Addl_sub_text')
+
+                    gl_code_part = account_no.split('.')[0] if '.' in account_no else account_no
+
+                    try:
+                        gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code_part)
+                        gl_code_obj = gl_master  
+                    except MTTB_GLMaster.DoesNotExist:
+                        return Response({
+                            'success': False,
+                            'message': f'ບໍ່ພົບ gl_code: {gl_code_part} ໃນ MTTB_GLMaster'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    
+                    current_time = timezone.now()
+                    
+                    try:
+                        maker_user = MTTB_Users.objects.get(user_id=request.user.user_id)
+                    except MTTB_Users.DoesNotExist:
+                        return Response({
+                            'success': False,
+                            'message': f'ບໍ່ພົບຜູ້ໃຊ້: {request.user.user_id}'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    
+                    glsub_record = MTTB_GLSub.objects.create(
+                        glsub_code=account_no,
+                        glsub_Desc_la=addl_sub_text,
+                        gl_code=gl_code_obj, 
+                        Maker_DT_Stamp=current_time,
+                        Checker_DT_Stamp=current_time,
+                        Maker_Id=maker_user,  
+                        Checker_Id=maker_user, 
+                        Record_Status="O",
+                        Auth_Status="A"
+                    )
+                    glsub_id = glsub_record.glsub_id
+
+                    glsub_ids.append(glsub_id)
+                    glsub_map[account_no] = glsub_id
+
+                processed_data = {
+                    "Reference_No": data.get('Reference_No'),
+                    "Ccy_cd": data.get('Ccy_cd'),
+                    "Txn_code": data.get('Txn_code'),
+                    "Value_date": data.get('Value_date'),
+                    "Addl_text": data.get('Addl_text'),
+                    "fin_cycle": data.get('fin_cycle'),
+                    "Period_code": data.get('Period_code'),
+                    "module_id": data.get('module_id'),
+                    "Maker_Id": request.user.user_id, 
+                    "Record_Status": "O",  
+                    "Auth_Status": "A",   
+                    "entries": []
+                }
+
+                for i, entry in enumerate(data.get('entries', [])):
+                    original_acc_no = entry.get("Account_no")
+                    acc_id = glsub_map.get(original_acc_no)
+                    
+                    modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+                    
+                    # ໃຊ້ Ac_relatives ທີ່ສົ່ງມາຈາກ frontend
+                    ac_relatives = entry.get('Ac_relatives', '')
+
+                    processed_entry = {
+                        "Account": acc_id,
+                        "Account_no": modified_acc_no, 
+                        "Amount": entry.get('Amount'),
+                        "Dr_cr": entry.get('Dr_cr'),
+                        "Addl_sub_text": entry.get('Addl_sub_text'),
+                        "Ac_relatives": ac_relatives,  # ໃຊ້ຄ່າຈາກ frontend
+                        "Maker_Id": request.user.user_id,  
+                        "Record_Status": "O", 
+                        "Auth_Status": "A"    
+                    }
+                    processed_data["entries"].append(processed_entry)
+
+                try:
+                    from SAMCSYS.views import JRNLLogViewSet
+
+                    factory = RequestFactory()
+                    raw_request = factory.post(
+                        '/api/journal-entries/batch_create/',
+                        data=json.dumps(processed_data),
+                        content_type='application/json'
+                    )
+                    raw_request.user = request.user
+                    drf_request = Request(raw_request)
+
+                    viewset = JRNLLogViewSet()
+                    viewset.request = drf_request
+                    viewset.format_kwarg = None
+
+                    batch_response = viewset.batch_create(drf_request)
+
+                    if batch_response.status_code in [200, 201]:
+                        journal_response = {
+                            'success': True,
+                            'status_code': batch_response.status_code,
+                            'data': batch_response.data,
+                            'method': 'internal_batch_create'
+                        }
+                    else:
+                        journal_response = {
+                            'success': False,
+                            'status_code': batch_response.status_code,
+                            'error': batch_response.data,
+                            'method': 'internal_batch_create_failed'
+                        }
+
+                except Exception as e:
+                    try:
+                        viewset = JRNLLogViewSet()
+                        viewset.request = request
+                        viewset.format_kwarg = None
+                        
+                        from unittest.mock import Mock
+                        mock_request = Mock()
+                        mock_request.data = processed_data
+                        mock_request.user = request.user
+                        
+                        batch_response = viewset.batch_create(mock_request)
+                        
+                        if batch_response.status_code in [200, 201]:
+                            journal_response = {
+                                'success': True,
+                                'status_code': batch_response.status_code,
+                                'data': batch_response.data,
+                                'method': 'direct_call'
+                            }
+                        else:
+                            journal_response = {
+                                'success': False,
+                                'status_code': batch_response.status_code,
+                                'error': batch_response.data,
+                                'method': 'direct_call_failed'
+                            }
+                    except Exception as e2:
+                        journal_response = {
+                            'success': False,
+                            'error': f'ViewSet Error: {str(e)} | Direct call error: {str(e2)}',
+                            'note': 'GLSub records created. Please create journal entry manually.'
+                        }
+
+                return Response({
+                    'success': True,
+                    'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ (ສ້າງ GLSub ໃໝ່ທັງໝົດ)',
+                    'processed_data': processed_data,
+                    'glsub_ids': glsub_ids,
+                    'alt_ccy_code': alt_ccy_code,  
+                    'journal_response': journal_response
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+# class JournalProcessV2ViewSet(viewsets.ModelViewSet):
+
+#     @action(detail=False, methods=['post'])
+#     def process_journal_data(self, request):
+#         try:
+#             data = request.data
+#             glsub_ids = []
+#             glsub_map = {}  
+
+#             ccy_cd = data.get('Ccy_cd')
+#             try:
+#                 ccy_record = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_cd)
+#                 alt_ccy_code = ccy_record.ALT_Ccy_Code
+#             except MTTB_Ccy_DEFN.DoesNotExist:
+#                 return Response({
+#                     'success': False,
+#                     'message': f'ບໍ່ພົບ currency code: {ccy_cd} ໃນ MTTB_Ccy_DEFN'
+#                 }, status=status.HTTP_400_BAD_REQUEST)
+
+#             with transaction.atomic():
+#                 for entry in data.get('entries', []):
+#                     account_no = entry.get('Account_no')
+#                     addl_sub_text = entry.get('Addl_sub_text')
+
+#                     gl_code_part = account_no.split('.')[0] if '.' in account_no else account_no
+
+#                     try:
+#                         gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code_part)
+#                         gl_code_obj = gl_master  
+#                     except MTTB_GLMaster.DoesNotExist:
+#                         return Response({
+#                             'success': False,
+#                             'message': f'ບໍ່ພົບ gl_code: {gl_code_part} ໃນ MTTB_GLMaster'
+#                         }, status=status.HTTP_400_BAD_REQUEST)
+
+                    
+#                     current_time = timezone.now()
+                    
+#                     try:
+#                         maker_user = MTTB_Users.objects.get(user_id=request.user.user_id)
+#                     except MTTB_Users.DoesNotExist:
+#                         return Response({
+#                             'success': False,
+#                             'message': f'ບໍ່ພົບຜູ້ໃຊ້: {request.user.user_id}'
+#                         }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    
+#                     glsub_record = MTTB_GLSub.objects.create(
+#                         glsub_code=account_no,
+#                         glsub_Desc_la=addl_sub_text,
+#                         gl_code=gl_code_obj, 
+#                         Maker_DT_Stamp=current_time,
+#                         Checker_DT_Stamp=current_time,
+#                         Maker_Id=maker_user,  
+#                         Checker_Id=maker_user, 
+#                         Record_Status="O",
+#                         Auth_Status="A"
+#                     )
+#                     glsub_id = glsub_record.glsub_id
+
+#                     glsub_ids.append(glsub_id)
+#                     glsub_map[account_no] = glsub_id
+
+#                 processed_data = {
+#                     "Reference_No": data.get('Reference_No'),
+#                     "Ccy_cd": data.get('Ccy_cd'),
+#                     "Txn_code": data.get('Txn_code'),
+#                     "Value_date": data.get('Value_date'),
+#                     "Addl_text": data.get('Addl_text'),
+#                     "fin_cycle": data.get('fin_cycle'),
+#                     "Period_code": data.get('Period_code'),
+#                     "module_id": data.get('module_id'),
+#                     "Maker_Id": request.user.user_id, 
+#                     "Record_Status": "O",  
+#                     "Auth_Status": "A",   
+#                     "entries": []
+#                 }
+
+#                 for i, entry in enumerate(data.get('entries', [])):
+#                     original_acc_no = entry.get("Account_no")
+#                     acc_id = glsub_map.get(original_acc_no)
+                    
+#                     modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+#                     all_modified_accounts = [f"{alt_ccy_code}.{acc}" for acc in glsub_map.keys()]
+#                     ac_rel = all_modified_accounts[1] if i == 0 else all_modified_accounts[0]
+
+#                     processed_entry = {
+#                         "Account": acc_id,
+#                         "Account_no": modified_acc_no, 
+#                         "Amount": entry.get('Amount'),
+#                         "Dr_cr": entry.get('Dr_cr'),
+#                         "Addl_sub_text": entry.get('Addl_sub_text'),
+#                         "Ac_relatives": ac_rel,
+#                         "Maker_Id": request.user.user_id,  
+#                         "Record_Status": "O", 
+#                         "Auth_Status": "A"    
+#                     }
+#                     processed_data["entries"].append(processed_entry)
+
+#                 try:
+#                     from SAMCSYS.views import JRNLLogViewSet
+
+#                     factory = RequestFactory()
+#                     raw_request = factory.post(
+#                         '/api/journal-entries/batch_create/',
+#                         data=json.dumps(processed_data),
+#                         content_type='application/json'
+#                     )
+#                     raw_request.user = request.user
+#                     drf_request = Request(raw_request)
+
+#                     viewset = JRNLLogViewSet()
+#                     viewset.request = drf_request
+#                     viewset.format_kwarg = None
+
+#                     batch_response = viewset.batch_create(drf_request)
+
+#                     if batch_response.status_code in [200, 201]:
+#                         journal_response = {
+#                             'success': True,
+#                             'status_code': batch_response.status_code,
+#                             'data': batch_response.data,
+#                             'method': 'internal_batch_create'
+#                         }
+#                     else:
+#                         journal_response = {
+#                             'success': False,
+#                             'status_code': batch_response.status_code,
+#                             'error': batch_response.data,
+#                             'method': 'internal_batch_create_failed'
+#                         }
+
+#                 except Exception as e:
+#                     try:
+#                         viewset = JRNLLogViewSet()
+#                         viewset.request = request
+#                         viewset.format_kwarg = None
+                        
+#                         from unittest.mock import Mock
+#                         mock_request = Mock()
+#                         mock_request.data = processed_data
+#                         mock_request.user = request.user
+                        
+#                         batch_response = viewset.batch_create(mock_request)
+                        
+#                         if batch_response.status_code in [200, 201]:
+#                             journal_response = {
+#                                 'success': True,
+#                                 'status_code': batch_response.status_code,
+#                                 'data': batch_response.data,
+#                                 'method': 'direct_call'
+#                             }
+#                         else:
+#                             journal_response = {
+#                                 'success': False,
+#                                 'status_code': batch_response.status_code,
+#                                 'error': batch_response.data,
+#                                 'method': 'direct_call_failed'
+#                             }
+#                     except Exception as e2:
+#                         journal_response = {
+#                             'success': False,
+#                             'error': f'ViewSet Error: {str(e)} | Direct call error: {str(e2)}',
+#                             'note': 'GLSub records created. Please create journal entry manually.'
+#                         }
+
+#                 return Response({
+#                     'success': True,
+#                     'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ (ສ້າງ GLSub ໃໝ່ທັງໝົດ)',
 #                     'processed_data': processed_data,
 #                     'glsub_ids': glsub_ids,
 #                     'alt_ccy_code': alt_ccy_code,  
