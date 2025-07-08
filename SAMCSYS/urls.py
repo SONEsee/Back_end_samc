@@ -75,7 +75,7 @@ from .views import (
     YourProcessViewSet,
     force_logout_user_test,
     session_check,
-    JournalProcessV2ViewSet
+    JournalProcessV2ViewSet,
 
 )
 from rest_framework_simplejwt.views import (
@@ -161,6 +161,7 @@ urlpatterns = [
     
     # Force logout endpoints (standalone)
     path('api/verify-token/',verify_token, name='verify-token'),
+    path('api/force-logout/<str:user_id>/',force_logout_user, name='force-logout'),
     path('api/force-logout/',force_logout_user, name='force-logout'),
     path('api/force-logout-test/<str:user_id>/',force_logout_user_test, name='force-logout-test'),
     path('api/active-sessions/',get_active_sessions, name='active-sessions'),
