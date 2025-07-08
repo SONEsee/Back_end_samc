@@ -6696,7 +6696,7 @@ from django.utils import timezone
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import MTTB_EOC_MAINTAIN
+from .models import MTTB_EOC_MAINTAIN, STTB_EOC_DAILY_LOG
 from .serializers import EOCMaintainSerializer
 
 class EOCMaintainViewSet(viewsets.ModelViewSet):
@@ -6885,6 +6885,64 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         })
     
+    @action(detail=False, methods=['post'], url_path='bulk-journal', permission_classes=[IsAuthenticated])
+    def bulk_journal(self, request, pk=None):
+        try:
+            with transaction.atomic():
+                # Fetch authorized records from ACTB_DAIRY_LOG
+                authorized_logs = ACTB_DAIRY_LOG.objects.filter(Auth_Status='A')
+                
+                # Prepare bulk create objects
+                eoc_logs = []
+                for log in authorized_logs:
+                    eoc_log = STTB_EOC_DAILY_LOG(
+                        module=log.module.module if log.module else None,
+                        trn_ref_no=log.trn_ref_no.trn_ref_no if log.trn_ref_no else None,
+                        trn_ref_sub_no=log.trn_ref_sub_no,
+                        event_sr_no=log.event_sr_no,
+                        event=log.event,
+                        ac_no=log.ac_no.gl_sub_code if log.ac_no else None,
+                        ac_ccy=log.ac_ccy.ccy_code if log.ac_ccy else None,
+                        drcr_ind=log.drcr_ind,
+                        trn_code=log.trn_code.trn_code if log.trn_code else None,
+                        fcy_amount=log.fcy_amount,
+                        exch_rate=log.exch_rate,
+                        lcy_amount=log.lcy_amount,
+                        external_ref_no=log.external_ref_no,
+                        addl_text=log.addl_text,
+                        addl_sub_text=log.addl_sub_text,
+                        trn_dt=log.trn_dt,
+                        type=log.glType,
+                        category=log.category,
+                        value_dt=log.value_dt,
+                        financial_cycle=log.financial_cycle.fin_cycle if log.financial_cycle else None,
+                        period_code=log.period_code.per_code if log.period_code else None,
+                        user_id=log.user_id.user_id if log.user_id else None,
+                        Maker_DT_Stamp=log.Maker_DT_Stamp,
+                        auth_id=log.auth_id.user_id if log.auth_id else None,
+                        Checker_DT_Stamp=log.Checker_DT_Stamp,
+                        Auth_Status=log.Auth_Status,
+                        product=log.product,
+                        entry_seq_no=log.entry_seq_no
+                    )
+                    eoc_logs.append(eoc_log)
+                
+                # Bulk create records in STTB_EOC_DAILY_LOG
+                if eoc_logs:
+                    STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
+                
+                return Response({
+                    'status': 'success',
+                    'message': f'Successfully inserted {len(eoc_logs)} records into STTB_EOC_DAILY_LOG'
+                })
+                
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=400)
+
+    
 # from rest_framework import viewsets, permissions
 # from rest_framework.permissions import AllowAny, IsAuthenticated
 # from django_filters.rest_framework import DjangoFilterBackend
@@ -6915,7 +6973,7 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
 #             return [AllowAny()]
 #         return [IsAuthenticated()]
     
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
