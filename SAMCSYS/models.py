@@ -843,6 +843,7 @@ class STTB_EOC_STATUS(models.Model):
     eoc_seq_no = models.IntegerField(null=True, blank=True)        
     # module_id = models.ForeignKey('STTB_ModulesInfo', null=True, blank=True, on_delete=models.CASCADE)
     # function_id = models.ForeignKey('MTTB_Function_Desc', null=True, blank=True, on_delete=models.CASCADE)
+    eoc_id = models.ForeignKey(MTTB_EOC_MAINTAIN, null=True, blank=True, on_delete=models.CASCADE)
     eoc_type = models.CharField(max_length=3)
     eod_date = models.DateTimeField(auto_now=False, null=True, blank=True)         
     eoc_status = models.CharField(max_length=1)                   
