@@ -5820,6 +5820,37 @@ class FAMaintenanceLogsViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+# class FAAccountingMethodViewSet(viewsets.ModelViewSet):
+#     serializer_class = FAAccountingMethodSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Accounting_Method.objects.all().order_by('mapping_id')
+#         acc_type = self.request.query_params.get('acc_type')
+#         if acc_type:
+#             queryset = queryset.filter(acc_type=acc_type)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+from django.http import Http404
+from rest_framework import status
+from rest_framework.response import Response
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+from SAMCSYS.models import MTTB_GLSub, MTTB_GLMaster  # ເພີ່ມ MTTB_GLMaster
+
 class FAAccountingMethodViewSet(viewsets.ModelViewSet):
     serializer_class = FAAccountingMethodSerializer
     permission_classes = [IsAuthenticated]
@@ -5831,7 +5862,123 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(acc_type=acc_type)
         return queryset
     
+    def create_glsub_record(self, account_code, description):
+        """ສ້າງ record ໃໝ່ໃນ MTTB_GLSub"""
+        try:
+           
+            if '.' in account_code:
+                gl_code = account_code.split('.')[0]
+            else:
+                gl_code = account_code
+            
+           
+            try:
+                gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code)
+                gl_code_id = gl_master.glid  
+            except MTTB_GLMaster.DoesNotExist:
+                raise ValueError(f"ບໍ່ພົບ gl_code '{gl_code}' ໃນ MTTB_GLMaster")
+            
+            
+            glsub_record = MTTB_GLSub.objects.create(
+                glsub_code=account_code,
+                glsub_Desc_la=description,
+                gl_code_id=gl_code_id,
+                Maker_Id=self.request.user,
+                Maker_DT_Stamp=timezone.now(),
+                Record_Status='O',
+                Auth_Status='A'   
+               
+            )
+            
+            return glsub_record
+            
+        except Exception as e:
+            raise Exception(f"ຜິດພາດໃນການສ້າງ GLSub: {str(e)}")
+    
+    def create(self, request, *args, **kwargs):
+        """Override create method ເພື່ອກວດສອບແລະສ້າງ GLSub records"""
+        
+        
+        debit_account_id = request.data.get('debit_account_id')
+        credit_account_id = request.data.get('credit_account_id')
+        description = request.data.get('description', '')  # ສຳລັບ glsub_Desc_la
+        
+        
+        if not debit_account_id or not credit_account_id:
+            return Response(
+                {'error': 'debit_account_id ແລະ credit_account_id ຈຳເປັນຕ້ອງມີ'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+           
+            with transaction.atomic():
+                
+                
+                debit_exists = MTTB_GLSub.objects.filter(glsub_code=debit_account_id).exists()
+                credit_exists = MTTB_GLSub.objects.filter(glsub_code=credit_account_id).exists()
+                
+                if debit_exists:
+                    return Response(
+                        {
+                            'error': f'debit_account_id "{debit_account_id}" ມີຢູ່ໃນລະບົບແລ້ວ',
+                            'code': 'DUPLICATE_DEBIT_ACCOUNT'
+                        }, 
+                        status=status.HTTP_501_NOT_IMPLEMENTED
+                    )
+                
+                if credit_exists:
+                    return Response(
+                        {
+                            'error': f'credit_account_id "{credit_account_id}" ມີຢູ່ໃນລະບົບແລ້ວ',
+                            'code': 'DUPLICATE_CREDIT_ACCOUNT'
+                        }, 
+                        status=status.HTTP_501_NOT_IMPLEMENTED
+                    )
+                
+                
+                try:
+                    
+                    debit_glsub = self.create_glsub_record(
+                        debit_account_id, 
+                        f" {description}"
+                    )
+                    
+                    
+                    credit_glsub = self.create_glsub_record(
+                        credit_account_id, 
+                        f" {description}"
+                    )
+                    
+                    print(f"✅ ສ້າງ GLSub records ສຳເລັດ: {debit_glsub.glsub_code}, {credit_glsub.glsub_code}")
+                    
+                except Exception as e:
+                    return Response(
+                        {'error': f'ຜິດພາດໃນການສ້າງ GLSub records: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                
+                
+                response = super().create(request, *args, **kwargs)
+                
+                
+                if response.status_code == 201:
+                    response.data['glsub_created'] = {
+                        'debit_account': debit_account_id,
+                        'credit_account': credit_account_id,
+                        'message': 'GLSub records ຖືກສ້າງສຳເລັດ'
+                    }
+                
+                return response
+                
+        except Exception as e:
+            return Response(
+                {'error': f'ຜິດພາດໃນການດຳເນີນການ: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     def perform_create(self, serializer):
+        """ບັນທຶກຂໍ້ມູນພ້ອມ Maker info"""
         user = self.request.user
         serializer.save(
             Maker_Id=user,
@@ -5844,7 +5991,20 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
-    
+    def perform_create(self, serializer):
+        """ບັນທຶກຂໍ້ມູນພ້ອມ Maker info"""
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
 #----------------end of Asset-----------------
 
 # Function Get User Login Session
