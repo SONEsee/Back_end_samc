@@ -76,6 +76,7 @@ from .views import (
     force_logout_user_test,
     session_check,
     JournalProcessV2ViewSet,
+    
 
 )
 from rest_framework_simplejwt.views import (

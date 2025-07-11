@@ -907,3 +907,4 @@ class GLSubDisplaySerializer(serializers.ModelSerializer):
             'Record_Status', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id',
             'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth'
         ]
+
