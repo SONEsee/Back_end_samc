@@ -387,8 +387,8 @@ class Meta:
 class STTB_Dates(models.Model):
     date_id = models.AutoField(primary_key=True)
     Start_Date = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    prev_Wroking_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    next_working_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    prev_Working_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    next_working_Day = models.DateTimeField(auto_now_add=False, null=True, blank=True)
     eod_time = models.CharField(max_length=1)
     class Meta:
         ordering=['date_id']  # Change from 'id' to 'DateID'
