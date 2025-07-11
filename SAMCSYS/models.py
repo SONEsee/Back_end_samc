@@ -460,7 +460,7 @@ class MTTB_EMPLOYEE(models.Model):
     employee_signature = models.ImageField(upload_to='employee_signatures/', null=True, blank=True)
     hire_date = models.DateField(max_length=10,null=True, blank=True)
     employment_status = models.CharField(max_length=1, default='A')
-    record_stat = models.CharField(max_length=1 ,null=True,blank=True, default='C')
+    Record_Status = models.CharField(max_length=1 ,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_employee')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_employee')

@@ -76,12 +76,9 @@ from .views import (
     force_logout_user_test,
     session_check,
     JournalProcessV2ViewSet,
-<<<<<<< HEAD
     
-=======
     end_of_day_journal_view,
     check_journal_submission_available
->>>>>>> e38b3a351abb14b402e84e5f281b850b4b3dc924
 
 )
 from rest_framework_simplejwt.views import (
