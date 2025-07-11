@@ -2129,133 +2129,245 @@ from django.utils import timezone
 from .models import MTTB_EMPLOYEE, MTTB_Users, MTTB_Divisions
 from .serializers import EmployeeSerializer
 
+# class EmployeeViewSet(viewsets.ModelViewSet):
+#     """
+#     CRUD for employees, supporting:
+#       - JSON and multipart/form-data for file uploads
+#       - Filtering by ?div_id=...
+#       - Soft deletion via record_stat='D'
+#     """
+#     serializer_class = EmployeeSerializer
+#     parser_classes = [JSONParser, MultiPartParser, FormParser]
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         """
+#         Returns active employees (record_stat='A'), optionally filtered by div_id.
+#         """
+#         qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id').filter(record_stat='O')
+        
+#         params = self.request.query_params
+#         div_id = params.get('div_id')
+#         if div_id:
+#             qs = qs.filter(div_id_id__div_id=div_id)
+        
+#         return qs.order_by('employee_id')
+
+#     def perform_create(self, serializer):
+#         """
+#         Sets audit fields for creation.
+#         """
+#         serializer.save(
+#             Maker_Id=self.request.user if self.request.user.is_authenticated else None,
+#             Maker_DT_Stamp=timezone.now(),
+#             record_stat='A',
+#             Auth_Status='U',
+#             Once_Auth='N'
+#         )
+
+#     def perform_update(self, serializer):
+#         """
+#         Sets audit fields for updates.
+#         """
+#         serializer.save(
+#             Checker_Id=self.request.user if self.request.user.is_authenticated else None,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_destroy(self, instance):
+#         """
+#         Soft deletes the employee by setting record_stat to 'D'.
+#         """
+#         instance.record_stat = 'D'
+#         instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
+#         instance.Checker_DT_Stamp = timezone.now()
+#         instance.save()
+
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def set_open(self, request, pk=None):
+#         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+#         obj = self.get_object()
+#         if obj.record_stat == 'O':
+#             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+#         if getattr(obj, 'Auth_Status', None) != 'A':
+#             return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+#         obj.record_stat = 'O'
+#         obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         obj.Checker_DT_Stamp = timezone.now()
+#         obj.save()
+#         serializer = self.get_serializer(obj)
+#         return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def set_close(self, request, pk=None):
+#         """Set Record_Status = 'C' (Close)"""
+#         obj = self.get_object()
+#         if obj.record_stat == 'C':
+#             return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+#         obj.record_stat = 'C'
+#         obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         obj.Checker_DT_Stamp = timezone.now()
+#         obj.save()
+#         serializer = self.get_serializer(obj)
+#         return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+#     @action(detail=True, methods=['post'])
+#     def authorize(self, request, pk=None):
+#         """Authorize a journal entry"""
+#         journal_entry = self.get_object()
+
+#         if journal_entry.Auth_Status == 'A':
+#             return Response({'error': 'Entry is already authorized'}, 
+#                           status=status.HTTP_400_BAD_REQUEST)
+
+#         # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+#         journal_entry.Auth_Status = 'A'
+#         journal_entry.Once_Status = 'Y'
+#         journal_entry.record_stat = 'C'
+#         journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         journal_entry.Checker_DT_Stamp = timezone.now()
+#         journal_entry.save()
+
+#         serializer = self.get_serializer(journal_entry)
+#         return Response({
+#             'message': 'Entry authorized successfully',
+#             'entry': serializer.data
+#         })
+
+#     @action(detail=True, methods=['post'])
+#     def unauthorize(self, request, pk=None):
+#         """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+#         journal_entry = self.get_object()
+
+#         if journal_entry.Auth_Status == 'U':
+#             return Response({'error': 'Entry is already unauthorized'}, 
+#                           status=status.HTTP_400_BAD_REQUEST)
+
+#         # Set Auth_Status = 'U', Record_Status = 'C'
+#         journal_entry.Auth_Status = 'U'
+#         journal_entry.record_stat = 'C'
+#         journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         journal_entry.Checker_DT_Stamp = timezone.now()
+#         journal_entry.save()
+
+#         serializer = self.get_serializer(journal_entry)
+#         return Response({
+#             'message': 'Entry unauthorized successfully',
+#             'entry': serializer.data
+#         })
+
 class EmployeeViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for employees, supporting:
-      - JSON and multipart/form-data for file uploads
-      - Filtering by ?div_id=...
-      - Soft deletion via record_stat='D'
-    """
     serializer_class = EmployeeSerializer
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
+    lookup_field = 'employee_id'
 
     def get_queryset(self):
         """
-        Returns active employees (record_stat='A'), optionally filtered by div_id.
+        Returns active employees (Record_Status='O'), optionally filtered by div_id.
         """
-        qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id').filter(record_stat='O')
-        
+        qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id')
         params = self.request.query_params
         div_id = params.get('div_id')
         if div_id:
             qs = qs.filter(div_id_id__div_id=div_id)
-        
+
         return qs.order_by('employee_id')
 
     def perform_create(self, serializer):
-        """
-        Sets audit fields for creation.
-        """
+        user = self.request.user
         serializer.save(
-            Maker_Id=self.request.user if self.request.user.is_authenticated else None,
-            Maker_DT_Stamp=timezone.now(),
-            record_stat='A',
-            Auth_Status='U',
-            Once_Auth='N'
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
         )
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        return Response({
+            'message': 'Employee created successfully.',
+            'entry': response.data
+        }, status=response.status_code)
+
     def perform_update(self, serializer):
-        """
-        Sets audit fields for updates.
-        """
+        user = self.request.user
         serializer.save(
-            Checker_Id=self.request.user if self.request.user.is_authenticated else None,
+            Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
 
-    def perform_destroy(self, instance):
-        """
-        Soft deletes the employee by setting record_stat to 'D'.
-        """
-        instance.record_stat = 'D'
-        instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
-        instance.Checker_DT_Stamp = timezone.now()
-        instance.save()
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        return Response({
+            'message': 'Employee updated successfully.',
+            'entry': response.data
+        }, status=response.status_code)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response({
+            'message': 'Employee deleted successfully.'
+        }, status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_open(self, request, pk=None):
+    def set_open(self, request, employee_id=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
-        if obj.record_stat == 'O':
+        if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
         if getattr(obj, 'Auth_Status', None) != 'A':
-            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
-        obj.record_stat = 'O'
-        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+            return Response({'detail': 'Cannot set to Open. Only authorized records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = request.user
         obj.Checker_DT_Stamp = timezone.now()
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Open.', 'entry': serializer.data})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_close(self, request, pk=None):
+    def set_close(self, request, employee_id=None):
         """Set Record_Status = 'C' (Close)"""
         obj = self.get_object()
-        if obj.record_stat == 'C':
+        if obj.Record_Status == 'C':
             return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
-        obj.record_stat = 'C'
-        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = request.user
         obj.Checker_DT_Stamp = timezone.now()
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
-    @action(detail=True, methods=['post'])
-    def authorize(self, request, pk=None):
-        """Authorize a journal entry"""
-        journal_entry = self.get_object()
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, employee_id=None):
+        """Authorize an employee record"""
+        obj = self.get_object()
+        if obj.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if journal_entry.Auth_Status == 'A':
-            return Response({'error': 'Entry is already authorized'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+        obj.Auth_Status = 'A'
+        obj.Once_Auth = 'Y'
+        obj.Record_Status = 'C'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
 
-        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
-        journal_entry.Auth_Status = 'A'
-        journal_entry.Once_Status = 'Y'
-        journal_entry.record_stat = 'C'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Entry authorized successfully.', 'entry': serializer.data})
 
-        serializer = self.get_serializer(journal_entry)
-        return Response({
-            'message': 'Entry authorized successfully',
-            'entry': serializer.data
-        })
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unauthorize(self, request, employee_id=None):
+        """Unauthorize an employee record"""
+        obj = self.get_object()
+        if obj.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'])
-    def unauthorize(self, request, pk=None):
-        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
-        journal_entry = self.get_object()
+        obj.Auth_Status = 'U'
+        obj.Record_Status = 'C'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
 
-        if journal_entry.Auth_Status == 'U':
-            return Response({'error': 'Entry is already unauthorized'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-
-        # Set Auth_Status = 'U', Record_Status = 'C'
-        journal_entry.Auth_Status = 'U'
-        journal_entry.record_stat = 'C'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
-
-        serializer = self.get_serializer(journal_entry)
-        return Response({
-            'message': 'Entry unauthorized successfully',
-            'entry': serializer.data
-        })
-        
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Entry unauthorized successfully.', 'entry': serializer.data})
 
 from .serializers import MTTB_LCL_HolidaySerializer
 from .models import MTTB_LCL_Holiday

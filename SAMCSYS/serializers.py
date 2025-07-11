@@ -307,10 +307,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
             'gender', 'date_of_birth', 'national_id', 'address_la', 'address_en',
             'phone_number', 'email', 'position_code', 'div_id', 'division_name_la',
             'employee_photo', 'employee_signature', 'hire_date', 'employment_status',
-            'record_stat', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
+            'Record_Status', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
             'Auth_Status', 'Once_Auth'
         ]
-        read_only_fields = ['record_stat', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth']
+        read_only_fields = ['Record_Status', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth']
 
     def validate_user_id(self, value):
         if value and not MTTB_Users.objects.filter(user_id=value.user_id, User_Status='E').exists():
@@ -318,7 +318,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return value
 
     def validate_division_id(self, value):
-        if value and not MTTB_Divisions.objects.filter(div_id=value.div_id, record_Status='C').exists():
+        if value and not MTTB_Divisions.objects.filter(div_id=value.div_id, record_Status='O').exists():
             raise serializers.ValidationError("Invalid or inactive div_id")
         return value
 
