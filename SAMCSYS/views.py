@@ -2698,7 +2698,7 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
         # Example: Filter only active records
         active_only = self.request.query_params.get('active_only', None)
         if active_only and active_only.lower() == 'true':
-            queryset = queryset.filter(Record_Status='C')
+            queryset = queryset.filter(Record_Status='O')
         
         return queryset
     
@@ -5159,7 +5159,7 @@ def submit_eod_journal(request):
         # Save New EOD Entry
         new_eod = STTB_Dates.objects.create(
             Start_Date=make_aware(datetime.combine(today, datetime.min.time())),
-            prev_Wroking_Day=last_eod.Start_Date if last_eod else None,
+            prev_Working_Day=last_eod.Start_Date if last_eod else None,
             next_working_Day=None,  # To be calculated if needed
             eod_time='Y'
         )
@@ -5175,6 +5175,189 @@ def submit_eod_journal(request):
 
     except Exception as e:
         return Response({"status": "error", "message": str(e)}, status=500)
+    
+
+
+from datetime import datetime, timedelta
+from django.utils import timezone
+import pytz
+from .models import MTTB_LCL_Holiday, STTB_Dates
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def end_of_day_journal_view(request):
+    """
+    API endpoint to validate and process end-of-day journal submission.
+    Requires authentication.
+    """
+    success, message = end_of_day_journal()
+    if success:
+        return Response({"message": message}, status=status.HTTP_201_CREATED)
+    return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+def end_of_day_journal():
+    """
+    Validates and processes end-of-day journal submission.
+    Checks if today is a working day and matches the next_working_date in STTB_Dates.
+    If valid, creates a new STTB_Dates entry for the next working day.
+    
+    Returns:
+        tuple: (bool, str) - (Success status, Message)
+    """
+    try:
+        # Set timezone to +07:00 as per user context
+        tz = pytz.timezone('Asia/Bangkok')  # UTC+07:00
+        today = timezone.now().astimezone(tz).date()
+        year_str = str(today.year)
+        month_str = str(today.month).zfill(2)  # Ensure two-digit month
+        print(f"Processing end-of-day journal for {year_str}-{month_str} on {today} in timezone {tz}")
+        # Step 1: Check if today is a working day in MTTB_LCL_Holiday
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(
+                HYear=year_str, HMonth=month_str
+            )
+            print(f"Holiday record found for {year_str}-{month_str}: {holiday_record.Holiday_List}")
+        except MTTB_LCL_Holiday.DoesNotExist:
+            return False, f"No holiday record found for {year_str}-{month_str}."
+
+        holiday_list = holiday_record.Holiday_List
+        if len(holiday_list) != 31:
+            return False, "Invalid Holiday_List length. Must be 31 characters."
+
+        # Get the day index (1-based) for today
+        day_index = today.day - 1
+        if day_index >= len(holiday_list) or holiday_list[day_index] != 'W':
+            return False, f"Today ({today}) is not a working day."
+
+        # Step 2: Check the latest STTB_Dates row
+        try:
+            latest_eod = STTB_Dates.objects.latest('date_id')
+        except STTB_Dates.DoesNotExist:
+            return False, "No records found in STTB_Dates."
+
+        # Convert next_working_day to date for comparison
+        next_working_date = latest_eod.next_working_Day.astimezone(tz).date()
+        if next_working_date != today:
+            return False, f"Today ({today}) does not match the next working day ({next_working_date})."
+
+        # Step 3: Find the next working day after today
+        current_date = today
+        next_working_date = None
+        while True:
+            current_date += timedelta(days=1)
+            # Check if we need to fetch a new holiday record for the next month
+            if current_date.month != today.month:
+                try:
+                    holiday_record = MTTB_LCL_Holiday.objects.get(
+                        HYear=str(current_date.year), HMonth=str(current_date.month).zfill(2),
+                        Record_Status='C', Auth_Status='U'
+                    )
+                    holiday_list = holiday_record.Holiday_List
+                except MTTB_LCL_Holiday.DoesNotExist:
+                    return False, f"No holiday record found for {current_date.year}-{current_date.month:02d}."
+            day_index = current_date.day - 1
+            if day_index < len(holiday_list) and holiday_list[day_index] == 'W':
+                next_working_date = current_date
+                break
+            if current_date > today + timedelta(days=31):  # Prevent infinite loop
+                return False, "No working day found in the next 31 days."
+
+        # Step 4: Create new STTB_Dates entry
+        new_eod = STTB_Dates(
+            Start_Date=latest_eod.next_working_Day,  # Use next_working_Day from latest row
+            prev_Working_Day=latest_eod.Start_Date,  # Use Start_Date from latest row
+            next_working_Day=timezone.make_aware(
+                datetime.combine(next_working_date, datetime.min.time()), timezone=tz
+            ),
+            eod_time='N'
+        )
+        new_eod.save()
+
+        return True, f"Journal submission successful for {today}. New entry created for {next_working_date}."
+
+    except Exception as e:
+        return False, f"Error processing journal submission: {str(e)}"
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_journal_submission_available(request):
+    """
+    GET: Check if today is available for journal submission.
+    Returns True if:
+    - Today is a working day (W)
+    - Today matches the latest next_working_Day
+    - eod_time is 'N' (not yet submitted)
+    """
+    try:
+        tz = pytz.timezone('Asia/Bangkok')
+        today = timezone.now().astimezone(tz).date()
+        year_str = str(today.year)
+        month_str = str(today.month).zfill(2)
+
+        # Step 1: Check holiday list
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+            holiday_list = holiday_record.Holiday_List
+        except MTTB_LCL_Holiday.DoesNotExist:
+            return Response({
+                "available": False,
+                "reason": f"No holiday record for {year_str}-{month_str}."
+            }, status=status.HTTP_200_OK)
+
+        if len(holiday_list) != 31:
+            return Response({
+                "available": False,
+                "reason": "Holiday_List is invalid length."
+            }, status=status.HTTP_200_OK)
+
+        day_index = today.day - 1
+        if holiday_list[day_index] != 'W':
+            return Response({
+                "available": False,
+                "reason": f"Today ({today}) is not a working day."
+            }, status=status.HTTP_200_OK)
+
+        # Step 2: Check latest STTB_Dates
+        try:
+            latest_eod = STTB_Dates.objects.latest('date_id')
+        except STTB_Dates.DoesNotExist:
+            return Response({
+                "available": False,
+                "reason": "No EOD records found."
+            }, status=status.HTTP_200_OK)
+
+        latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+        if latest_next_working != today:
+            return Response({
+                "available": False,
+                "reason": f"Today ({today}) does not match next working day ({latest_next_working})."
+            }, status=status.HTTP_200_OK)
+
+        if latest_eod.eod_time != 'N':
+            return Response({
+                "available": False,
+                "reason": "Journal already submitted for today."
+            }, status=status.HTTP_200_OK)
+
+        # All checks passed
+        return Response({
+            "available": True,
+            "reason": f"Today ({today}) is valid for journal submission."
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            "available": False,
+            "reason": f"Error checking availability: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
 
 #---------Asset-------------
 from rest_framework import viewsets, status
@@ -6885,6 +7068,7 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         })
     
+    # EOD Edn of Days Journal 
     @action(detail=False, methods=['post'], url_path='bulk-journal', permission_classes=[IsAuthenticated])
     def bulk_journal(self, request, pk=None):
         try:
@@ -7462,6 +7646,8 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+        
+
 # from rest_framework import viewsets, status
 # from rest_framework.decorators import action
 # from rest_framework.response import Response
