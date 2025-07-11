@@ -76,7 +76,12 @@ from .views import (
     force_logout_user_test,
     session_check,
     JournalProcessV2ViewSet,
+<<<<<<< HEAD
     
+=======
+    end_of_day_journal_view,
+    check_journal_submission_available
+>>>>>>> e38b3a351abb14b402e84e5f281b850b4b3dc924
 
 )
 from rest_framework_simplejwt.views import (
@@ -158,6 +163,10 @@ urlpatterns = [
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
+    path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'),
+    path('api/end-of-day-journal/check/', check_journal_submission_available),
+
+
     
     
     # Force logout endpoints (standalone)

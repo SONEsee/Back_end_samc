@@ -387,8 +387,8 @@ class Meta:
 class STTB_Dates(models.Model):
     date_id = models.AutoField(primary_key=True)
     Start_Date = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    prev_Wroking_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    next_working_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    prev_Working_Day = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    next_working_Day = models.DateTimeField(auto_now_add=False, null=True, blank=True)
     eod_time = models.CharField(max_length=1)
     class Meta:
         ordering=['date_id']  # Change from 'id' to 'DateID'
@@ -843,6 +843,7 @@ class STTB_EOC_STATUS(models.Model):
     eoc_seq_no = models.IntegerField(null=True, blank=True)        
     # module_id = models.ForeignKey('STTB_ModulesInfo', null=True, blank=True, on_delete=models.CASCADE)
     # function_id = models.ForeignKey('MTTB_Function_Desc', null=True, blank=True, on_delete=models.CASCADE)
+    eoc_id = models.ForeignKey(MTTB_EOC_MAINTAIN, null=True, blank=True, on_delete=models.CASCADE)
     eoc_type = models.CharField(max_length=3)
     eod_date = models.DateTimeField(auto_now=False, null=True, blank=True)         
     eoc_status = models.CharField(max_length=1)                   

@@ -2698,7 +2698,7 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
         # Example: Filter only active records
         active_only = self.request.query_params.get('active_only', None)
         if active_only and active_only.lower() == 'true':
-            queryset = queryset.filter(Record_Status='C')
+            queryset = queryset.filter(Record_Status='O')
         
         return queryset
     
@@ -5058,9 +5058,9 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         reference_no = request.query_params.get('Reference_No')
         auth_status = request.query_params.get('Auth_Status')
         
-        queryset = DETB_JRNL_LOG_MASTER.objects.filter(
+        queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
             delete_stat__isnull=True
-        ).exclude(delete_stat='D')
+        ).exclude(delete_stat='D', Auth_Status='A')
 
         if reference_no:
             queryset = queryset.filter(Reference_No=reference_no)
@@ -5159,7 +5159,7 @@ def submit_eod_journal(request):
         # Save New EOD Entry
         new_eod = STTB_Dates.objects.create(
             Start_Date=make_aware(datetime.combine(today, datetime.min.time())),
-            prev_Wroking_Day=last_eod.Start_Date if last_eod else None,
+            prev_Working_Day=last_eod.Start_Date if last_eod else None,
             next_working_Day=None,  # To be calculated if needed
             eod_time='Y'
         )
@@ -5175,6 +5175,556 @@ def submit_eod_journal(request):
 
     except Exception as e:
         return Response({"status": "error", "message": str(e)}, status=500)
+    
+
+
+# from datetime import datetime, timedelta
+# from django.utils import timezone
+# import pytz
+# from .models import MTTB_LCL_Holiday, STTB_Dates
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def end_of_day_journal_view(request):
+#     """
+#     API endpoint to validate and process end-of-day journal submission.
+#     Requires authentication.
+#     """
+#     success, message = end_of_day_journal()
+#     if success:
+#         return Response({"message": message}, status=status.HTTP_201_CREATED)
+#     return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+# def end_of_day_journal():
+#     """
+#     Validates and processes end-of-day journal submission.
+#     Checks if today is a working day and matches the next_working_date in STTB_Dates.
+#     If valid, creates a new STTB_Dates entry for the next working day.
+    
+#     Returns:
+#         tuple: (bool, str) - (Success status, Message)
+#     """
+#     try:
+#         # Set timezone to +07:00 as per user context
+#         tz = pytz.timezone('Asia/Bangkok')  # UTC+07:00
+#         today = timezone.now().astimezone(tz).date()
+#         year_str = str(today.year)
+#         month_str = str(today.month).zfill(2)  # Ensure two-digit month
+#         print(f"Processing end-of-day journal for {year_str}-{month_str} on {today} in timezone {tz}")
+#         # Step 1: Check if today is a working day in MTTB_LCL_Holiday
+#         try:
+#             holiday_record = MTTB_LCL_Holiday.objects.get(
+#                 HYear=year_str, HMonth=month_str
+#             )
+#             print(f"Holiday record found for {year_str}-{month_str}: {holiday_record.Holiday_List}")
+#         except MTTB_LCL_Holiday.DoesNotExist:
+#             return False, f"No holiday record found for {year_str}-{month_str}."
+
+#         holiday_list = holiday_record.Holiday_List
+#         if len(holiday_list) != 31:
+#             return False, "Invalid Holiday_List length. Must be 31 characters."
+
+#         # Get the day index (1-based) for today
+#         day_index = today.day - 1
+#         if day_index >= len(holiday_list) or holiday_list[day_index] != 'W':
+#             return False, f"Today ({today}) is not a working day."
+
+#         # Step 2: Check the latest STTB_Dates row
+#         try:
+#             latest_eod = STTB_Dates.objects.latest('date_id')
+#         except STTB_Dates.DoesNotExist:
+#             return False, "No records found in STTB_Dates."
+
+#         # Convert next_working_day to date for comparison
+#         next_working_date = latest_eod.next_working_Day.astimezone(tz).date()
+#         if next_working_date != today:
+#             return False, f"Today ({today}) does not match the next working day ({next_working_date})."
+
+#         # Step 3: Find the next working day after today
+#         current_date = today
+#         next_working_date = None
+#         while True:
+#             current_date += timedelta(days=1)
+#             # Check if we need to fetch a new holiday record for the next month
+#             if current_date.month != today.month:
+#                 try:
+#                     holiday_record = MTTB_LCL_Holiday.objects.get(
+#                         HYear=str(current_date.year), HMonth=str(current_date.month).zfill(2),
+#                         Record_Status='C', Auth_Status='U'
+#                     )
+#                     holiday_list = holiday_record.Holiday_List
+#                 except MTTB_LCL_Holiday.DoesNotExist:
+#                     return False, f"No holiday record found for {current_date.year}-{current_date.month:02d}."
+#             day_index = current_date.day - 1
+#             if day_index < len(holiday_list) and holiday_list[day_index] == 'W':
+#                 next_working_date = current_date
+#                 break
+#             if current_date > today + timedelta(days=31):  # Prevent infinite loop
+#                 return False, "No working day found in the next 31 days."
+
+#         # Step 4: Create new STTB_Dates entry
+#         new_eod = STTB_Dates(
+#             Start_Date=latest_eod.next_working_Day,  # Use next_working_Day from latest row
+#             prev_Working_Day=latest_eod.Start_Date,  # Use Start_Date from latest row
+#             next_working_Day=timezone.make_aware(
+#                 datetime.combine(next_working_date, datetime.min.time()), timezone=tz
+#             ),
+#             eod_time='N'
+#         )
+#         new_eod.save()
+
+#         return True, f"Journal submission successful for {today}. New entry created for {next_working_date}."
+
+#     except Exception as e:
+#         return False, f"Error processing journal submission: {str(e)}"
+
+
+from datetime import datetime, timedelta
+from django.utils import timezone
+from django.db import transaction
+import pytz
+import logging
+from .models import MTTB_LCL_Holiday, STTB_Dates, MTTB_EOC_MAINTAIN, MTTB_Function_Desc, STTB_EOC_DAILY_LOG, ACTB_DAIRY_LOG
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def end_of_day_journal_view(request):
+    """
+    API endpoint to validate and process end-of-day journal submission.
+    Executes all EOD functions in sequence based on their status.
+    Requires authentication.
+    """
+    try:
+        # First validate if EOD can be performed
+        success, message = validate_eod_requirements()
+        if not success:
+            return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Execute EOD process with sub-functions
+        success, message = execute_eod_process(request.user)
+        if success:
+            return Response({"message": message}, status=status.HTTP_201_CREATED)
+        return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        logger.error(f"EOD Journal View Error: {str(e)}")
+        return Response({"error": f"ເກີດຂໍ້ຜິດພາດໃນລະບົບ: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+def validate_eod_requirements():
+    """
+    Validates if EOD can be performed (same as your existing end_of_day_journal validation)
+    """
+    try:
+        # Set timezone to +07:00 as per user context
+        tz = pytz.timezone('Asia/Bangkok')  # UTC+07:00
+        today = timezone.now().astimezone(tz).date()
+        year_str = str(today.year)
+        month_str = str(today.month).zfill(2)
+        
+        # Step 1: Check if today is a working day
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(
+                HYear=year_str, HMonth=month_str
+            )
+        except MTTB_LCL_Holiday.DoesNotExist:
+            return False, f"No holiday record found for {year_str}-{month_str}."
+
+        holiday_list = holiday_record.Holiday_List
+        if len(holiday_list) != 31:
+            return False, "Invalid Holiday_List length. Must be 31 characters."
+
+        day_index = today.day - 1
+        if day_index >= len(holiday_list) or holiday_list[day_index] != 'W':
+            return False, f"Today ({today}) is not a working day."
+
+        # Step 2: Check the latest STTB_Dates row
+        try:
+            latest_eod = STTB_Dates.objects.latest('date_id')
+        except STTB_Dates.DoesNotExist:
+            return False, "No records found in STTB_Dates."
+
+        next_working_date = latest_eod.next_working_Day.astimezone(tz).date()
+        if next_working_date != today:
+            return False, f"Today ({today}) does not match the next working day ({next_working_date})."
+
+        return True, f"EOD validation passed for {today}"
+
+    except Exception as e:
+        return False, f"Error in EOD validation: {str(e)}"
+
+def execute_eod_process(user):
+    """
+    Main EOD execution process that runs all sub-functions in sequence
+    """
+    try:
+        with transaction.atomic():
+            # Get all EOD functions ordered by sequence
+            eod_functions = get_eod_functions()
+            
+            if not eod_functions:
+                return False, "ບໍ່ພົບຟັງຊັນ EOD ທີ່ຕ້ອງປະມວນຜົນ"
+            
+            # Execute functions in sequence
+            execution_results = []
+            total_executed = 0
+            total_skipped = 0
+            
+            for eod_function in eod_functions:
+                try:
+                    if should_execute_function(eod_function):
+                        # Execute the function
+                        func_success, func_message = execute_eod_function(eod_function, user)
+                        
+                        if func_success:
+                            total_executed += 1
+                            execution_results.append({
+                                'function': eod_function.function_id.description_la,
+                                'status': 'success',
+                                'message': func_message
+                            })
+                            logger.info(f"EOD Function {eod_function.function_id.function_id} executed successfully")
+                        else:
+                            # If any critical function fails, stop the process
+                            logger.error(f"EOD Function {eod_function.function_id.function_id} failed: {func_message}")
+                            return False, f"ຟັງຊັນ {eod_function.function_id.description_la} ລົ້ມເຫລວ: {func_message}"
+                    else:
+                        total_skipped += 1
+                        execution_results.append({
+                            'function': eod_function.function_id.description_la,
+                            'status': 'skipped',
+                            'message': 'ຟັງຊັນຖືກປິດ (Record_Status = C)'
+                        })
+                        logger.info(f"EOD Function {eod_function.function_id.function_id} skipped (closed)")
+                        
+                except Exception as e:
+                    logger.error(f"Error executing EOD function {eod_function.function_id.function_id}: {str(e)}")
+                    return False, f"ຂໍ້ຜິດພາດໃນຟັງຊັນ {eod_function.function_id.description_la}: {str(e)}"
+            
+            # After all functions are executed, create new STTB_Dates entry
+            success, message = create_next_working_day_entry(user)
+            if not success:
+                return False, f"ບໍ່ສາມາດສ້າງ entry ວັນເຮັດການໃໝ່ໄດ້: {message}"
+            
+            # Prepare summary message
+            summary_message = f"ປິດບັນຊີປະຈຳວັນສຳເລັດແລ້ວ - ປະມວນຜົນ: {total_executed} ຟັງຊັນ, ຂ້າມ: {total_skipped} ຟັງຊັນ"
+            
+            return True, summary_message
+
+    except Exception as e:
+        logger.error(f"Error in EOD process execution: {str(e)}")
+        return False, f"ເກີດຂໍ້ຜິດພາດໃນການປະມວນຜົນ EOD: {str(e)}"
+
+def get_eod_functions():
+    """
+    Get all EOD functions that should be considered for execution
+    """
+    return MTTB_EOC_MAINTAIN.objects.filter(
+        eoc_type='EOD',
+        Auth_Status='A'  # Only authorized functions
+    ).select_related('function_id', 'module_id').order_by('eoc_seq_no')
+
+def should_execute_function(eod_function):
+    """
+    Determine if a function should be executed based on its status
+    """
+    # Execute only if Record_Status is 'O' (Open)
+    return eod_function.Record_Status == 'O'
+
+def execute_eod_function(eod_function, user):
+    """
+    Execute a specific EOD function based on its function_id
+    """
+    function_id = eod_function.function_id.function_id
+    
+    try:
+        # Map function IDs to their corresponding execution methods
+        function_mapping = {
+            'EOD_JOURNAL': execute_bulk_journal,
+            'EOD_BALANCE': execute_balance_calculation,
+            'EOD_INTEREST': execute_interest_calculation,
+            'EOD_REPORT': execute_report_generation,
+            'EOD_BACKUP': execute_backup_process,
+            # Add more function mappings as needed
+        }
+        
+        if function_id in function_mapping:
+            # Execute the mapped function
+            return function_mapping[function_id](eod_function, user)
+        else:
+            # Generic execution for unmapped functions
+            return execute_generic_function(eod_function, user)
+            
+    except Exception as e:
+        logger.error(f"Error executing function {function_id}: {str(e)}")
+        return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ: {str(e)}"
+
+def execute_bulk_journal(eod_function, user):
+    """
+    Execute the bulk journal function (move data from ACTB_DAIRY_LOG to STTB_EOC_DAILY_LOG)
+    """
+    try:
+        # Fetch authorized records from ACTB_DAIRY_LOG
+        authorized_logs = ACTB_DAIRY_LOG.objects.filter(Auth_Status='A')
+        
+        if not authorized_logs.exists():
+            return True, "ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນ"
+        
+        # Prepare bulk create objects
+        eoc_logs = []
+        for log in authorized_logs:
+            eoc_log = STTB_EOC_DAILY_LOG(
+                module=log.module.module if log.module else None,
+                trn_ref_no=log.trn_ref_no.trn_ref_no if log.trn_ref_no else None,
+                trn_ref_sub_no=log.trn_ref_sub_no,
+                event_sr_no=log.event_sr_no,
+                event=log.event,
+                ac_no=log.ac_no.gl_sub_code if log.ac_no else None,
+                ac_ccy=log.ac_ccy.ccy_code if log.ac_ccy else None,
+                drcr_ind=log.drcr_ind,
+                trn_code=log.trn_code.trn_code if log.trn_code else None,
+                fcy_amount=log.fcy_amount,
+                exch_rate=log.exch_rate,
+                lcy_amount=log.lcy_amount,
+                external_ref_no=log.external_ref_no,
+                addl_text=log.addl_text,
+                addl_sub_text=log.addl_sub_text,
+                trn_dt=log.trn_dt,
+                type=log.glType,
+                category=log.category,
+                value_dt=log.value_dt,
+                financial_cycle=log.financial_cycle.fin_cycle if log.financial_cycle else None,
+                period_code=log.period_code.per_code if log.period_code else None,
+                user_id=log.user_id.user_id if log.user_id else None,
+                Maker_DT_Stamp=log.Maker_DT_Stamp,
+                auth_id=log.auth_id.user_id if log.auth_id else None,
+                Checker_DT_Stamp=log.Checker_DT_Stamp,
+                Auth_Status=log.Auth_Status,
+                product=log.product,
+                entry_seq_no=log.entry_seq_no
+            )
+            eoc_logs.append(eoc_log)
+        
+        # Bulk create records in STTB_EOC_DAILY_LOG
+        STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
+        
+        return True, f"ບັນທຶກ journal ສຳເລັດ: {len(eoc_logs)} ລາຍການ"
+        
+    except Exception as e:
+        return False, f"ຂໍ້ຜິດພາດໃນການບັນທຶກ journal: {str(e)}"
+
+def execute_balance_calculation(eod_function, user):
+    """
+    Execute balance calculation function
+    """
+    try:
+        # Add your balance calculation logic here
+        # This is a placeholder implementation
+        
+        return True, "ຄິດໄລ່ຍອດເງິນສຳເລັດ"
+        
+    except Exception as e:
+        return False, f"ຂໍ້ຜິດພາດໃນການຄິດໄລ່ຍອດເງິນ: {str(e)}"
+
+def execute_interest_calculation(eod_function, user):
+    """
+    Execute interest calculation function
+    """
+    try:
+        # Add your interest calculation logic here
+        # This is a placeholder implementation
+        
+        return True, "ຄິດໄລ່ດອກເບ້ຍສຳເລັດ"
+        
+    except Exception as e:
+        return False, f"ຂໍ້ຜິດພາດໃນການຄິດໄລ່ດອກເບ້ຍ: {str(e)}"
+
+def execute_report_generation(eod_function, user):
+    """
+    Execute report generation function
+    """
+    try:
+        # Add your report generation logic here
+        # This is a placeholder implementation
+        
+        return True, "ສ້າງລາຍງານສຳເລັດ"
+        
+    except Exception as e:
+        return False, f"ຂໍ້ຜິດພາດໃນການສ້າງລາຍງານ: {str(e)}"
+
+def execute_backup_process(eod_function, user):
+    """
+    Execute backup process function
+    """
+    try:
+        # Add your backup logic here
+        # This is a placeholder implementation
+        
+        return True, "ສຳຮອງຂໍ້ມູນສຳເລັດ"
+        
+    except Exception as e:
+        return False, f"ຂໍ້ຜິດພາດໃນການສຳຮອງຂໍ້ມູນ: {str(e)}"
+
+def execute_generic_function(eod_function, user):
+    """
+    Generic function execution for unmapped functions
+    """
+    try:
+        # Generic implementation - can be customized based on your needs
+        # This could call external scripts, APIs, or other processes
+        
+        function_name = eod_function.function_id.description_la
+        return True, f"ປະມວນຜົນຟັງຊັນ {function_name} ສຳເລັດ"
+        
+    except Exception as e:
+        return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນຟັງຊັນ: {str(e)}"
+
+def create_next_working_day_entry(user):
+    """
+    Create the next working day entry in STTB_Dates (from your original end_of_day_journal function)
+    """
+    try:
+        tz = pytz.timezone('Asia/Bangkok')
+        today = timezone.now().astimezone(tz).date()
+        
+        # Get the latest STTB_Dates row
+        latest_eod = STTB_Dates.objects.latest('date_id')
+        
+        # Find the next working day after today
+        current_date = today
+        next_working_date = None
+        
+        while True:
+            current_date += timedelta(days=1)
+            
+            # Check if we need to fetch a new holiday record for the next month
+            if current_date.month != today.month:
+                try:
+                    holiday_record = MTTB_LCL_Holiday.objects.get(
+                        HYear=str(current_date.year), 
+                        HMonth=str(current_date.month).zfill(2),
+                        Record_Status='C', 
+                        Auth_Status='U'
+                    )
+                    holiday_list = holiday_record.Holiday_List
+                except MTTB_LCL_Holiday.DoesNotExist:
+                    return False, f"No holiday record found for {current_date.year}-{current_date.month:02d}."
+            else:
+                holiday_record = MTTB_LCL_Holiday.objects.get(
+                    HYear=str(today.year), HMonth=str(today.month).zfill(2)
+                )
+                holiday_list = holiday_record.Holiday_List
+                
+            day_index = current_date.day - 1
+            if day_index < len(holiday_list) and holiday_list[day_index] == 'W':
+                next_working_date = current_date
+                break
+                
+            if current_date > today + timedelta(days=31):  # Prevent infinite loop
+                return False, "No working day found in the next 31 days."
+
+        # Create new STTB_Dates entry
+        new_eod = STTB_Dates(
+            Start_Date=latest_eod.next_working_Day,
+            prev_Working_Day=latest_eod.Start_Date,
+            next_working_Day=timezone.make_aware(
+                datetime.combine(next_working_date, datetime.min.time()), timezone=tz
+            ),
+            eod_time='N'
+        )
+        new_eod.save()
+
+        return True, f"ສ້າງ entry ວັນເຮັດການໃໝ່ສຳເລັດ: {next_working_date}"
+
+    except Exception as e:
+        return False, f"ຂໍ້ຜິດພາດໃນການສ້າງ entry ວັນເຮັດການໃໝ່: {str(e)}"
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_journal_submission_available(request):
+    """
+    GET: Check if today is available for journal submission.
+    Returns True if:
+    - Today is a working day (W)
+    - Today matches the latest next_working_Day
+    - eod_time is 'N' (not yet submitted)
+    """
+    try:
+        tz = pytz.timezone('Asia/Bangkok')
+        today = timezone.now().astimezone(tz).date()
+        year_str = str(today.year)
+        month_str = str(today.month).zfill(2)
+
+        # Step 1: Check holiday list
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+            holiday_list = holiday_record.Holiday_List
+        except MTTB_LCL_Holiday.DoesNotExist:
+            return Response({
+                "available": False,
+                "reason": f"No holiday record for {year_str}-{month_str}."
+            }, status=status.HTTP_200_OK)
+
+        if len(holiday_list) != 31:
+            return Response({
+                "available": False,
+                "reason": "Holiday_List is invalid length."
+            }, status=status.HTTP_200_OK)
+
+        day_index = today.day - 1
+        if holiday_list[day_index] != 'W':
+            return Response({
+                "available": False,
+                "reason": f"Today ({today}) is not a working day."
+            }, status=status.HTTP_200_OK)
+
+        # Step 2: Check latest STTB_Dates
+        try:
+            latest_eod = STTB_Dates.objects.latest('date_id')
+        except STTB_Dates.DoesNotExist:
+            return Response({
+                "available": False,
+                "reason": "No EOD records found."
+            }, status=status.HTTP_200_OK)
+
+        latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+        if latest_next_working != today:
+            return Response({
+                "available": False,
+                "reason": f"Today ({today}) does not match next working day ({latest_next_working})."
+            }, status=status.HTTP_200_OK)
+
+        if latest_eod.eod_time != 'N':
+            return Response({
+                "available": False,
+                "reason": "Journal already submitted for today."
+            }, status=status.HTTP_200_OK)
+
+        # All checks passed
+        return Response({
+            "available": True,
+            "reason": f"Today ({today}) is valid for journal submission."
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            "available": False,
+            "reason": f"Error checking availability: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
 
 #---------Asset-------------
 from rest_framework import viewsets, status
@@ -7045,6 +7595,7 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         })
     
+    # EOD Edn of Days Journal 
     @action(detail=False, methods=['post'], url_path='bulk-journal', permission_classes=[IsAuthenticated])
     def bulk_journal(self, request, pk=None):
         try:
@@ -7622,6 +8173,8 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+        
+
 # from rest_framework import viewsets, status
 # from rest_framework.decorators import action
 # from rest_framework.response import Response
