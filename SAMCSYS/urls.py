@@ -76,6 +76,7 @@ from .views import (
     force_logout_user_test,
     session_check,
     JournalProcessV2ViewSet,
+    
     end_of_day_journal_view,
     check_journal_submission_available,
     validate_eod_prerequisites_view,

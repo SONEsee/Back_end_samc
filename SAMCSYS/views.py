@@ -6414,31 +6414,133 @@ class FAAssetExpenseViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+# class FATransferLogsViewSet(viewsets.ModelViewSet):
+#     serializer_class = FATransferLogsSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Transfer_Logs.objects.all().order_by('transfer_id')
+#         asset_list_id = self.request.query_params.get('asset_list_id')
+#         if asset_list_id:
+#             queryset = queryset.filter(asset_list_id=asset_list_id)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+# ເພີ່ມ imports ໃນດ້ານເທິງຂອງ file
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from .models import FA_Transfer_Logs, FA_Asset_Lists  # ເພີ່ມ imports ເຫຼົ່ານີ້
+from .serializers import FATransferLogsSerializer
+
 class FATransferLogsViewSet(viewsets.ModelViewSet):
+    queryset = FA_Transfer_Logs.objects.all()
     serializer_class = FATransferLogsSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        queryset = FA_Transfer_Logs.objects.all().order_by('transfer_id')
-        asset_list_id = self.request.query_params.get('asset_list_id')
-        if asset_list_id:
-            queryset = queryset.filter(asset_list_id=asset_list_id)
-        return queryset
-    
     def perform_create(self, serializer):
+        from django.db import transaction
+        import logging
+        
+        logger = logging.getLogger(__name__)
         user = self.request.user
-        serializer.save(
-            Maker_Id=user,
-            Maker_DT_Stamp=timezone.now()
-        )
+        
+        with transaction.atomic():
+            # ບັນທຶກ transfer log
+            transfer_log = serializer.save(
+                Maker_Id=user,
+                Maker_DT_Stamp=timezone.now()
+            )
+            
+            logger.info(f"Transfer log created: {transfer_log.transfer_id}")
+            
+            try:
+                # Debug: ກວດສອບ transfer_log ກ່ອນ
+                print(f"🔍 Transfer log asset_list_id: {transfer_log.asset_list_id}")
+                print(f"🔍 Transfer log asset_list_id type: {type(transfer_log.asset_list_id)}")
+                print(f"🔍 Transfer log asset_list_id pk: {transfer_log.asset_list_id.pk if transfer_log.asset_list_id else 'None'}")
+                
+                # ກວດສອບວ່າ asset_list_id ບໍ່ເປັນ None
+                if not transfer_log.asset_list_id:
+                    raise ValueError("Asset list ID is None")
+                
+                # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+                asset_obj = transfer_log.asset_list_id
+                
+                # ຫຼື ລອງ get ແບບລະມັດລະວັງ
+                try:
+                    asset_obj_fresh = FA_Asset_Lists.objects.get(asset_list_id=asset_obj.asset_list_id)
+                    print(f"✅ Successfully got fresh asset object: {asset_obj_fresh.asset_list_id}")
+                    asset_obj = asset_obj_fresh
+                except FA_Asset_Lists.DoesNotExist:
+                    print(f"⚠️ Could not get fresh asset, using existing: {asset_obj.asset_list_id}")
+                    # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+                
+                old_location = asset_obj.asset_location_id
+                new_location = transfer_log.to_location_id
+                
+                print(f"🔥 Asset ID: {asset_obj.asset_list_id}")
+                print(f"🔥 Old location: {old_location}")
+                print(f"🔥 New location: {new_location}")
+                print(f"🔥 New location type: {type(new_location)}")
+                
+                # ອັບເດດສະຖານທີ່
+                asset_obj.asset_location_id = new_location
+                
+                # ບັງຄັບບັນທຶກດ້ວຍ update_fields
+                asset_obj.save(update_fields=['asset_location_id'])
+                
+                # ກວດສອບວ່າອັບເດດແລ້ວຈິງບໍ
+                asset_obj.refresh_from_db()
+                
+                print(f"✅ Asset location updated from {old_location} to {asset_obj.asset_location_id}")
+                logger.info(f"Asset {asset_obj.asset_list_id} moved from {old_location} to {asset_obj.asset_location_id}")
+                
+            except FA_Asset_Lists.DoesNotExist:
+                error_msg = f"Asset not found: {transfer_log.asset_list_id}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+            except Exception as e:
+                error_msg = f"Failed to update asset location: {e}"
+                logger.error(error_msg)
+                print(f"❌ ERROR: {error_msg}")
+                import traceback
+                print(traceback.format_exc())
+                raise
 
-    def perform_update(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-
+    # ເພີ່ມ method ນີ້ເພື່ອກວດສອບຫຼັງການອັບເດດ
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        
+        # ກວດສອບວ່າການອັບເດດສຳເລັດແລ້ວ
+        if response.status_code == 201:
+            transfer_log_id = response.data.get('transfer_id')
+            if transfer_log_id:
+                try:
+                    
+                    from .models import FA_Transfer_Logs  
+                    transfer_log = FA_Transfer_Logs.objects.get(pk=transfer_log_id)
+                    asset = transfer_log.asset_list_id
+                    
+                    print(f"🔍 Final verification - Asset {asset.asset_list_id} location: {asset.asset_location_id}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Verification failed: {e}")
+        
+        return response
 class FAAssetPhotosViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetPhotosSerializer
     permission_classes = [IsAuthenticated]
@@ -6489,6 +6591,37 @@ class FAMaintenanceLogsViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+# class FAAccountingMethodViewSet(viewsets.ModelViewSet):
+#     serializer_class = FAAccountingMethodSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Accounting_Method.objects.all().order_by('mapping_id')
+#         acc_type = self.request.query_params.get('acc_type')
+#         if acc_type:
+#             queryset = queryset.filter(acc_type=acc_type)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+from django.http import Http404
+from rest_framework import status
+from rest_framework.response import Response
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+from SAMCSYS.models import MTTB_GLSub, MTTB_GLMaster  # ເພີ່ມ MTTB_GLMaster
+
 class FAAccountingMethodViewSet(viewsets.ModelViewSet):
     serializer_class = FAAccountingMethodSerializer
     permission_classes = [IsAuthenticated]
@@ -6500,7 +6633,123 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(acc_type=acc_type)
         return queryset
     
+    def create_glsub_record(self, account_code, description):
+        """ສ້າງ record ໃໝ່ໃນ MTTB_GLSub"""
+        try:
+           
+            if '.' in account_code:
+                gl_code = account_code.split('.')[0]
+            else:
+                gl_code = account_code
+            
+           
+            try:
+                gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code)
+                gl_code_id = gl_master.glid  
+            except MTTB_GLMaster.DoesNotExist:
+                raise ValueError(f"ບໍ່ພົບ gl_code '{gl_code}' ໃນ MTTB_GLMaster")
+            
+            
+            glsub_record = MTTB_GLSub.objects.create(
+                glsub_code=account_code,
+                glsub_Desc_la=description,
+                gl_code_id=gl_code_id,
+                Maker_Id=self.request.user,
+                Maker_DT_Stamp=timezone.now(),
+                Record_Status='O',
+                Auth_Status='A'   
+               
+            )
+            
+            return glsub_record
+            
+        except Exception as e:
+            raise Exception(f"ຜິດພາດໃນການສ້າງ GLSub: {str(e)}")
+    
+    def create(self, request, *args, **kwargs):
+        """Override create method ເພື່ອກວດສອບແລະສ້າງ GLSub records"""
+        
+        
+        debit_account_id = request.data.get('debit_account_id')
+        credit_account_id = request.data.get('credit_account_id')
+        description = request.data.get('description', '')  # ສຳລັບ glsub_Desc_la
+        
+        
+        if not debit_account_id or not credit_account_id:
+            return Response(
+                {'error': 'debit_account_id ແລະ credit_account_id ຈຳເປັນຕ້ອງມີ'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+           
+            with transaction.atomic():
+                
+                
+                debit_exists = MTTB_GLSub.objects.filter(glsub_code=debit_account_id).exists()
+                credit_exists = MTTB_GLSub.objects.filter(glsub_code=credit_account_id).exists()
+                
+                if debit_exists:
+                    return Response(
+                        {
+                            'error': f'debit_account_id "{debit_account_id}" ມີຢູ່ໃນລະບົບແລ້ວ',
+                            'code': 'DUPLICATE_DEBIT_ACCOUNT'
+                        }, 
+                        status=status.HTTP_501_NOT_IMPLEMENTED
+                    )
+                
+                if credit_exists:
+                    return Response(
+                        {
+                            'error': f'credit_account_id "{credit_account_id}" ມີຢູ່ໃນລະບົບແລ້ວ',
+                            'code': 'DUPLICATE_CREDIT_ACCOUNT'
+                        }, 
+                        status=status.HTTP_501_NOT_IMPLEMENTED
+                    )
+                
+                
+                try:
+                    
+                    debit_glsub = self.create_glsub_record(
+                        debit_account_id, 
+                        f" {description}"
+                    )
+                    
+                    
+                    credit_glsub = self.create_glsub_record(
+                        credit_account_id, 
+                        f" {description}"
+                    )
+                    
+                    print(f"✅ ສ້າງ GLSub records ສຳເລັດ: {debit_glsub.glsub_code}, {credit_glsub.glsub_code}")
+                    
+                except Exception as e:
+                    return Response(
+                        {'error': f'ຜິດພາດໃນການສ້າງ GLSub records: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                
+                
+                response = super().create(request, *args, **kwargs)
+                
+                
+                if response.status_code == 201:
+                    response.data['glsub_created'] = {
+                        'debit_account': debit_account_id,
+                        'credit_account': credit_account_id,
+                        'message': 'GLSub records ຖືກສ້າງສຳເລັດ'
+                    }
+                
+                return response
+                
+        except Exception as e:
+            return Response(
+                {'error': f'ຜິດພາດໃນການດຳເນີນການ: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     def perform_create(self, serializer):
+        """ບັນທຶກຂໍ້ມູນພ້ອມ Maker info"""
         user = self.request.user
         serializer.save(
             Maker_Id=user,
@@ -6513,7 +6762,20 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
-    
+    def perform_create(self, serializer):
+        """ບັນທຶກຂໍ້ມູນພ້ອມ Maker info"""
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
 #----------------end of Asset-----------------
 
 # Function Get User Login Session
