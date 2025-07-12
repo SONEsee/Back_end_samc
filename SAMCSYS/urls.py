@@ -78,7 +78,9 @@ from .views import (
     JournalProcessV2ViewSet,
     
     end_of_day_journal_view,
-    check_journal_submission_available
+    check_journal_submission_available,
+    validate_eod_prerequisites_view,
+    setup_default_eod_functions
 
 )
 from rest_framework_simplejwt.views import (
@@ -162,6 +164,8 @@ urlpatterns = [
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
     path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'),
     path('api/end-of-day-journal/check/', check_journal_submission_available),
+    path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
+    path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
 
 
     
