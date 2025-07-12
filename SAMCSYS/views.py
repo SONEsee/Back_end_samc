@@ -1006,7 +1006,14 @@ def role_sidebar(request, role_id=None):
         main = sub.menu_id
         mod = main.module_Id
 
+    # check Record_Status = 'O' 
         if not (sub and main and mod):
+            continue
+        if mod.Record_Status != 'O':
+            continue
+        if main.Record_Status != 'O':
+            continue
+        if sub.Record_Status != 'O':
             continue
 
         # Module level
