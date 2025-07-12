@@ -867,7 +867,7 @@ def sidebar_for_user(request, user_id):
     # 2) Fetch all role_detail for this role, with joins down to module
     details = (
         MTTB_Role_Detail.objects
-          .filter(role_id=role)
+          .filter(role_id=role, Record_Status='O')
           .select_related(
               'sub_menu_id',
               'sub_menu_id__menu_id',
@@ -881,7 +881,11 @@ def sidebar_for_user(request, user_id):
         sub   = det.sub_menu_id
         main  = sub.menu_id if sub else None
         mod   = main.module_Id if main else None
+
+        # Ensure all related records have Record_Status = 'O'
         if not (sub and main and mod):
+            continue
+        if sub.Record_Status != 'O' or main.Record_Status != 'O' or mod.Record_Status != 'O':
             continue
 
         # Module level
