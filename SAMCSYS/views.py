@@ -1006,7 +1006,14 @@ def role_sidebar(request, role_id=None):
         main = sub.menu_id
         mod = main.module_Id
 
+    # check Record_Status = 'O' 
         if not (sub and main and mod):
+            continue
+        if mod.Record_Status != 'O':
+            continue
+        if main.Record_Status != 'O':
+            continue
+        if sub.Record_Status != 'O':
             continue
 
         # Module level
@@ -6442,6 +6449,13 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
     queryset = FA_Transfer_Logs.objects.all()
     serializer_class = FATransferLogsSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Transfer_Logs.objects.all().order_by('transfer_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+        return queryset
 
     def perform_create(self, serializer):
         from django.db import transaction
