@@ -5054,12 +5054,15 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     def journal_log_active(self, request):
         """
         Get all active (not deleted) journal log master records, optionally filtered by Reference_No.
+        
         """
+
+        Today = timezone.now().date()
         reference_no = request.query_params.get('Reference_No')
         auth_status = request.query_params.get('Auth_Status')
         
         queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
-            delete_stat__isnull=True
+            delete_stat__isnull=True, Value_date=Today
         ).exclude(delete_stat='D', Auth_Status='A')
 
         if reference_no:
@@ -7575,39 +7578,39 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
                 'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # # Keep your existing bulk_journal method but it's now called by the main EOD process
-    # @action(detail=False, methods=['post'], url_path='bulk-journal', permission_classes=[IsAuthenticated])
-    # def bulk_journal(self, request, pk=None):
-    #     """
-    #     Legacy method - now this is called automatically by the main EOD process
-    #     But kept for backward compatibility or manual execution
-    #     """
-    #     try:
-    #         from views.eod_functions import execute_bulk_journal
+    # Keep your existing bulk_journal method but it's now called by the main EOD process
+    @action(detail=False, methods=['post'], url_path='bulk-journal', permission_classes=[IsAuthenticated])
+    def bulk_journal(self, request, pk=None):
+        """
+        Legacy method - now this is called automatically by the main EOD process
+        But kept for backward compatibility or manual execution
+        """
+        try:
+            from views import execute_bulk_journal
             
-    #         # Create a mock eod_function object for the call
-    #         class MockEODFunction:
-    #             function_id = type('obj', (object,), {'function_id': 'EOD_JOURNAL'})
+            # Create a mock eod_function object for the call
+            class MockEODFunction:
+                function_id = type('obj', (object,), {'function_id': 'EOD_JOURNAL'})
             
-    #         success, message = execute_bulk_journal(MockEODFunction(), request.user)
+            success, message = execute_bulk_journal(MockEODFunction(), request.user)
             
-    #         if success:
-    #             return Response({
-    #                 'status': 'success',
-    #                 'message': message
-    #             })
-    #         else:
-    #             return Response({
-    #                 'status': 'error',
-    #                 'message': message
-    #             }, status=status.HTTP_400_BAD_REQUEST)
+            if success:
+                return Response({
+                    'status': 'success',
+                    'message': message
+                })
+            else:
+                return Response({
+                    'status': 'error',
+                    'message': message
+                }, status=status.HTTP_400_BAD_REQUEST)
                 
-    #     except Exception as e:
-    #         logger.error(f"Error in bulk_journal: {str(e)}")
-    #         return Response({
-    #             'status': 'error',
-    #             'message': str(e)
-    #         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"Error in bulk_journal: {str(e)}")
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     
 # from rest_framework import viewsets, permissions
