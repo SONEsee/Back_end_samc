@@ -675,6 +675,11 @@ class AssetTypeDetailsSerializer(serializers.ModelSerializer):
         model = FA_Asset_Type
         fields = ['type_code', 'type_name_la', 'type_name_en']
 
+class AssetListDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Lists
+        fields = ['asset_list_id', 'asset_spec','asset_list_code','asset_serial_no','asset_tag']
+
 # class FAAssetTypeSerializer(serializers.ModelSerializer):
 #     class Meta:
 #         model = FA_Asset_Type
@@ -815,6 +820,9 @@ class FAAssetExpenseSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FATransferLogsSerializer(serializers.ModelSerializer):
+    asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
+    from_location_detail = LocationDetailSerializer(source='from_location_id', read_only=True)
+    to_location_detail = LocationDetailSerializer(source='to_location_id', read_only=True)
     class Meta:
         model = FA_Transfer_Logs
         fields = '__all__'
