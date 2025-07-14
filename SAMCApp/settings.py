@@ -169,7 +169,7 @@ DATABASES = {
     #     "HOST": "192.168.10.35",
     #     "PORT": "5432"
     # }
-    'default': {
+   'default': {
         'ENGINE': 'mssql',                
         'NAME': 'SAMCDB_Dev',          
         'USER': 'sa',            
@@ -178,9 +178,7 @@ DATABASES = {
         'PORT': '1433',                       
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
-            # optional:
-            # 'encrypt': True,    # if your server requires encryption
-            # 'TrustServerCertificate': 'yes',
+            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
         },
     }
 }

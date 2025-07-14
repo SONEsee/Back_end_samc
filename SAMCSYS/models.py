@@ -1205,6 +1205,7 @@ class FA_Asset_Lists(models.Model):
     acc_no = models.CharField(max_length=30, null=True, blank=True)
     type_of_pay = models.CharField(max_length=30, null=True, blank=True)
     asset_latest_date_dpca = models.DateField(null=True, blank=True)  
+    C_dpac = models.CharField(max_length=5, null=True, blank=True, default='0')
     asset_disposal_date = models.DateField(null=True, blank=True)  
     asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
     asset_ac_date = models.DateField(null=True, blank=True) 
