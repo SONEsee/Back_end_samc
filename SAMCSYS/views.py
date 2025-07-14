@@ -867,7 +867,7 @@ def sidebar_for_user(request, user_id):
     # 2) Fetch all role_detail for this role, with joins down to module
     details = (
         MTTB_Role_Detail.objects
-          .filter(role_id=role)
+          .filter(role_id=role, Record_Status='O')
           .select_related(
               'sub_menu_id',
               'sub_menu_id__menu_id',
@@ -881,7 +881,11 @@ def sidebar_for_user(request, user_id):
         sub   = det.sub_menu_id
         main  = sub.menu_id if sub else None
         mod   = main.module_Id if main else None
+
+        # Ensure all related records have Record_Status = 'O'
         if not (sub and main and mod):
+            continue
+        if sub.Record_Status != 'O' or main.Record_Status != 'O' or mod.Record_Status != 'O':
             continue
 
         # Module level
@@ -5166,12 +5170,15 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     def journal_log_active(self, request):
         """
         Get all active (not deleted) journal log master records, optionally filtered by Reference_No.
+        
         """
+
+        Today = timezone.now().date()
         reference_no = request.query_params.get('Reference_No')
         auth_status = request.query_params.get('Auth_Status')
         
         queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
-            delete_stat__isnull=True
+            delete_stat__isnull=True, Value_date=Today
         ).exclude(delete_stat='D', Auth_Status='A')
 
         if reference_no:
@@ -7509,7 +7516,6 @@ def get_revoked_sessions(request):
         }
     }, status=status.HTTP_200_OK)
 
-
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7518,8 +7524,12 @@ from django.utils import timezone
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import MTTB_EOC_MAINTAIN, STTB_EOC_DAILY_LOG
+from django.db import transaction
+import logging
+from .models import MTTB_EOC_MAINTAIN, STTB_EOC_DAILY_LOG, MTTB_Function_Desc
 from .serializers import EOCMaintainSerializer
+
+logger = logging.getLogger(__name__)
 
 class EOCMaintainViewSet(viewsets.ModelViewSet):
     """
@@ -7533,9 +7543,9 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
     # Filtering and searching
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['eoc_type', 'Record_Status', 'Auth_Status', 'Once_Auth', 'module_id', 'function_id']
-    search_fields = ['eoc_type', 'module_id__module_name', 'function_id__function_name']
+    search_fields = ['eoc_type', 'module_id__module_name', 'function_id__description_la']
     ordering_fields = ['eoc_id', 'eoc_seq_no', 'Maker_DT_Stamp', 'Checker_DT_Stamp']
-    ordering = ['-eoc_id']
+    ordering = ['eoc_seq_no', 'eoc_id']  # Changed to order by sequence first
 
     def get_queryset(self):
         """Custom queryset with optimized joins"""
@@ -7549,7 +7559,7 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
         user_id = getattr(user, 'user_id', None)
         
         serializer.save(
-            Maker_Id_id=user_id,  # Use _id for foreign key
+            Maker_Id_id=user_id,
             Maker_DT_Stamp=timezone.now(),
             Record_Status='C',  # Default to closed
             Auth_Status='U',  # Default to unauthorized
@@ -7615,17 +7625,17 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
-        """ເປີດ record (record_stat = 'O')"""
+        """ເປີດ record (Record_Status = 'O') - ເປີດໃຫ້ປະມວນຜົນໃນ EOD"""
         obj = self.get_object()
         
         if obj.Record_Status == 'O':
             return Response({
-                'detail': 'Record ເປີດຢູ່ແລ້ວ'
-            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+                'message': 'Record ເປີດຢູ່ແລ້ວ'
+            }, status=status.HTTP_200_OK)
         
         if obj.Auth_Status != 'A':
             return Response({
-                'detail': 'ບໍ່ສາມາດເປີດໄດ້. ສາມາດເປີດໄດ້ເລີມີ record ທີ່ຖືກອະນຸມັດແລ້ວເທົ່ານັ້ນ (Auth_Status = "A")'
+                'error': 'ບໍ່ສາມາດເປີດໄດ້. ສາມາດເປີດໄດ້ເມື່ອ record ຖືກອະນຸມັດແລ້ວເທົ່ານັ້ນ (Auth_Status = "A")'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         obj.Record_Status = 'O'
@@ -7635,19 +7645,19 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(obj)
         return Response({
-            'message': 'ເປີດ record ສໍາເລັດແລ້ວ',
+            'message': f'ເປີດຟັງຊັນ {obj.function_id.description_la} ສໍາເລັດແລ້ວ - ຈະຖືກປະມວນຜົນໃນ EOD',
             'data': serializer.data
         })
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_close(self, request, pk=None):
-        """ປິດ record (record_stat = 'C')"""
+        """ປິດ record (Record_Status = 'C') - ປິດບໍ່ໃຫ້ປະມວນຜົນໃນ EOD"""
         obj = self.get_object()
 
         if obj.Record_Status == 'C':
             return Response({
-                'detail': 'Record ປິດຢູ່ແລ້ວ'
-            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+                'message': 'Record ປິດຢູ່ແລ້ວ'
+            }, status=status.HTTP_200_OK)
 
         obj.Record_Status = 'C'
         obj.Checker_Id_id = getattr(request.user, 'user_id', None)
@@ -7656,7 +7666,7 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(obj)
         return Response({
-            'message': 'ປິດ record ສໍາເລັດແລ້ວ',
+            'message': f'ປິດຟັງຊັນ {obj.function_id.description_la} ສໍາເລັດແລ້ວ - ຈະບໍ່ຖືກປະມວນຜົນໃນ EOD',
             'data': serializer.data
         })
 
@@ -7670,17 +7680,16 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
                 'error': 'Record ຖືກອະນຸມັດແລ້ວ'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Set Auth_Status = 'A', Once_Auth = 'Y', record_stat = 'C'
+        # Set Auth_Status = 'A', Once_Auth = 'Y', keep current Record_Status
         eoc_entry.Auth_Status = 'A'
         eoc_entry.Once_Auth = 'Y'
-        eoc_entry.record_stat = 'C'
         eoc_entry.Checker_Id_id = getattr(request.user, 'user_id', None)
         eoc_entry.Checker_DT_Stamp = timezone.now()
         eoc_entry.save()
 
         serializer = self.get_serializer(eoc_entry)
         return Response({
-            'message': 'ອະນຸມັດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'message': f'ອະນຸມັດຟັງຊັນ {eoc_entry.function_id.description_la} ສໍາເລັດແລ້ວ',
             'data': serializer.data
         })
 
@@ -7694,7 +7703,7 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
                 'error': 'Record ຍັງບໍ່ໄດ້ຮັບການອະນຸມັດ'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Set Auth_Status = 'U', record_stat = 'C'
+        # Set Auth_Status = 'U', Record_Status = 'C' (closed for safety)
         eoc_entry.Auth_Status = 'U'
         eoc_entry.Record_Status = 'C'
         eoc_entry.Checker_Id_id = getattr(request.user, 'user_id', None)
@@ -7703,67 +7712,181 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(eoc_entry)
         return Response({
-            'message': 'ຍົກເລີກການອະນຸມັດ EOC Maintain ສໍາເລັດແລ້ວ',
+            'message': f'ຍົກເລີກການອະນຸມັດຟັງຊັນ {eoc_entry.function_id.description_la} ສໍາເລັດແລ້ວ',
             'data': serializer.data
         })
-    
-    # EOD Edn of Days Journal 
-    @action(detail=False, methods=['post'], url_path='bulk-journal', permission_classes=[IsAuthenticated])
-    def bulk_journal(self, request, pk=None):
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def eod_status(self, request):
+        """ກວດສອບສະຖານະຟັງຊັນ EOD ທັງໝົດ"""
+        eod_functions = MTTB_EOC_MAINTAIN.objects.filter(
+            eoc_type='EOD'
+        ).select_related('function_id', 'module_id').order_by('eoc_seq_no')
+
+        if not eod_functions.exists():
+            return Response({
+                'message': 'ບໍ່ພົບຟັງຊັນ EOD',
+                'functions': []
+            })
+
+        functions_data = []
+        total_functions = eod_functions.count()
+        authorized_functions = 0
+        open_functions = 0
+        ready_for_execution = 0
+
+        for func in eod_functions:
+            is_authorized = func.Auth_Status == 'A'
+            is_open = func.Record_Status == 'O'
+            is_ready = is_authorized and is_open
+
+            if is_authorized:
+                authorized_functions += 1
+            if is_open:
+                open_functions += 1
+            if is_ready:
+                ready_for_execution += 1
+
+            functions_data.append({
+                'eoc_id': func.eoc_id,
+                'sequence': func.eoc_seq_no,
+                'function_name': func.function_id.description_la,
+                'function_id': func.function_id.function_id,
+                'module_name': func.module_id.module_name if func.module_id else None,
+                'record_status': func.Record_Status,
+                'auth_status': func.Auth_Status,
+                'is_authorized': is_authorized,
+                'is_open': is_open,
+                'will_execute': is_ready,
+                'status_text': self._get_status_text(func.Record_Status, func.Auth_Status)
+            })
+
+        return Response({
+            'summary': {
+                'total_functions': total_functions,
+                'authorized_functions': authorized_functions,
+                'open_functions': open_functions,
+                'ready_for_execution': ready_for_execution,
+                'can_start_eod': ready_for_execution > 0 or total_functions == 0
+            },
+            'functions': functions_data
+        })
+
+    def _get_status_text(self, record_status, auth_status):
+        """ສ້າງຂໍ້ຄວາມສະຖານະເປັນພາສາລາວ"""
+        if auth_status != 'A':
+            return 'ຍັງບໍ່ໄດ້ອະນຸມັດ'
+        elif record_status == 'O':
+            return 'ພ້ອມປະມວນຜົນ'
+        elif record_status == 'C':
+            return 'ປິດ - ຈະບໍ່ປະມວນຜົນ'
+        else:
+            return 'ສະຖານະບໍ່ຮູ້ຈັກ'
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def bulk_open(self, request):
+        """ເປີດຟັງຊັນ EOD ທັງໝົດທີ່ຖືກອະນຸມັດແລ້ວ"""
         try:
             with transaction.atomic():
-                # Fetch authorized records from ACTB_DAIRY_LOG
-                authorized_logs = ACTB_DAIRY_LOG.objects.filter(Auth_Status='A')
-                
-                # Prepare bulk create objects
-                eoc_logs = []
-                for log in authorized_logs:
-                    eoc_log = STTB_EOC_DAILY_LOG(
-                        module=log.module.module if log.module else None,
-                        trn_ref_no=log.trn_ref_no.trn_ref_no if log.trn_ref_no else None,
-                        trn_ref_sub_no=log.trn_ref_sub_no,
-                        event_sr_no=log.event_sr_no,
-                        event=log.event,
-                        ac_no=log.ac_no.gl_sub_code if log.ac_no else None,
-                        ac_ccy=log.ac_ccy.ccy_code if log.ac_ccy else None,
-                        drcr_ind=log.drcr_ind,
-                        trn_code=log.trn_code.trn_code if log.trn_code else None,
-                        fcy_amount=log.fcy_amount,
-                        exch_rate=log.exch_rate,
-                        lcy_amount=log.lcy_amount,
-                        external_ref_no=log.external_ref_no,
-                        addl_text=log.addl_text,
-                        addl_sub_text=log.addl_sub_text,
-                        trn_dt=log.trn_dt,
-                        type=log.glType,
-                        category=log.category,
-                        value_dt=log.value_dt,
-                        financial_cycle=log.financial_cycle.fin_cycle if log.financial_cycle else None,
-                        period_code=log.period_code.per_code if log.period_code else None,
-                        user_id=log.user_id.user_id if log.user_id else None,
-                        Maker_DT_Stamp=log.Maker_DT_Stamp,
-                        auth_id=log.auth_id.user_id if log.auth_id else None,
-                        Checker_DT_Stamp=log.Checker_DT_Stamp,
-                        Auth_Status=log.Auth_Status,
-                        product=log.product,
-                        entry_seq_no=log.entry_seq_no
-                    )
-                    eoc_logs.append(eoc_log)
-                
-                # Bulk create records in STTB_EOC_DAILY_LOG
-                if eoc_logs:
-                    STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
-                
+                eod_functions = MTTB_EOC_MAINTAIN.objects.filter(
+                    eoc_type='EOD',
+                    Auth_Status='A',
+                    Record_Status='C'
+                )
+
+                if not eod_functions.exists():
+                    return Response({
+                        'message': 'ບໍ່ມີຟັງຊັນທີ່ສາມາດເປີດໄດ້'
+                    })
+
+                user_id = getattr(request.user, 'user_id', None)
+                update_time = timezone.now()
+
+                updated_count = eod_functions.update(
+                    Record_Status='O',
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=update_time
+                )
+
+                return Response({
+                    'message': f'ເປີດຟັງຊັນ EOD ສໍາເລັດ: {updated_count} ຟັງຊັນ',
+                    'updated_count': updated_count
+                })
+
+        except Exception as e:
+            logger.error(f"Error in bulk_open: {str(e)}")
+            return Response({
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def bulk_close(self, request):
+        """ປິດຟັງຊັນ EOD ທັງໝົດ"""
+        try:
+            with transaction.atomic():
+                eod_functions = MTTB_EOC_MAINTAIN.objects.filter(
+                    eoc_type='EOD',
+                    Record_Status='O'
+                )
+
+                if not eod_functions.exists():
+                    return Response({
+                        'message': 'ບໍ່ມີຟັງຊັນທີ່ສາມາດປິດໄດ້'
+                    })
+
+                user_id = getattr(request.user, 'user_id', None)
+                update_time = timezone.now()
+
+                updated_count = eod_functions.update(
+                    Record_Status='C',
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=update_time
+                )
+
+                return Response({
+                    'message': f'ປິດຟັງຊັນ EOD ສໍາເລັດ: {updated_count} ຟັງຊັນ',
+                    'updated_count': updated_count
+                })
+
+        except Exception as e:
+            logger.error(f"Error in bulk_close: {str(e)}")
+            return Response({
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Keep your existing bulk_journal method but it's now called by the main EOD process
+    @action(detail=False, methods=['post'], url_path='bulk-journal', permission_classes=[IsAuthenticated])
+    def bulk_journal(self, request, pk=None):
+        """
+        Legacy method - now this is called automatically by the main EOD process
+        But kept for backward compatibility or manual execution
+        """
+        try:
+            from views import execute_bulk_journal
+            
+            # Create a mock eod_function object for the call
+            class MockEODFunction:
+                function_id = type('obj', (object,), {'function_id': 'EOD_JOURNAL'})
+            
+            success, message = execute_bulk_journal(MockEODFunction(), request.user)
+            
+            if success:
                 return Response({
                     'status': 'success',
-                    'message': f'Successfully inserted {len(eoc_logs)} records into STTB_EOC_DAILY_LOG'
+                    'message': message
                 })
+            else:
+                return Response({
+                    'status': 'error',
+                    'message': message
+                }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
+            logger.error(f"Error in bulk_journal: {str(e)}")
             return Response({
                 'status': 'error',
                 'message': str(e)
-            }, status=400)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     
 # from rest_framework import viewsets, permissions
@@ -8659,3 +8782,240 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+<<<<<<< HEAD
+=======
+# class JournalProcessV2ViewSet(viewsets.ModelViewSet):
+
+#     @action(detail=False, methods=['post'])
+#     def process_journal_data(self, request):
+#         try:
+#             data = request.data
+#             glsub_ids = []
+#             glsub_map = {}  
+
+#             ccy_cd = data.get('Ccy_cd')
+#             try:
+#                 ccy_record = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_cd)
+#                 alt_ccy_code = ccy_record.ALT_Ccy_Code
+#             except MTTB_Ccy_DEFN.DoesNotExist:
+#                 return Response({
+#                     'success': False,
+#                     'message': f'ບໍ່ພົບ currency code: {ccy_cd} ໃນ MTTB_Ccy_DEFN'
+#                 }, status=status.HTTP_400_BAD_REQUEST)
+
+#             with transaction.atomic():
+#                 for entry in data.get('entries', []):
+#                     account_no = entry.get('Account_no')
+#                     addl_sub_text = entry.get('Addl_sub_text')
+
+#                     gl_code_part = account_no.split('.')[0] if '.' in account_no else account_no
+
+#                     try:
+#                         gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code_part)
+#                         gl_code_obj = gl_master  
+#                     except MTTB_GLMaster.DoesNotExist:
+#                         return Response({
+#                             'success': False,
+#                             'message': f'ບໍ່ພົບ gl_code: {gl_code_part} ໃນ MTTB_GLMaster'
+#                         }, status=status.HTTP_400_BAD_REQUEST)
+
+                    
+#                     current_time = timezone.now()
+                    
+#                     try:
+#                         maker_user = MTTB_Users.objects.get(user_id=request.user.user_id)
+#                     except MTTB_Users.DoesNotExist:
+#                         return Response({
+#                             'success': False,
+#                             'message': f'ບໍ່ພົບຜູ້ໃຊ້: {request.user.user_id}'
+#                         }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    
+#                     glsub_record = MTTB_GLSub.objects.create(
+#                         glsub_code=account_no,
+#                         glsub_Desc_la=addl_sub_text,
+#                         gl_code=gl_code_obj, 
+#                         Maker_DT_Stamp=current_time,
+#                         Checker_DT_Stamp=current_time,
+#                         Maker_Id=maker_user,  
+#                         Checker_Id=maker_user, 
+#                         Record_Status="O",
+#                         Auth_Status="A"
+#                     )
+#                     glsub_id = glsub_record.glsub_id
+
+#                     glsub_ids.append(glsub_id)
+#                     glsub_map[account_no] = glsub_id
+
+#                 processed_data = {
+#                     "Reference_No": data.get('Reference_No'),
+#                     "Ccy_cd": data.get('Ccy_cd'),
+#                     "Txn_code": data.get('Txn_code'),
+#                     "Value_date": data.get('Value_date'),
+#                     "Addl_text": data.get('Addl_text'),
+#                     "fin_cycle": data.get('fin_cycle'),
+#                     "Period_code": data.get('Period_code'),
+#                     "module_id": data.get('module_id'),
+#                     "Maker_Id": request.user.user_id, 
+#                     "Record_Status": "O",  
+#                     "Auth_Status": "A",   
+#                     "entries": []
+#                 }
+
+#                 for i, entry in enumerate(data.get('entries', [])):
+#                     original_acc_no = entry.get("Account_no")
+#                     acc_id = glsub_map.get(original_acc_no)
+                    
+#                     modified_acc_no = f"{alt_ccy_code}.{original_acc_no}"
+#                     all_modified_accounts = [f"{alt_ccy_code}.{acc}" for acc in glsub_map.keys()]
+#                     ac_rel = all_modified_accounts[1] if i == 0 else all_modified_accounts[0]
+
+#                     processed_entry = {
+#                         "Account": acc_id,
+#                         "Account_no": modified_acc_no, 
+#                         "Amount": entry.get('Amount'),
+#                         "Dr_cr": entry.get('Dr_cr'),
+#                         "Addl_sub_text": entry.get('Addl_sub_text'),
+#                         "Ac_relatives": ac_rel,
+#                         "Maker_Id": request.user.user_id,  
+#                         "Record_Status": "O", 
+#                         "Auth_Status": "A"    
+#                     }
+#                     processed_data["entries"].append(processed_entry)
+
+#                 try:
+#                     from SAMCSYS.views import JRNLLogViewSet
+
+#                     factory = RequestFactory()
+#                     raw_request = factory.post(
+#                         '/api/journal-entries/batch_create/',
+#                         data=json.dumps(processed_data),
+#                         content_type='application/json'
+#                     )
+#                     raw_request.user = request.user
+#                     drf_request = Request(raw_request)
+
+#                     viewset = JRNLLogViewSet()
+#                     viewset.request = drf_request
+#                     viewset.format_kwarg = None
+
+#                     batch_response = viewset.batch_create(drf_request)
+
+#                     if batch_response.status_code in [200, 201]:
+#                         journal_response = {
+#                             'success': True,
+#                             'status_code': batch_response.status_code,
+#                             'data': batch_response.data,
+#                             'method': 'internal_batch_create'
+#                         }
+#                     else:
+#                         journal_response = {
+#                             'success': False,
+#                             'status_code': batch_response.status_code,
+#                             'error': batch_response.data,
+#                             'method': 'internal_batch_create_failed'
+#                         }
+
+#                 except Exception as e:
+#                     try:
+#                         viewset = JRNLLogViewSet()
+#                         viewset.request = request
+#                         viewset.format_kwarg = None
+                        
+#                         from unittest.mock import Mock
+#                         mock_request = Mock()
+#                         mock_request.data = processed_data
+#                         mock_request.user = request.user
+                        
+#                         batch_response = viewset.batch_create(mock_request)
+                        
+#                         if batch_response.status_code in [200, 201]:
+#                             journal_response = {
+#                                 'success': True,
+#                                 'status_code': batch_response.status_code,
+#                                 'data': batch_response.data,
+#                                 'method': 'direct_call'
+#                             }
+#                         else:
+#                             journal_response = {
+#                                 'success': False,
+#                                 'status_code': batch_response.status_code,
+#                                 'error': batch_response.data,
+#                                 'method': 'direct_call_failed'
+#                             }
+#                     except Exception as e2:
+#                         journal_response = {
+#                             'success': False,
+#                             'error': f'ViewSet Error: {str(e)} | Direct call error: {str(e2)}',
+#                             'note': 'GLSub records created. Please create journal entry manually.'
+#                         }
+
+#                 return Response({
+#                     'success': True,
+#                     'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ (ສ້າງ GLSub ໃໝ່ທັງໝົດ)',
+#                     'processed_data': processed_data,
+#                     'glsub_ids': glsub_ids,
+#                     'alt_ccy_code': alt_ccy_code,  
+#                     'journal_response': journal_response
+#                 }, status=status.HTTP_201_CREATED)
+
+#         except Exception as e:
+#             return Response({
+#                 'success': False,
+#                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+# Additional view functions to add to views.py
+"""
+Add these functions to your views.py file:
+"""
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def setup_default_eod_functions(request):
+    """
+    Setup default EOD functions
+    """
+    try:
+        from .eod_helpers import create_default_eod_functions
+        
+        success, message = create_default_eod_functions()
+        
+        if success:
+            return Response({
+                'message': message
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                'error': message
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({
+            'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def validate_eod_prerequisites_view(request):
+    """
+    Validate EOD prerequisites
+    """
+    try:
+        from .eod_helpers import validate_eod_prerequisites
+        
+        is_valid, issues = validate_eod_prerequisites()
+        
+        return Response({
+            'can_start_eod': is_valid,
+            'issues': issues,
+            'message': 'ພ້ອມເລີ່ມ EOD' if is_valid else 'ມີບັນຫາທີ່ຕ້ອງແກ້ໄຂກ່ອນ'
+        })
+        
+    except Exception as e:
+        return Response({
+            'can_start_eod': False,
+            'issues': [f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'],
+            'message': 'ບໍ່ສາມາດກວດສອບໄດ້'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+>>>>>>> 1464d4a718fac647e2ed39ab33f12d964766a75b
