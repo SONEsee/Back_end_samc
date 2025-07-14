@@ -8898,11 +8898,7 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> 2d300595f4834a87e6630518a526b44106be3cc8
+
 # class JournalProcessV2ViewSet(viewsets.ModelViewSet):
 
 #     @action(detail=False, methods=['post'])
@@ -9137,7 +9133,4 @@ def validate_eod_prerequisites_view(request):
             'issues': [f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'],
             'message': 'ບໍ່ສາມາດກວດສອບໄດ້'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-<<<<<<< HEAD
->>>>>>> 1464d4a718fac647e2ed39ab33f12d964766a75b
-=======
->>>>>>> 2d300595f4834a87e6630518a526b44106be3cc8
+
