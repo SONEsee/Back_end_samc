@@ -63,6 +63,7 @@ from .views import (
     # FADepreciationMainViewSet,
     # FADepreciationSubViewSet,
     FAAssetListDepreciationMainViewSet,
+    FAAssetListDepreciationViewSet,
     FAAssetListDisposalViewSet,
     FAAssetExpenseViewSet,
     FATransferLogsViewSet,
@@ -129,6 +130,7 @@ router.register(r'asset_list', FAAssetListViewSet , basename='asset_list')
 # router.register(r'asset_dpca_main', FADepreciationMainViewSet , basename='asset_dpca_main')
 # router.register(r'asset_dpca_sub', FADepreciationSubViewSet , basename='asset_dpca_sub')
 router.register(r'asset_list_dpca_main', FAAssetListDepreciationMainViewSet , basename='asset_list_dpca_main')
+router.register(r'asset_list_dpca', FAAssetListDepreciationViewSet , basename='asset_list_dpca')
 router.register(r'asset_list_diposal', FAAssetListDisposalViewSet , basename='asset_list_diposal')
 router.register(r'asset_expense', FAAssetExpenseViewSet , basename='asset_expense')
 router.register(r'asset_transfer', FATransferLogsViewSet , basename='asset_transfer')
