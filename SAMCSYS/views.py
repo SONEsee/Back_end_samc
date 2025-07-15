@@ -5851,11 +5851,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
-from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,FA_Depreciation_Sub,
-                     FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
-                     FA_Accounting_Method)
+from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
+                     FA_Accounting_Method,FA_Asset_List_Depreciation_Main)
 from .serializers import (FAAssetTypeSerializer,FAChartOfAssetSerializer,FASuppliersSerializer,FALocationSerializer,FAExpenseCategorySerializer,
-    FAAssetListSerializer,FADepreciationMainSerializer,FADepreciationSubSerializer,FAAssetListDepreciationSerializer,FAAssetListDisposalSerializer,
+    FAAssetListSerializer,FAAssetListDisposalSerializer,FAAssetListDepreciationMainSerializer,
     FAAssetExpenseSerializer,FATransferLogsSerializer,FAAssetPhotosSerializer,FAMaintenanceLogsSerializer,FAAccountingMethodSerializer)
 from django.utils import timezone
 
@@ -6287,64 +6286,64 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         })
     
-class FADepreciationMainViewSet(viewsets.ModelViewSet):
-    serializer_class = FADepreciationMainSerializer
+# class FADepreciationMainViewSet(viewsets.ModelViewSet):
+#     serializer_class = FADepreciationMainSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Depreciation_Main.objects.all().order_by('dm_id')
+#         dpca_type = self.request.query_params.get('dpca_type')
+#         if dpca_type:
+#             queryset = queryset.filter(dpca_type=dpca_type)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+    
+
+# class FADepreciationSubViewSet(viewsets.ModelViewSet):
+#     serializer_class = FADepreciationSubSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Depreciation_Sub.objects.all().order_by('ds_id')
+#         m_id = self.request.query_params.get('m_id')
+#         if m_id:
+#             queryset = queryset.filter(m_id=m_id)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+    
+
+class FAAssetListDepreciationMainViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetListDepreciationMainSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = FA_Depreciation_Main.objects.all().order_by('dm_id')
-        dpca_type = self.request.query_params.get('dpca_type')
-        if dpca_type:
-            queryset = queryset.filter(dpca_type=dpca_type)
-        return queryset
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Maker_Id=user,
-            Maker_DT_Stamp=timezone.now()
-        )
-
-    def perform_update(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-    
-
-class FADepreciationSubViewSet(viewsets.ModelViewSet):
-    serializer_class = FADepreciationSubSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        queryset = FA_Depreciation_Sub.objects.all().order_by('ds_id')
-        m_id = self.request.query_params.get('m_id')
-        if m_id:
-            queryset = queryset.filter(m_id=m_id)
-        return queryset
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Maker_Id=user,
-            Maker_DT_Stamp=timezone.now()
-        )
-
-    def perform_update(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-    
-
-class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
-    serializer_class = FAAssetListDepreciationSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        queryset = FA_Asset_List_Depreciation.objects.all().order_by('ald_id')
+        queryset = FA_Asset_List_Depreciation_Main.objects.all().order_by('aldm_id')
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
@@ -6363,6 +6362,36 @@ class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
     
 class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDisposalSerializer

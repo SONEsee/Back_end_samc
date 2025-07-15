@@ -661,8 +661,8 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
 
 #----------------------Asset---------------------------------------- 
 from rest_framework import serializers
-from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,
-    FA_Depreciation_Sub,FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
+from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Depreciation_Main,
+    FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
     FA_Accounting_Method, MasterCode, MasterType)
 
 class AssetTypeDetailSerializer(serializers.ModelSerializer):
@@ -794,19 +794,20 @@ class FAAssetListSerializer(serializers.ModelSerializer):
             return MasterCodeDetail_Serializer(mc).data
         return None
 
-class FADepreciationMainSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FA_Depreciation_Main
-        fields = '__all__'
+# class FADepreciationMainSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = FA_Depreciation_Main
+#         fields = '__all__'
 
-class FADepreciationSubSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FA_Depreciation_Sub
-        fields = '__all__'
+# class FADepreciationSubSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = FA_Depreciation_Sub
+#         fields = '__all__'
 
-class FAAssetListDepreciationSerializer(serializers.ModelSerializer):
+class FAAssetListDepreciationMainSerializer(serializers.ModelSerializer):
+    asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
     class Meta:
-        model = FA_Asset_List_Depreciation
+        model = FA_Asset_List_Depreciation_Main
         fields = '__all__'
 
 class FAAssetListDisposalSerializer(serializers.ModelSerializer):
