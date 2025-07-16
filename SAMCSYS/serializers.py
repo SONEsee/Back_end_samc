@@ -307,10 +307,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
             'gender', 'date_of_birth', 'national_id', 'address_la', 'address_en',
             'phone_number', 'email', 'position_code', 'div_id', 'division_name_la',
             'employee_photo', 'employee_signature', 'hire_date', 'employment_status',
-            'record_stat', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
+            'Record_Status', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
             'Auth_Status', 'Once_Auth'
         ]
-        read_only_fields = ['record_stat', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth']
+        read_only_fields = ['Record_Status', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth']
 
     def validate_user_id(self, value):
         if value and not MTTB_Users.objects.filter(user_id=value.user_id, User_Status='E').exists():
@@ -318,7 +318,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return value
 
     def validate_division_id(self, value):
-        if value and not MTTB_Divisions.objects.filter(div_id=value.div_id, record_Status='C').exists():
+        if value and not MTTB_Divisions.objects.filter(div_id=value.div_id, record_Status='O').exists():
             raise serializers.ValidationError("Invalid or inactive div_id")
         return value
 
@@ -661,8 +661,8 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
 
 #----------------------Asset---------------------------------------- 
 from rest_framework import serializers
-from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,
-    FA_Depreciation_Sub,FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
+from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Depreciation_Main,
+    FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,FA_Asset_List_Depreciation,
     FA_Accounting_Method, MasterCode, MasterType)
 
 class AssetTypeDetailSerializer(serializers.ModelSerializer):
@@ -674,6 +674,11 @@ class AssetTypeDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Asset_Type
         fields = ['type_code', 'type_name_la', 'type_name_en']
+
+class AssetListDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_Lists
+        fields = ['asset_list_id', 'asset_spec','asset_list_code','asset_serial_no','asset_tag']
 
 # class FAAssetTypeSerializer(serializers.ModelSerializer):
 #     class Meta:
@@ -789,17 +794,24 @@ class FAAssetListSerializer(serializers.ModelSerializer):
             return MasterCodeDetail_Serializer(mc).data
         return None
 
-class FADepreciationMainSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FA_Depreciation_Main
-        fields = '__all__'
+# class FADepreciationMainSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = FA_Depreciation_Main
+#         fields = '__all__'
 
-class FADepreciationSubSerializer(serializers.ModelSerializer):
+# class FADepreciationSubSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = FA_Depreciation_Sub
+#         fields = '__all__'
+
+class FAAssetListDepreciationMainSerializer(serializers.ModelSerializer):
+    asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
     class Meta:
-        model = FA_Depreciation_Sub
+        model = FA_Asset_List_Depreciation_Main
         fields = '__all__'
 
 class FAAssetListDepreciationSerializer(serializers.ModelSerializer):
+    asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
     class Meta:
         model = FA_Asset_List_Depreciation
         fields = '__all__'
@@ -815,6 +827,9 @@ class FAAssetExpenseSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FATransferLogsSerializer(serializers.ModelSerializer):
+    asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
+    from_location_detail = LocationDetailSerializer(source='from_location_id', read_only=True)
+    to_location_detail = LocationDetailSerializer(source='to_location_id', read_only=True)
     class Meta:
         model = FA_Transfer_Logs
         fields = '__all__'
@@ -907,3 +922,4 @@ class GLSubDisplaySerializer(serializers.ModelSerializer):
             'Record_Status', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id',
             'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth'
         ]
+

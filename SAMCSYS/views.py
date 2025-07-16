@@ -1010,7 +1010,14 @@ def role_sidebar(request, role_id=None):
         main = sub.menu_id
         mod = main.module_Id
 
+    # check Record_Status = 'O' 
         if not (sub and main and mod):
+            continue
+        if mod.Record_Status != 'O':
+            continue
+        if main.Record_Status != 'O':
+            continue
+        if sub.Record_Status != 'O':
             continue
 
         # Module level
@@ -2133,133 +2140,245 @@ from django.utils import timezone
 from .models import MTTB_EMPLOYEE, MTTB_Users, MTTB_Divisions
 from .serializers import EmployeeSerializer
 
+# class EmployeeViewSet(viewsets.ModelViewSet):
+#     """
+#     CRUD for employees, supporting:
+#       - JSON and multipart/form-data for file uploads
+#       - Filtering by ?div_id=...
+#       - Soft deletion via record_stat='D'
+#     """
+#     serializer_class = EmployeeSerializer
+#     parser_classes = [JSONParser, MultiPartParser, FormParser]
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         """
+#         Returns active employees (record_stat='A'), optionally filtered by div_id.
+#         """
+#         qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id').filter(record_stat='O')
+        
+#         params = self.request.query_params
+#         div_id = params.get('div_id')
+#         if div_id:
+#             qs = qs.filter(div_id_id__div_id=div_id)
+        
+#         return qs.order_by('employee_id')
+
+#     def perform_create(self, serializer):
+#         """
+#         Sets audit fields for creation.
+#         """
+#         serializer.save(
+#             Maker_Id=self.request.user if self.request.user.is_authenticated else None,
+#             Maker_DT_Stamp=timezone.now(),
+#             record_stat='A',
+#             Auth_Status='U',
+#             Once_Auth='N'
+#         )
+
+#     def perform_update(self, serializer):
+#         """
+#         Sets audit fields for updates.
+#         """
+#         serializer.save(
+#             Checker_Id=self.request.user if self.request.user.is_authenticated else None,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_destroy(self, instance):
+#         """
+#         Soft deletes the employee by setting record_stat to 'D'.
+#         """
+#         instance.record_stat = 'D'
+#         instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
+#         instance.Checker_DT_Stamp = timezone.now()
+#         instance.save()
+
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def set_open(self, request, pk=None):
+#         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
+#         obj = self.get_object()
+#         if obj.record_stat == 'O':
+#             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
+#         if getattr(obj, 'Auth_Status', None) != 'A':
+#             return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+#         obj.record_stat = 'O'
+#         obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         obj.Checker_DT_Stamp = timezone.now()
+#         obj.save()
+#         serializer = self.get_serializer(obj)
+#         return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def set_close(self, request, pk=None):
+#         """Set Record_Status = 'C' (Close)"""
+#         obj = self.get_object()
+#         if obj.record_stat == 'C':
+#             return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+#         obj.record_stat = 'C'
+#         obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         obj.Checker_DT_Stamp = timezone.now()
+#         obj.save()
+#         serializer = self.get_serializer(obj)
+#         return Response({'message': 'Set to Close.', 'entry': serializer.data})
+
+#     @action(detail=True, methods=['post'])
+#     def authorize(self, request, pk=None):
+#         """Authorize a journal entry"""
+#         journal_entry = self.get_object()
+
+#         if journal_entry.Auth_Status == 'A':
+#             return Response({'error': 'Entry is already authorized'}, 
+#                           status=status.HTTP_400_BAD_REQUEST)
+
+#         # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
+#         journal_entry.Auth_Status = 'A'
+#         journal_entry.Once_Status = 'Y'
+#         journal_entry.record_stat = 'C'
+#         journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         journal_entry.Checker_DT_Stamp = timezone.now()
+#         journal_entry.save()
+
+#         serializer = self.get_serializer(journal_entry)
+#         return Response({
+#             'message': 'Entry authorized successfully',
+#             'entry': serializer.data
+#         })
+
+#     @action(detail=True, methods=['post'])
+#     def unauthorize(self, request, pk=None):
+#         """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
+#         journal_entry = self.get_object()
+
+#         if journal_entry.Auth_Status == 'U':
+#             return Response({'error': 'Entry is already unauthorized'}, 
+#                           status=status.HTTP_400_BAD_REQUEST)
+
+#         # Set Auth_Status = 'U', Record_Status = 'C'
+#         journal_entry.Auth_Status = 'U'
+#         journal_entry.record_stat = 'C'
+#         journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+#         journal_entry.Checker_DT_Stamp = timezone.now()
+#         journal_entry.save()
+
+#         serializer = self.get_serializer(journal_entry)
+#         return Response({
+#             'message': 'Entry unauthorized successfully',
+#             'entry': serializer.data
+#         })
+
 class EmployeeViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for employees, supporting:
-      - JSON and multipart/form-data for file uploads
-      - Filtering by ?div_id=...
-      - Soft deletion via record_stat='D'
-    """
     serializer_class = EmployeeSerializer
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
+    lookup_field = 'employee_id'
 
     def get_queryset(self):
         """
-        Returns active employees (record_stat='A'), optionally filtered by div_id.
+        Returns active employees (Record_Status='O'), optionally filtered by div_id.
         """
-        qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id').filter(record_stat='O')
-        
+        qs = MTTB_EMPLOYEE.objects.select_related('user_id', 'div_id', 'Maker_Id', 'Checker_Id')
         params = self.request.query_params
         div_id = params.get('div_id')
         if div_id:
             qs = qs.filter(div_id_id__div_id=div_id)
-        
+
         return qs.order_by('employee_id')
 
     def perform_create(self, serializer):
-        """
-        Sets audit fields for creation.
-        """
+        user = self.request.user
         serializer.save(
-            Maker_Id=self.request.user if self.request.user.is_authenticated else None,
-            Maker_DT_Stamp=timezone.now(),
-            record_stat='A',
-            Auth_Status='U',
-            Once_Auth='N'
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
         )
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        return Response({
+            'message': 'Employee created successfully.',
+            'entry': response.data
+        }, status=response.status_code)
+
     def perform_update(self, serializer):
-        """
-        Sets audit fields for updates.
-        """
+        user = self.request.user
         serializer.save(
-            Checker_Id=self.request.user if self.request.user.is_authenticated else None,
+            Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
 
-    def perform_destroy(self, instance):
-        """
-        Soft deletes the employee by setting record_stat to 'D'.
-        """
-        instance.record_stat = 'D'
-        instance.Checker_Id = self.request.user if self.request.user.is_authenticated else None
-        instance.Checker_DT_Stamp = timezone.now()
-        instance.save()
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        return Response({
+            'message': 'Employee updated successfully.',
+            'entry': response.data
+        }, status=response.status_code)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response({
+            'message': 'Employee deleted successfully.'
+        }, status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_open(self, request, pk=None):
+    def set_open(self, request, employee_id=None):
         """Set Record_Status = 'O' (Open) only if Auth_Status = 'A'"""
         obj = self.get_object()
-        if obj.record_stat == 'O':
+        if obj.Record_Status == 'O':
             return Response({'detail': 'Already open.'}, status=status.HTTP_400_BAD_REQUEST)
         if getattr(obj, 'Auth_Status', None) != 'A':
-            return Response({'detail': 'Cannot set to Open. Only authorized (Auth_Status = "A") records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
-        obj.record_stat = 'O'
-        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+            return Response({'detail': 'Cannot set to Open. Only authorized records can be opened.'}, status=status.HTTP_400_BAD_REQUEST)
+        obj.Record_Status = 'O'
+        obj.Checker_Id = request.user
         obj.Checker_DT_Stamp = timezone.now()
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Open.', 'entry': serializer.data})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_close(self, request, pk=None):
+    def set_close(self, request, employee_id=None):
         """Set Record_Status = 'C' (Close)"""
         obj = self.get_object()
-        if obj.record_stat == 'C':
+        if obj.Record_Status == 'C':
             return Response({'detail': 'Already closed.'}, status=status.HTTP_400_BAD_REQUEST)
-        obj.record_stat = 'C'
-        obj.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = request.user
         obj.Checker_DT_Stamp = timezone.now()
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
-    @action(detail=True, methods=['post'])
-    def authorize(self, request, pk=None):
-        """Authorize a journal entry"""
-        journal_entry = self.get_object()
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def authorize(self, request, employee_id=None):
+        """Authorize an employee record"""
+        obj = self.get_object()
+        if obj.Auth_Status == 'A':
+            return Response({'error': 'Entry is already authorized'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if journal_entry.Auth_Status == 'A':
-            return Response({'error': 'Entry is already authorized'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+        obj.Auth_Status = 'A'
+        obj.Once_Auth = 'Y'
+        obj.Record_Status = 'C'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
 
-        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
-        journal_entry.Auth_Status = 'A'
-        journal_entry.Once_Status = 'Y'
-        journal_entry.record_stat = 'C'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Entry authorized successfully.', 'entry': serializer.data})
 
-        serializer = self.get_serializer(journal_entry)
-        return Response({
-            'message': 'Entry authorized successfully',
-            'entry': serializer.data
-        })
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unauthorize(self, request, employee_id=None):
+        """Unauthorize an employee record"""
+        obj = self.get_object()
+        if obj.Auth_Status == 'U':
+            return Response({'error': 'Entry is already unauthorized'}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'])
-    def unauthorize(self, request, pk=None):
-        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
-        journal_entry = self.get_object()
+        obj.Auth_Status = 'U'
+        obj.Record_Status = 'C'
+        obj.Checker_Id = request.user
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
 
-        if journal_entry.Auth_Status == 'U':
-            return Response({'error': 'Entry is already unauthorized'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-
-        # Set Auth_Status = 'U', Record_Status = 'C'
-        journal_entry.Auth_Status = 'U'
-        journal_entry.record_stat = 'C'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
-
-        serializer = self.get_serializer(journal_entry)
-        return Response({
-            'message': 'Entry unauthorized successfully',
-            'entry': serializer.data
-        })
-        
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Entry unauthorized successfully.', 'entry': serializer.data})
 
 from .serializers import MTTB_LCL_HolidaySerializer
 from .models import MTTB_LCL_Holiday
@@ -5739,11 +5858,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
-from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Depreciation_Main,FA_Depreciation_Sub,
-                     FA_Asset_List_Depreciation,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
-                     FA_Accounting_Method)
+from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
+                     FA_Accounting_Method,FA_Asset_List_Depreciation_Main,FA_Asset_List_Depreciation)
 from .serializers import (FAAssetTypeSerializer,FAChartOfAssetSerializer,FASuppliersSerializer,FALocationSerializer,FAExpenseCategorySerializer,
-    FAAssetListSerializer,FADepreciationMainSerializer,FADepreciationSubSerializer,FAAssetListDepreciationSerializer,FAAssetListDisposalSerializer,
+    FAAssetListSerializer,FAAssetListDisposalSerializer,FAAssetListDepreciationMainSerializer,FAAssetListDepreciationSerializer,
     FAAssetExpenseSerializer,FATransferLogsSerializer,FAAssetPhotosSerializer,FAMaintenanceLogsSerializer,FAAccountingMethodSerializer)
 from django.utils import timezone
 
@@ -6175,15 +6293,67 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         })
     
-class FADepreciationMainViewSet(viewsets.ModelViewSet):
-    serializer_class = FADepreciationMainSerializer
+# class FADepreciationMainViewSet(viewsets.ModelViewSet):
+#     serializer_class = FADepreciationMainSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Depreciation_Main.objects.all().order_by('dm_id')
+#         dpca_type = self.request.query_params.get('dpca_type')
+#         if dpca_type:
+#             queryset = queryset.filter(dpca_type=dpca_type)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+    
+
+# class FADepreciationSubViewSet(viewsets.ModelViewSet):
+#     serializer_class = FADepreciationSubSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Depreciation_Sub.objects.all().order_by('ds_id')
+#         m_id = self.request.query_params.get('m_id')
+#         if m_id:
+#             queryset = queryset.filter(m_id=m_id)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+    
+
+class FAAssetListDepreciationMainViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetListDepreciationMainSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = FA_Depreciation_Main.objects.all().order_by('dm_id')
-        dpca_type = self.request.query_params.get('dpca_type')
-        if dpca_type:
-            queryset = queryset.filter(dpca_type=dpca_type)
+        queryset = FA_Asset_List_Depreciation_Main.objects.all().order_by('aldm_id')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
         return queryset
     
     def perform_create(self, serializer):
@@ -6199,34 +6369,36 @@ class FADepreciationMainViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
     
-
-class FADepreciationSubViewSet(viewsets.ModelViewSet):
-    serializer_class = FADepreciationSubSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        queryset = FA_Depreciation_Sub.objects.all().order_by('ds_id')
-        m_id = self.request.query_params.get('m_id')
-        if m_id:
-            queryset = queryset.filter(m_id=m_id)
-        return queryset
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Maker_Id=user,
-            Maker_DT_Stamp=timezone.now()
-        )
-
-    def perform_update(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-    
-
 class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDepreciationSerializer
     permission_classes = [IsAuthenticated]
@@ -6251,6 +6423,35 @@ class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
     
 class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDisposalSerializer
@@ -6302,7 +6503,39 @@ class FAAssetExpenseViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+# class FATransferLogsViewSet(viewsets.ModelViewSet):
+#     serializer_class = FATransferLogsSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Transfer_Logs.objects.all().order_by('transfer_id')
+#         asset_list_id = self.request.query_params.get('asset_list_id')
+#         if asset_list_id:
+#             queryset = queryset.filter(asset_list_id=asset_list_id)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+# ເພີ່ມ imports ໃນດ້ານເທິງຂອງ file
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from .models import FA_Transfer_Logs, FA_Asset_Lists  # ເພີ່ມ imports ເຫຼົ່ານີ້
+from .serializers import FATransferLogsSerializer
+
 class FATransferLogsViewSet(viewsets.ModelViewSet):
+    queryset = FA_Transfer_Logs.objects.all()
     serializer_class = FATransferLogsSerializer
     permission_classes = [IsAuthenticated]
 
@@ -6312,21 +6545,128 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
         return queryset
-    
+
     def perform_create(self, serializer):
+        from django.db import transaction
+        import logging
+        
+        logger = logging.getLogger(__name__)
         user = self.request.user
-        serializer.save(
-            Maker_Id=user,
-            Maker_DT_Stamp=timezone.now()
-        )
+        
+        with transaction.atomic():
+            # ບັນທຶກ transfer log
+            transfer_log = serializer.save(
+                Maker_Id=user,
+                Maker_DT_Stamp=timezone.now()
+            )
+            
+            logger.info(f"Transfer log created: {transfer_log.transfer_id}")
+            
+            try:
+                # Debug: ກວດສອບ transfer_log ກ່ອນ
+                print(f"🔍 Transfer log asset_list_id: {transfer_log.asset_list_id}")
+                print(f"🔍 Transfer log asset_list_id type: {type(transfer_log.asset_list_id)}")
+                print(f"🔍 Transfer log asset_list_id pk: {transfer_log.asset_list_id.pk if transfer_log.asset_list_id else 'None'}")
+                
+                # ກວດສອບວ່າ asset_list_id ບໍ່ເປັນ None
+                if not transfer_log.asset_list_id:
+                    raise ValueError("Asset list ID is None")
+                
+                # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+                asset_obj = transfer_log.asset_list_id
+                
+                # ຫຼື ລອງ get ແບບລະມັດລະວັງ
+                try:
+                    asset_obj_fresh = FA_Asset_Lists.objects.get(asset_list_id=asset_obj.asset_list_id)
+                    print(f"✅ Successfully got fresh asset object: {asset_obj_fresh.asset_list_id}")
+                    asset_obj = asset_obj_fresh
+                except FA_Asset_Lists.DoesNotExist:
+                    print(f"⚠️ Could not get fresh asset, using existing: {asset_obj.asset_list_id}")
+                    # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+                
+                old_location = asset_obj.asset_location_id
+                new_location = transfer_log.to_location_id
+                
+                print(f"🔥 Asset ID: {asset_obj.asset_list_id}")
+                print(f"🔥 Old location: {old_location}")
+                print(f"🔥 New location: {new_location}")
+                print(f"🔥 New location type: {type(new_location)}")
+                
+                # ອັບເດດສະຖານທີ່
+                asset_obj.asset_location_id = new_location
+                
+                # ບັງຄັບບັນທຶກດ້ວຍ update_fields
+                asset_obj.save(update_fields=['asset_location_id'])
+                
+                # ກວດສອບວ່າອັບເດດແລ້ວຈິງບໍ
+                asset_obj.refresh_from_db()
+                
+                print(f"✅ Asset location updated from {old_location} to {asset_obj.asset_location_id}")
+                logger.info(f"Asset {asset_obj.asset_list_id} moved from {old_location} to {asset_obj.asset_location_id}")
+                
+            except FA_Asset_Lists.DoesNotExist:
+                error_msg = f"Asset not found: {transfer_log.asset_list_id}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+            except Exception as e:
+                error_msg = f"Failed to update asset location: {e}"
+                logger.error(error_msg)
+                print(f"❌ ERROR: {error_msg}")
+                import traceback
+                print(traceback.format_exc())
+                raise
 
-    def perform_update(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
+    # ເພີ່ມ method ນີ້ເພື່ອກວດສອບຫຼັງການອັບເດດ
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        
+        # ກວດສອບວ່າການອັບເດດສຳເລັດແລ້ວ
+        if response.status_code == 201:
+            transfer_log_id = response.data.get('transfer_id')
+            if transfer_log_id:
+                try:
+                    
+                    from .models import FA_Transfer_Logs  
+                    transfer_log = FA_Transfer_Logs.objects.get(pk=transfer_log_id)
+                    asset = transfer_log.asset_list_id
+                    
+                    print(f"🔍 Final verification - Asset {asset.asset_list_id} location: {asset.asset_location_id}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Verification failed: {e}")
+        
+        return response
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
 class FAAssetPhotosViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetPhotosSerializer
     permission_classes = [IsAuthenticated]
@@ -6377,6 +6717,37 @@ class FAMaintenanceLogsViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+# class FAAccountingMethodViewSet(viewsets.ModelViewSet):
+#     serializer_class = FAAccountingMethodSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Accounting_Method.objects.all().order_by('mapping_id')
+#         acc_type = self.request.query_params.get('acc_type')
+#         if acc_type:
+#             queryset = queryset.filter(acc_type=acc_type)
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+from django.http import Http404
+from rest_framework import status
+from rest_framework.response import Response
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+from SAMCSYS.models import MTTB_GLSub, MTTB_GLMaster  # ເພີ່ມ MTTB_GLMaster
+
 class FAAccountingMethodViewSet(viewsets.ModelViewSet):
     serializer_class = FAAccountingMethodSerializer
     permission_classes = [IsAuthenticated]
@@ -6388,7 +6759,123 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(acc_type=acc_type)
         return queryset
     
+    def create_glsub_record(self, account_code, description):
+        """ສ້າງ record ໃໝ່ໃນ MTTB_GLSub"""
+        try:
+           
+            if '.' in account_code:
+                gl_code = account_code.split('.')[0]
+            else:
+                gl_code = account_code
+            
+           
+            try:
+                gl_master = MTTB_GLMaster.objects.get(gl_code=gl_code)
+                gl_code_id = gl_master.glid  
+            except MTTB_GLMaster.DoesNotExist:
+                raise ValueError(f"ບໍ່ພົບ gl_code '{gl_code}' ໃນ MTTB_GLMaster")
+            
+            
+            glsub_record = MTTB_GLSub.objects.create(
+                glsub_code=account_code,
+                glsub_Desc_la=description,
+                gl_code_id=gl_code_id,
+                Maker_Id=self.request.user,
+                Maker_DT_Stamp=timezone.now(),
+                Record_Status='O',
+                Auth_Status='A'   
+               
+            )
+            
+            return glsub_record
+            
+        except Exception as e:
+            raise Exception(f"ຜິດພາດໃນການສ້າງ GLSub: {str(e)}")
+    
+    def create(self, request, *args, **kwargs):
+        """Override create method ເພື່ອກວດສອບແລະສ້າງ GLSub records"""
+        
+        
+        debit_account_id = request.data.get('debit_account_id')
+        credit_account_id = request.data.get('credit_account_id')
+        description = request.data.get('description', '')  # ສຳລັບ glsub_Desc_la
+        
+        
+        if not debit_account_id or not credit_account_id:
+            return Response(
+                {'error': 'debit_account_id ແລະ credit_account_id ຈຳເປັນຕ້ອງມີ'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+           
+            with transaction.atomic():
+                
+                
+                debit_exists = MTTB_GLSub.objects.filter(glsub_code=debit_account_id).exists()
+                credit_exists = MTTB_GLSub.objects.filter(glsub_code=credit_account_id).exists()
+                
+                if debit_exists:
+                    return Response(
+                        {
+                            'error': f'debit_account_id "{debit_account_id}" ມີຢູ່ໃນລະບົບແລ້ວ',
+                            'code': 'DUPLICATE_DEBIT_ACCOUNT'
+                        }, 
+                        status=status.HTTP_501_NOT_IMPLEMENTED
+                    )
+                
+                if credit_exists:
+                    return Response(
+                        {
+                            'error': f'credit_account_id "{credit_account_id}" ມີຢູ່ໃນລະບົບແລ້ວ',
+                            'code': 'DUPLICATE_CREDIT_ACCOUNT'
+                        }, 
+                        status=status.HTTP_501_NOT_IMPLEMENTED
+                    )
+                
+                
+                try:
+                    
+                    debit_glsub = self.create_glsub_record(
+                        debit_account_id, 
+                        f" {description}"
+                    )
+                    
+                    
+                    credit_glsub = self.create_glsub_record(
+                        credit_account_id, 
+                        f" {description}"
+                    )
+                    
+                    print(f"✅ ສ້າງ GLSub records ສຳເລັດ: {debit_glsub.glsub_code}, {credit_glsub.glsub_code}")
+                    
+                except Exception as e:
+                    return Response(
+                        {'error': f'ຜິດພາດໃນການສ້າງ GLSub records: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                
+                
+                response = super().create(request, *args, **kwargs)
+                
+                
+                if response.status_code == 201:
+                    response.data['glsub_created'] = {
+                        'debit_account': debit_account_id,
+                        'credit_account': credit_account_id,
+                        'message': 'GLSub records ຖືກສ້າງສຳເລັດ'
+                    }
+                
+                return response
+                
+        except Exception as e:
+            return Response(
+                {'error': f'ຜິດພາດໃນການດຳເນີນການ: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     def perform_create(self, serializer):
+        """ບັນທຶກຂໍ້ມູນພ້ອມ Maker info"""
         user = self.request.user
         serializer.save(
             Maker_Id=user,
@@ -6401,6 +6888,35 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
     
 #----------------end of Asset-----------------
 

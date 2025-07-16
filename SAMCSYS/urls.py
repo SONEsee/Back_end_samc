@@ -60,8 +60,9 @@ from .views import (
     FALocationViewSet,
     FAExpenseCategoryViewSet,
     FAAssetListViewSet,
-    FADepreciationMainViewSet,
-    FADepreciationSubViewSet,
+    # FADepreciationMainViewSet,
+    # FADepreciationSubViewSet,
+    FAAssetListDepreciationMainViewSet,
     FAAssetListDepreciationViewSet,
     FAAssetListDisposalViewSet,
     FAAssetExpenseViewSet,
@@ -76,6 +77,7 @@ from .views import (
     force_logout_user_test,
     session_check,
     JournalProcessV2ViewSet,
+    
     end_of_day_journal_view,
     check_journal_submission_available,
     validate_eod_prerequisites_view,
@@ -125,8 +127,9 @@ router.register(r'asset_suppliers', FASuppliersViewSet , basename='asset_supplie
 router.register(r'asset_location', FALocationViewSet , basename='asset_location')
 router.register(r'asset_category', FAExpenseCategoryViewSet , basename='asset_category')
 router.register(r'asset_list', FAAssetListViewSet , basename='asset_list')
-router.register(r'asset_dpca_main', FADepreciationMainViewSet , basename='asset_dpca_main')
-router.register(r'asset_dpca_sub', FADepreciationSubViewSet , basename='asset_dpca_sub')
+# router.register(r'asset_dpca_main', FADepreciationMainViewSet , basename='asset_dpca_main')
+# router.register(r'asset_dpca_sub', FADepreciationSubViewSet , basename='asset_dpca_sub')
+router.register(r'asset_list_dpca_main', FAAssetListDepreciationMainViewSet , basename='asset_list_dpca_main')
 router.register(r'asset_list_dpca', FAAssetListDepreciationViewSet , basename='asset_list_dpca')
 router.register(r'asset_list_diposal', FAAssetListDisposalViewSet , basename='asset_list_diposal')
 router.register(r'asset_expense', FAAssetExpenseViewSet , basename='asset_expense')
