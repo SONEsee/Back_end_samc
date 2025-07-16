@@ -7704,6 +7704,7 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
+
     
 # sone perm code.............................................................................
 
