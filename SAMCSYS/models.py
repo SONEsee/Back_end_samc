@@ -17,7 +17,7 @@ class STTB_ModulesInfo(models.Model):
     class Meta:
         verbose_name_plural='ModulesInfo'
     def __str__(self):
-        return self.MODULE_NAMEL
+        return self.module_Id
     
 class MTTB_MAIN_MENU(models.Model):
     menu_id = models.CharField(primary_key=True, max_length=20)
@@ -781,7 +781,8 @@ class DETB_JRNL_LOG_HIST(models.Model):
 class ACTB_DAIRY_LOG_HISTORY(models.Model):
     ac_entry_sr_no = models.AutoField(primary_key=True)
     module = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
-    trn_ref_no = models.ForeignKey(DETB_JRNL_LOG,null=True,blank=True,on_delete=models.CASCADE)
+    # trn_ref_no = models.ForeignKey(DETB_JRNL_LOG,null=True,blank=True,on_delete=models.CASCADE)
+    trn_ref_no = models.CharField(max_length=35, null=True, blank=True) # models.ForeignKey(DETB_JRNL_LOG,null=True,blank=True,on_delete=models.CASCADE)
     trn_ref_sub_no = models.CharField(max_length=35, null=True, blank=True)
     event_sr_no = models.BigIntegerField(default=0, null=True, blank=True)
     event = models.CharField(max_length=4, null=True, blank=True)
@@ -855,7 +856,7 @@ class STTB_EOC_STATUS(models.Model):
 class STTB_EOC_DAILY_LOG(models.Model):
     ac_entry_sr_no = models.AutoField(primary_key=True)
     module = models.CharField(max_length=2)
-    trn_ref_no = models.CharField(max_length=15)
+    trn_ref_no = models.CharField(max_length=35)
     trn_ref_sub_no = models.CharField(max_length=35, null=True, blank=True)
     event_sr_no = models.IntegerField(null=True, blank=True)
     event = models.CharField(max_length=4, null=True, blank=True)
@@ -874,7 +875,7 @@ class STTB_EOC_DAILY_LOG(models.Model):
     category = models.CharField(max_length=1, null=True, blank=True)
     value_dt = models.DateField(null=True, blank=True)
     financial_cycle = models.CharField(max_length=9)
-    period_code = models.CharField(max_length=3)
+    period_code = models.CharField(max_length=6)
     user_id = models.CharField(max_length=12, null=True, blank=True)
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     auth_id = models.CharField(max_length=12, null=True, blank=True)
