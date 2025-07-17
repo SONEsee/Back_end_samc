@@ -4608,6 +4608,128 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             "asset_status": asset.asset_status,
             "updated_field": "Auth_Status" if asset.asset_status == "UC" else "Auth_Status_ARC"
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=["post"], url_path="pending-asset")
+    def pending_asset(self, request):
+        reference_no = request.data.get("Ac_relatives")
+        module_id = request.data.get("module_id", "AS")
+
+        if not reference_no:
+            return Response({"error": "Ac_relatives is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if module_id != "AS":
+            return Response({"error": "Invalid module_id. This endpoint only supports module_id = 'AS'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            asset = FA_Asset_Lists.objects.get(
+                asset_list_id=reference_no,
+                asset_status__in=["UC", "AC"]  # Look for both UC and AC status
+            )
+        except FA_Asset_Lists.DoesNotExist:
+            return Response(
+                {"error": f"No asset found with Ac_relatives={reference_no} in status UC or AC"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Determine which field to update based on asset_status
+        if asset.asset_status == "UC":
+            # Check if already approved
+            if asset.Auth_Status == "A" and asset.Auth_Status_ARC == "A":
+                return Response(
+                    {"error": f"Asset {reference_no} (UC) has already been approved."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status for UC assets
+            asset.Auth_Status = "P"
+            message = f"Asset {reference_no} (UC) has been Pending successfully."
+            
+        elif asset.asset_status == "AC":
+            # Check if already approved
+            if hasattr(asset, 'Auth_Status_ARC') and asset.Auth_Status_ARC == "A":
+                return Response(
+                    {"error": f"Asset {reference_no} (AC) has already been approved."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status_ARC for AC assets
+            asset.Auth_Status_ARC = "P"
+            message = f"Asset {reference_no} (AC) has been Pending successfully."
+
+        # Set common fields
+        asset.Checker_Id = request.user
+        asset.Checker_DT_Stamp = timezone.now()
+        asset.save()
+
+        return Response({
+            "success": True,
+            "message": message,
+            "asset_status": asset.asset_status,
+            "updated_field": "Auth_Status" if asset.asset_status == "UC" else "Auth_Status_ARC"
+        }, status=status.HTTP_200_OK)
+
+
+    @action(detail=False, methods=["post"], url_path="reject-asset")
+    def reject_asset(self, request):
+        reference_no = request.data.get("Ac_relatives")
+        module_id = request.data.get("module_id", "AS")
+
+        if not reference_no:
+            return Response({"error": "Ac_relatives is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if module_id != "AS":
+            return Response({"error": "Invalid module_id. This endpoint only supports module_id = 'AS'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            asset = FA_Asset_Lists.objects.get(
+                asset_list_id=reference_no,
+                asset_status__in=["UC", "AC"]  # Look for both UC and AC status
+            )
+        except FA_Asset_Lists.DoesNotExist:
+            return Response(
+                {"error": f"No asset found with Ac_relatives={reference_no} in status UC or AC"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Determine which field to update based on asset_status
+        if asset.asset_status == "UC":
+            # Check if already rejected
+            if asset.Auth_Status == "R" and asset.Auth_Status_ARC == "R":
+                return Response(
+                    {"error": f"Asset {reference_no} (UC) has already been rejected."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status for UC assets
+            asset.Auth_Status = "R"
+            message = f"Asset {reference_no} (UC) has been rejected successfully."
+
+        elif asset.asset_status == "AC":
+            # Check if already rejected
+            if hasattr(asset, 'Auth_Status_ARC') and asset.Auth_Status_ARC == "R":
+                return Response(
+                    {"error": f"Asset {reference_no} (AC) has already been rejected."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update Auth_Status_ARC for AC assets
+            asset.Auth_Status_ARC = "R"
+            message = f"Asset {reference_no} (AC) has been rejected successfully."
+
+        # Set common fields
+        asset.Checker_Id = request.user
+        asset.Checker_DT_Stamp = timezone.now()
+        asset.save()
+
+        return Response({
+            "success": True,
+            "message": message,
+            "asset_status": asset.asset_status,
+            "updated_field": "Auth_Status" if asset.asset_status == "UC" else "Auth_Status_ARC"
+        }, status=status.HTTP_200_OK)
+
 
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_all(self, request):
@@ -4845,6 +4967,75 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'message': f'Successfully rejected {log_updated} LOG entries, {master_updated} MASTER record, {hist_updated} HIST records',
                 'reference_no': reference_no,
                 'rejection_reason': rejection_reason
+            })
+            
+        except Exception as e:
+            return Response({'error': f'Error during rejection: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='pending-all')  
+    def pending_all(self, request):
+        """Reject all records (MASTER, LOG, HIST) for a Reference_No"""
+        reference_no = request.data.get('Reference_No')
+        pending_reason = request.data.get('pending_reason')
+
+        if not reference_no:
+            return Response({'error': 'Reference_No is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
+
+        if not pending_reason:
+            return Response({'error': 'pending_reason is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if entries exist
+        log_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+        if not log_entries.exists():
+            return Response({'error': 'No entries found for this reference number'}, 
+                        status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            from django.db import transaction
+            
+            with transaction.atomic():
+                # Update DETB_JRNL_LOG
+                log_updated = log_entries.update(
+                    Auth_Status='P',
+                    Checker_Id=request.user,
+                    Checker_DT_Stamp=timezone.now(),
+                    # comments=request.data.get('comments') + f'\nRejection: {rejection_reason}'
+                )
+                
+                # Update DETB_JRNL_LOG_MASTER
+                try:
+                    from .models import DETB_JRNL_LOG_MASTER
+                    master_record = DETB_JRNL_LOG_MASTER.objects.get(Reference_No=reference_no)
+                    master_record.Auth_Status = 'P'
+                    master_record.Checker_Id = request.user
+                    master_record.Checker_DT_Stamp = timezone.now()
+                    master_record.Addl_text = (master_record.Addl_text or '') + f'\nPending: {pending_reason}'
+                    master_record.save()
+                    master_updated = 1
+                except DETB_JRNL_LOG_MASTER.DoesNotExist:
+                    master_updated = 0
+                
+                # Update DETB_JRNL_LOG_HIST (if exists)
+                hist_updated = 0
+                try:
+                    from .models import DETB_JRNL_LOG_HIST
+                    hist_updated = DETB_JRNL_LOG_HIST.objects.filter(
+                        Reference_No=reference_no
+                    ).update(
+                        Auth_Status='P',
+                        Checker_Id=request.user,
+                        Checker_DT_Stamp=timezone.now()
+                    )
+                except:
+                    pass  # HIST table might not exist
+            
+            return Response({
+                'message': f'Successfully pending {log_updated} LOG entries, {master_updated} MASTER record, {hist_updated} HIST records',
+                'reference_no': reference_no,
+                'rejection_reason': pending_reason
             })
             
         except Exception as e:
@@ -5185,7 +5376,8 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         auth_status = request.query_params.get('Auth_Status')
         
         queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
-            delete_stat__isnull=True, Value_date=Today
+            delete_stat__isnull=True
+            , Value_date=Today
         ).exclude(delete_stat='D', Auth_Status='A')
 
         if reference_no:
@@ -5196,6 +5388,30 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
+    
+    @action(detail=False, methods=['get'], url_path='journal-log-detail')
+    def journal_log_detail(self, request):
+        """
+        Get all active (not deleted) journal log master records, optionally filtered by Reference_No.
+        
+        """
+
+        # Today = timezone.now().date()
+        reference_no = request.query_params.get('Reference_No')
+        auth_status = request.query_params.get('Auth_Status')
+        
+        queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+            delete_stat__isnull=True
+            # , Value_date=Today
+        ).exclude(delete_stat='D')
+
+        if reference_no:
+            queryset = queryset.filter(Reference_No=reference_no)
+        if auth_status:
+            queryset = queryset.filter(Auth_Status=auth_status)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['patch'], url_path='approve-by-reference')
     def approve_by_reference(self, request):
@@ -8220,6 +8436,7 @@ class MasterCodeViewSet(viewsets.ModelViewSet):
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
+
     
 # sone perm code.............................................................................
 
