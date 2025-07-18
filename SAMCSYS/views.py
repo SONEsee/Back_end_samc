@@ -5289,36 +5289,182 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             # User doesn't have canAuthorize permission - show only their own records
             return base_queryset.filter(Maker_Id=user)
 
+    # def list(self, request, *args, **kwargs):
+    #     """
+    #     Override list to add Value_date filtering
+    #     """
+    #     queryset = self.filter_queryset(self.get_queryset())
+        
+    #     # Apply date filtering if provided
+    #     date_param = request.query_params.get('Value_date')
+        
+    #     if date_param:
+    #         try:
+    #             # Parse the date string (e.g., "2025-07-18")
+    #             filter_date = parse_date(date_param)
+    #             if filter_date:
+    #                 # Option 1: Use __date lookup (recommended - simpler)
+    #                 queryset = queryset.filter(Value_date__date=filter_date)
+                    
+    #                 # Option 2: Alternative using date range (if __date doesn't work)
+    #                 # start_datetime = datetime.combine(filter_date, datetime.min.time())
+    #                 # end_datetime = datetime.combine(filter_date, datetime.max.time())
+    #                 # queryset = queryset.filter(Value_date__range=[start_datetime, end_datetime])
+                    
+    #             else:
+    #                 # If date parsing fails, return empty queryset
+    #                 queryset = queryset.none()
+    #         except ValueError:
+    #             # If date format is invalid, return empty queryset
+    #             queryset = queryset.none()
+        
+    #     # Get page from pagination
+    #     page = self.paginate_queryset(queryset)
+    #     if page is not None:
+    #         serializer = self.get_serializer(page, many=True)
+    #         return self.get_paginated_response(serializer.data)
+
+    #     serializer = self.get_serializer(queryset, many=True)
+    #     return Response(serializer.data)
     def list(self, request, *args, **kwargs):
         """
-        Override list to add Value_date filtering
+        Override list to add comprehensive date filtering and permission-based access
+        Supports:
+        - Specific date: Value_date=2024-01-15
+        - Date range: Value_date__gte=2024-01-01&Value_date__lte=2024-01-31
+        - Permission-based filtering: show_all=true/false
         """
         queryset = self.filter_queryset(self.get_queryset())
         
-        # Apply date filtering if provided
-        date_param = request.query_params.get('Value_date')
+        # Permission-based filtering
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
         
-        if date_param:
-            try:
-                # Parse the date string (e.g., "2025-07-18")
-                filter_date = parse_date(date_param)
-                if filter_date:
-                    # Option 1: Use __date lookup (recommended - simpler)
-                    queryset = queryset.filter(Value_date__date=filter_date)
-                    
-                    # Option 2: Alternative using date range (if __date doesn't work)
-                    # start_datetime = datetime.combine(filter_date, datetime.min.time())
-                    # end_datetime = datetime.combine(filter_date, datetime.max.time())
-                    # queryset = queryset.filter(Value_date__range=[start_datetime, end_datetime])
-                    
-                else:
-                    # If date parsing fails, return empty queryset
-                    queryset = queryset.none()
-            except ValueError:
-                # If date format is invalid, return empty queryset
+        # If user doesn't have authorization permission, filter to only their own records
+        if not show_all:
+            # Assuming the user ID is available in request.user
+            user_id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None)
+            if user_id:
+                queryset = queryset.filter(Maker_Id=user_id)
+            else:
+                # If no user ID found, return empty queryset for security
                 queryset = queryset.none()
         
-        # Get page from pagination
+        # Date filtering logic
+        try:
+            # 1. Handle specific date filtering (Value_date=2024-01-15)
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    # Filter for exact date match
+                    queryset = queryset.filter(Value_date__date=filter_date)
+                else:
+                    # Invalid date format, return empty queryset
+                    return Response({
+                        'error': 'Invalid date format for Value_date. Expected YYYY-MM-DD.',
+                        'results': [],
+                        'count': 0
+                    }, status=400)
+            
+            # 2. Handle date range filtering (Value_date__gte and Value_date__lte)
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                    else:
+                        return Response({
+                            'error': 'Invalid date format for Value_date__gte. Expected YYYY-MM-DD.',
+                            'results': [],
+                            'count': 0
+                        }, status=400)
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+                    else:
+                        return Response({
+                            'error': 'Invalid date format for Value_date__lte. Expected YYYY-MM-DD.',
+                            'results': [],
+                            'count': 0
+                        }, status=400)
+        
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Date filtering error: {str(e)}")
+            
+            return Response({
+                'error': 'Error processing date filters.',
+                'results': [],
+                'count': 0
+            }, status=400)
+        
+        # Additional filtering parameters
+        try:
+            # Module filtering
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+            
+            # Currency filtering
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+            
+            # Authorization status filtering
+            auth_status = request.query_params.get('Auth_Status')
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+            
+            # Search filtering (search in Reference_No and Addl_text)
+            search = request.query_params.get('search')
+            if search:
+                from django.db.models import Q
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search) |
+                    Q(Txn_code__icontains=search)
+                )
+            
+            # Exclude soft deleted records
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+            
+            # Ordering
+            ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
+            if ordering:
+                # Validate ordering field to prevent SQL injection
+                valid_fields = [
+                    'Maker_DT_Stamp', '-Maker_DT_Stamp',
+                    'Value_date', '-Value_date',
+                    'Reference_No', '-Reference_No',
+                    'Fcy_Amount', '-Fcy_Amount',
+                    'Auth_Status', '-Auth_Status'
+                ]
+                if ordering in valid_fields:
+                    queryset = queryset.order_by(ordering)
+                else:
+                    queryset = queryset.order_by('-Maker_DT_Stamp')  # Default ordering
+        
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Additional filtering error: {str(e)}")
+            
+            return Response({
+                'error': 'Error processing filters.',
+                'results': [],
+                'count': 0
+            }, status=400)
+            # Get page from pagination
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -5326,7 +5472,6 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-    
 
     def retrieve(self, request, *args, **kwargs):
         """
