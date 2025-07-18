@@ -5249,6 +5249,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Q
 from .models import DETB_JRNL_LOG_MASTER
 from .serializers import DETB_JRNL_LOG_MASTER_Serializer
+from django.utils.dateparse import parse_datetime, parse_date
 
 
 class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
@@ -5290,18 +5291,32 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """
-        Override list to add debugging information (optional)
+        Override list to add Value_date filtering
         """
         queryset = self.filter_queryset(self.get_queryset())
         
-        # Apply date range filters if provided
-        date_from = request.query_params.get('Value_date__gte')
-        date_to = request.query_params.get('Value_date__lte')
+        # Apply date filtering if provided
+        date_param = request.query_params.get('Value_date')
         
-        if date_from:
-            queryset = queryset.filter(Value_date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(Value_date__lte=date_to)
+        if date_param:
+            try:
+                # Parse the date string (e.g., "2025-07-18")
+                filter_date = parse_date(date_param)
+                if filter_date:
+                    # Option 1: Use __date lookup (recommended - simpler)
+                    queryset = queryset.filter(Value_date__date=filter_date)
+                    
+                    # Option 2: Alternative using date range (if __date doesn't work)
+                    # start_datetime = datetime.combine(filter_date, datetime.min.time())
+                    # end_datetime = datetime.combine(filter_date, datetime.max.time())
+                    # queryset = queryset.filter(Value_date__range=[start_datetime, end_datetime])
+                    
+                else:
+                    # If date parsing fails, return empty queryset
+                    queryset = queryset.none()
+            except ValueError:
+                # If date format is invalid, return empty queryset
+                queryset = queryset.none()
         
         # Get page from pagination
         page = self.paginate_queryset(queryset)
