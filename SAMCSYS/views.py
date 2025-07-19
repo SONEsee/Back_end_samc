@@ -5249,6 +5249,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Q
 from .models import DETB_JRNL_LOG_MASTER
 from .serializers import DETB_JRNL_LOG_MASTER_Serializer
+from django.utils.dateparse import parse_datetime, parse_date
 
 
 class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
@@ -5288,22 +5289,182 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             # User doesn't have canAuthorize permission - show only their own records
             return base_queryset.filter(Maker_Id=user)
 
+    # def list(self, request, *args, **kwargs):
+    #     """
+    #     Override list to add Value_date filtering
+    #     """
+    #     queryset = self.filter_queryset(self.get_queryset())
+        
+    #     # Apply date filtering if provided
+    #     date_param = request.query_params.get('Value_date')
+        
+    #     if date_param:
+    #         try:
+    #             # Parse the date string (e.g., "2025-07-18")
+    #             filter_date = parse_date(date_param)
+    #             if filter_date:
+    #                 # Option 1: Use __date lookup (recommended - simpler)
+    #                 queryset = queryset.filter(Value_date__date=filter_date)
+                    
+    #                 # Option 2: Alternative using date range (if __date doesn't work)
+    #                 # start_datetime = datetime.combine(filter_date, datetime.min.time())
+    #                 # end_datetime = datetime.combine(filter_date, datetime.max.time())
+    #                 # queryset = queryset.filter(Value_date__range=[start_datetime, end_datetime])
+                    
+    #             else:
+    #                 # If date parsing fails, return empty queryset
+    #                 queryset = queryset.none()
+    #         except ValueError:
+    #             # If date format is invalid, return empty queryset
+    #             queryset = queryset.none()
+        
+    #     # Get page from pagination
+    #     page = self.paginate_queryset(queryset)
+    #     if page is not None:
+    #         serializer = self.get_serializer(page, many=True)
+    #         return self.get_paginated_response(serializer.data)
+
+    #     serializer = self.get_serializer(queryset, many=True)
+    #     return Response(serializer.data)
     def list(self, request, *args, **kwargs):
         """
-        Override list to add debugging information (optional)
+        Override list to add comprehensive date filtering and permission-based access
+        Supports:
+        - Specific date: Value_date=2024-01-15
+        - Date range: Value_date__gte=2024-01-01&Value_date__lte=2024-01-31
+        - Permission-based filtering: show_all=true/false
         """
         queryset = self.filter_queryset(self.get_queryset())
         
-        # Apply date range filters if provided
-        date_from = request.query_params.get('Value_date__gte')
-        date_to = request.query_params.get('Value_date__lte')
+        # Permission-based filtering
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
         
-        if date_from:
-            queryset = queryset.filter(Value_date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(Value_date__lte=date_to)
+        # If user doesn't have authorization permission, filter to only their own records
+        if not show_all:
+            # Assuming the user ID is available in request.user
+            user_id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None)
+            if user_id:
+                queryset = queryset.filter(Maker_Id=user_id)
+            else:
+                # If no user ID found, return empty queryset for security
+                queryset = queryset.none()
         
-        # Get page from pagination
+        # Date filtering logic
+        try:
+            # 1. Handle specific date filtering (Value_date=2024-01-15)
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    # Filter for exact date match
+                    queryset = queryset.filter(Value_date__date=filter_date)
+                else:
+                    # Invalid date format, return empty queryset
+                    return Response({
+                        'error': 'Invalid date format for Value_date. Expected YYYY-MM-DD.',
+                        'results': [],
+                        'count': 0
+                    }, status=400)
+            
+            # 2. Handle date range filtering (Value_date__gte and Value_date__lte)
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                    else:
+                        return Response({
+                            'error': 'Invalid date format for Value_date__gte. Expected YYYY-MM-DD.',
+                            'results': [],
+                            'count': 0
+                        }, status=400)
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+                    else:
+                        return Response({
+                            'error': 'Invalid date format for Value_date__lte. Expected YYYY-MM-DD.',
+                            'results': [],
+                            'count': 0
+                        }, status=400)
+        
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Date filtering error: {str(e)}")
+            
+            return Response({
+                'error': 'Error processing date filters.',
+                'results': [],
+                'count': 0
+            }, status=400)
+        
+        # Additional filtering parameters
+        try:
+            # Module filtering
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+            
+            # Currency filtering
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+            
+            # Authorization status filtering
+            auth_status = request.query_params.get('Auth_Status')
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+            
+            # Search filtering (search in Reference_No and Addl_text)
+            search = request.query_params.get('search')
+            if search:
+                from django.db.models import Q
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search) |
+                    Q(Txn_code__icontains=search)
+                )
+            
+            # Exclude soft deleted records
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+            
+            # Ordering
+            ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
+            if ordering:
+                # Validate ordering field to prevent SQL injection
+                valid_fields = [
+                    'Maker_DT_Stamp', '-Maker_DT_Stamp',
+                    'Value_date', '-Value_date',
+                    'Reference_No', '-Reference_No',
+                    'Fcy_Amount', '-Fcy_Amount',
+                    'Auth_Status', '-Auth_Status'
+                ]
+                if ordering in valid_fields:
+                    queryset = queryset.order_by(ordering)
+                else:
+                    queryset = queryset.order_by('-Maker_DT_Stamp')  # Default ordering
+        
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Additional filtering error: {str(e)}")
+            
+            return Response({
+                'error': 'Error processing filters.',
+                'results': [],
+                'count': 0
+            }, status=400)
+            # Get page from pagination
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -5311,7 +5472,6 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-    
 
     def retrieve(self, request, *args, **kwargs):
         """
@@ -5633,30 +5793,124 @@ from rest_framework import status
 
 # Set up logging
 logger = logging.getLogger(__name__)
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def end_of_day_journal_view(request):
     """
-    API endpoint to validate and process end-of-day journal submission.
-    Executes all EOD functions in sequence based on their status.
-    Requires authentication.
+    API endpoint with transaction support - all operations succeed or fail together.
+    Clear EOD journal runs at the end after all processes.
     """
     try:
-        # First validate if EOD can be performed
-        success, message = validate_eod_requirements()
-        if not success:
-            return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+        # Get the value_date from request or use current date
+        value_date = request.data.get('value_date')
+        if not value_date:
+            value_date = timezone.now().date()
+        elif isinstance(value_date, str):
+            value_date = datetime.strptime(value_date, '%Y-%m-%d').date()
         
-        # Execute EOD process with sub-functions
-        success, message = execute_eod_process(request.user)
-        if success:
-            return Response({"message": message}, status=status.HTTP_201_CREATED)
-        return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+        logger.info(f"Starting transactional EOD process for date: {value_date}, User: {request.user}")
         
+        with transaction.atomic():
+            # Step 1: Validate EOD requirements
+            validation_success, validation_message = validate_eod_requirements()
+            if not validation_success:
+                logger.error(f"EOD validation failed: {validation_message}")
+                raise Exception(validation_message)
+            
+            # Step 2: Execute main EOD process
+            eod_success, eod_message = execute_eod_process(request.user)
+            if not eod_success:
+                logger.error(f"EOD process failed: {eod_message}")
+                raise Exception(eod_message)
+            
+            # Step 3: Clear EOD journal (guaranteed to run at the end)
+            clear_success, clear_message = clear_eod_journal_with_transaction(value_date)
+            if not clear_success:
+                logger.error(f"EOD clear failed: {clear_message}")
+                raise Exception(clear_message)
+            
+            # All steps successful
+            final_message = f"ການປະມວນຜົນ EOD ສຳເລັດແລ້ວສົມບູນ ສຳລັບວັນທີ {value_date}"
+            logger.info(f"Complete transactional EOD process successful for {value_date}")
+            
+            return Response({
+                "message": final_message,
+                "success": True,
+                "details": {
+                    "validation": validation_message,
+                    "eod_process": eod_message,
+                    "clear_journal": clear_message
+                }
+            }, status=status.HTTP_201_CREATED)
+    
     except Exception as e:
-        logger.error(f"EOD Journal View Error: {str(e)}")
-        return Response({"error": f"ເກີດຂໍ້ຜິດພາດໃນລະບົບ: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"Transactional EOD process failed for {value_date}: {str(e)}")
+        return Response({
+            "error": f"ການປະມວນຜົນ EOD ລົ້ມເຫລວ: {str(e)}",
+            "success": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+def clear_eod_journal_with_transaction(value_date):
+    """
+    Clears EOD journal entries with transaction support.
+    This version ensures all deletions succeed or fail together.
+    """
+    try:
+        from datetime import datetime
+        from django.db import transaction
+        from .models import DETB_JRNL_LOG, DETB_JRNL_LOG_MASTER
+        
+        # Convert value_date to proper format if it's a string
+        if isinstance(value_date, str):
+            value_date = datetime.strptime(value_date, '%Y-%m-%d').date()
+        
+        with transaction.atomic():
+            cleared_count = 0
+            cleared_details = []
+            
+            # Clear STTB_EOC_DAILY_LOG for specific date
+            # sttb_count = STTB_EOC_DAILY_LOG.objects.filter(value_date=value_date).count()
+            # if sttb_count > 0:
+            #     STTB_EOC_DAILY_LOG.objects.filter(value_date=value_date).delete()
+            #     cleared_count += sttb_count
+            #     cleared_details.append(f"STTB_EOC_DAILY_LOG: {sttb_count}")
+            
+            # Clear ACTB_DAIRY_LOG for specific date
+            actb_count = ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).count()
+            if actb_count > 0:
+                ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).delete()
+                cleared_count += actb_count
+                cleared_details.append(f"ACTB_DAIRY_LOG: {actb_count}")
+            
+            # Clear DETB_JRNL_LOG for specific date
+            jrnl_count = DETB_JRNL_LOG.objects.filter(Value_date=value_date).count()
+            if jrnl_count > 0:
+                DETB_JRNL_LOG.objects.filter(Value_date=value_date).delete()
+                cleared_count += jrnl_count
+                cleared_details.append(f"DETB_JRNL_LOG: {jrnl_count}")
+            
+            # Clear DETB_JRNL_LOG_MASTER for specific date
+            master_count = DETB_JRNL_LOG_MASTER.objects.filter(Value_date=value_date).count()
+            if master_count > 0:
+                DETB_JRNL_LOG_MASTER.objects.filter(Value_date=value_date).delete()
+                cleared_count += master_count
+                cleared_details.append(f"DETB_JRNL_LOG_MASTER: {master_count}")
+            
+            if cleared_count > 0:
+                details_str = ", ".join(cleared_details)
+                message = f"ລຶບຂໍ້ມູນ EOD ສຳເລັດສຳລັບວັນທີ {value_date} (ດ້ວຍ Transaction). ລາຍການທີ່ລຶບ: {details_str}. ລວມ: {cleared_count} ລາຍການ"
+                logger.info(f"EOD journal cleared with transaction for date {value_date}. Total: {cleared_count}")
+                return True, message
+            else:
+                message = f"ບໍ່ມີຂໍ້ມູນ EOD ໃຫ້ລຶບສຳລັບວັນທີ {value_date}"
+                logger.info(f"No EOD journal entries found for date {value_date}")
+                return True, message
+                
+    except Exception as e:
+        error_message = f"ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ EOD ດ້ວຍ Transaction ສຳລັບວັນທີ {value_date}: {str(e)}"
+        logger.error(error_message)
+        return False, error_message
 
 def validate_eod_requirements():
     """
@@ -5787,7 +6041,7 @@ def execute_eod_function(eod_function, user):
     try:
         # Map function IDs to their corresponding execution methods
         function_mapping = {
-            'EOD_JOURNAL': execute_bulk_journal,
+            'FN006': execute_bulk_journal,
             'EOD_BALANCE': execute_balance_calculation,
             'EOD_INTEREST': execute_interest_calculation,
             'EOD_REPORT': execute_report_generation,
@@ -5806,58 +6060,276 @@ def execute_eod_function(eod_function, user):
         logger.error(f"Error executing function {function_id}: {str(e)}")
         return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ: {str(e)}"
 
+
+# from django.db import transaction
+# from django.core.exceptions import ValidationError
+# import logging
+
+# logger = logging.getLogger(__name__)
+
+# def execute_bulk_journal(eod_function, user):
+#     """
+#     Execute the bulk journal function (move data from ACTB_DAIRY_LOG to STTB_EOC_DAILY_LOG)
+#     """
+#     try:
+#         with transaction.atomic():
+#             # Fetch authorized records from ACTB_DAIRY_LOG
+#             authorized_logs = ACTB_DAIRY_LOG.objects.filter(Auth_Status='A')
+            
+#             if not authorized_logs.exists():
+#                 return True, "ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນ"
+            
+#             logger.info(f"Processing {authorized_logs.count()} authorized journal entries")
+            
+#             # Prepare bulk create objects
+#             eoc_logs = []
+#             processed_ids = []
+            
+#             # Iterate through authorized logs and prepare STTB_EOC_DAILY_LOG objects
+#             for log in authorized_logs:
+#                 try:
+#                     # Safely extract ForeignKey values with proper null checking
+#                     eoc_log = STTB_EOC_DAILY_LOG(
+#                         module=getattr(log.module, 'module_code', '') if log.module else '',
+#                         trn_ref_no=getattr(log.trn_ref_no, 'trn_ref_no', '') if log.trn_ref_no else '',
+#                         trn_ref_sub_no=log.trn_ref_sub_no or '',
+#                         # Handle potential BigInt to Int conversion
+#                         event_sr_no=min(log.event_sr_no or 0, 2147483647),  # Max int value
+#                         event=log.event or '',
+#                         ac_no=getattr(log.ac_no, 'gl_sub_code', '') if log.ac_no else '',
+#                         ac_ccy=getattr(log.ac_ccy, 'ccy_code', '') if log.ac_ccy else '',
+#                         drcr_ind=log.drcr_ind or '',
+#                         trn_code=getattr(log.trn_code, 'trn_code', '') if log.trn_code else '',
+#                         fcy_amount=log.fcy_amount,
+#                         exch_rate=log.exch_rate,
+#                         lcy_amount=log.lcy_amount,
+#                         external_ref_no=log.external_ref_no or '',
+#                         addl_text=log.addl_text or '',
+#                         addl_sub_text=log.addl_sub_text or '',
+#                         trn_dt=log.trn_dt,
+#                         type=log.glType or '',
+#                         category=log.category or '',
+#                         value_dt=log.value_dt,
+#                         financial_cycle=getattr(log.financial_cycle, 'fin_cycle', '') if log.financial_cycle else '',
+#                         period_code=getattr(log.period_code, 'per_code', '') if log.period_code else '',
+#                         user_id=getattr(log.user_id, 'user_id', '') if log.user_id else '',
+#                         Maker_DT_Stamp=log.Maker_DT_Stamp,
+#                         auth_id=getattr(log.auth_id, 'user_id', '') if log.auth_id else '',
+#                         Checker_DT_Stamp=log.Checker_DT_Stamp,
+#                         Auth_Status=log.Auth_Status or 'U',
+#                         product=log.product or '',
+#                         entry_seq_no=log.entry_seq_no
+#                     )
+                    
+#                     # Validate the object before adding to bulk list
+#                     eoc_log.full_clean()
+#                     eoc_logs.append(eoc_log)
+#                     processed_ids.append(log.ac_entry_sr_no)
+                    
+#                 except ValidationError as ve:
+#                     logger.error(f"Validation error for log ID {log.ac_entry_sr_no}: {ve}")
+#                     continue
+#                 except Exception as e:
+#                     logger.error(f"Error processing log ID {log.ac_entry_sr_no}: {str(e)}")
+#                     continue
+            
+#             if not eoc_logs:
+#                 return False, "ບໍ່ສາມາດປະມວນຜົນ journal ໃດໆໄດ້"
+            
+#             # Bulk create records in STTB_EOC_DAILY_LOG
+#             created_records = STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
+            
+#             # Update source records to prevent reprocessing
+#             # Option 1: Mark as processed
+#             ACTB_DAIRY_LOG.objects.filter(
+#                 ac_entry_sr_no__in=processed_ids
+#             ).update(Auth_Status='P')  # P for Processed
+            
+#             # Option 2: Delete processed records (uncomment if needed)
+#             # ACTB_DAIRY_LOG.objects.filter(
+#             #     ac_entry_sr_no__in=processed_ids
+#             # ).delete()
+            
+#             logger.info(f"Successfully processed {len(created_records)} journal entries")
+#             return True, f"ບັນທຶກ journal ສຳເລັດ: {len(created_records)} ລາຍການ"
+        
+#     except Exception as e:
+#         logger.error(f"Error in execute_bulk_journal: {str(e)}")
+#         return False, f"ຂໍ້ຜິດພາດໃນການບັນທຶກ journal: {str(e)}"
+
+
+from django.db import transaction
+from django.core.exceptions import ValidationError
+import logging
 def execute_bulk_journal(eod_function, user):
     """
     Execute the bulk journal function (move data from ACTB_DAIRY_LOG to STTB_EOC_DAILY_LOG)
     """
     try:
-        # Fetch authorized records from ACTB_DAIRY_LOG
-        authorized_logs = ACTB_DAIRY_LOG.objects.filter(Auth_Status='A')
-        
-        if not authorized_logs.exists():
-            return True, "ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນ"
-        
-        # Prepare bulk create objects
-        eoc_logs = []
-        for log in authorized_logs:
-            eoc_log = STTB_EOC_DAILY_LOG(
-                module=log.module.module if log.module else None,
-                trn_ref_no=log.trn_ref_no.trn_ref_no if log.trn_ref_no else None,
-                trn_ref_sub_no=log.trn_ref_sub_no,
-                event_sr_no=log.event_sr_no,
-                event=log.event,
-                ac_no=log.ac_no.gl_sub_code if log.ac_no else None,
-                ac_ccy=log.ac_ccy.ccy_code if log.ac_ccy else None,
-                drcr_ind=log.drcr_ind,
-                trn_code=log.trn_code.trn_code if log.trn_code else None,
-                fcy_amount=log.fcy_amount,
-                exch_rate=log.exch_rate,
-                lcy_amount=log.lcy_amount,
-                external_ref_no=log.external_ref_no,
-                addl_text=log.addl_text,
-                addl_sub_text=log.addl_sub_text,
-                trn_dt=log.trn_dt,
-                type=log.glType,
-                category=log.category,
-                value_dt=log.value_dt,
-                financial_cycle=log.financial_cycle.fin_cycle if log.financial_cycle else None,
-                period_code=log.period_code.per_code if log.period_code else None,
-                user_id=log.user_id.user_id if log.user_id else None,
-                Maker_DT_Stamp=log.Maker_DT_Stamp,
-                auth_id=log.auth_id.user_id if log.auth_id else None,
-                Checker_DT_Stamp=log.Checker_DT_Stamp,
-                Auth_Status=log.Auth_Status,
-                product=log.product,
-                entry_seq_no=log.entry_seq_no
-            )
-            eoc_logs.append(eoc_log)
-        
-        # Bulk create records in STTB_EOC_DAILY_LOG
-        STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
-        
-        return True, f"ບັນທຶກ journal ສຳເລັດ: {len(eoc_logs)} ລາຍການ"
+        with transaction.atomic():
+            # Fetch authorized records from ACTB_DAIRY_LOG
+            authorized_logs = ACTB_DAIRY_LOG.objects.filter(Auth_Status='A')
+            
+            if not authorized_logs.exists():
+                return True, "ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນ"
+            
+            logger.info(f"Processing {authorized_logs.count()} authorized journal entries")
+            
+            # Prepare bulk create objects
+            eoc_logs = []
+            processed_ids = []
+            
+            # Iterate through authorized logs and prepare STTB_EOC_DAILY_LOG objects
+            for log in authorized_logs:
+                try:
+                    # Debug: Print log data to understand the structure
+                    logger.debug(f"Processing log ID {log.ac_entry_sr_no}")
+                    logger.debug(f"Module: {log.module}, TRN_REF_NO: {log.trn_ref_no}, AC_NO: {log.ac_no}")
+                    
+                    # Extract values with proper handling for ForeignKeys and field length limits
+                    module_value = ''
+                    if log.module:
+                        # Try different possible field names for module
+                        module_value = str(getattr(log.module, 'module_code', None) or 
+                                         getattr(log.module, 'code', None) or 
+                                         getattr(log.module, 'id', ''))[:2]  # Max 2 chars
+                    
+                    trn_ref_no_value = ''
+                    if log.trn_ref_no:
+                        # Try different possible field names for trn_ref_no
+                        trn_ref_no_value = str(getattr(log.trn_ref_no, 'trn_ref_no', None) or
+                                             getattr(log.trn_ref_no, 'reference_no', None) or
+                                             getattr(log.trn_ref_no, 'id', ''))[:15]  # Max 15 chars
+                    
+                    ac_no_value = ''
+                    if log.ac_no:
+                        # Try different possible field names for ac_no
+                        ac_no_value = str(getattr(log.ac_no, 'gl_sub_code', None) or
+                                        getattr(log.ac_no, 'account_code', None) or
+                                        getattr(log.ac_no, 'code', None) or
+                                        getattr(log.ac_no, 'id', ''))[:20]  # Max 20 chars
+                    
+                    ac_ccy_value = ''
+                    if log.ac_ccy:
+                        ac_ccy_value = str(getattr(log.ac_ccy, 'ccy_code', None) or
+                                         getattr(log.ac_ccy, 'code', None) or
+                                         getattr(log.ac_ccy, 'id', ''))[:3]  # Max 3 chars
+                    
+                    trn_code_value = ''
+                    if log.trn_code:
+                        trn_code_value = str(getattr(log.trn_code, 'trn_code', None) or
+                                           getattr(log.trn_code, 'code', None) or
+                                           getattr(log.trn_code, 'id', ''))[:3]  # Max 3 chars
+                    
+                    financial_cycle_value = ''
+                    if log.financial_cycle:
+                        financial_cycle_value = str(getattr(log.financial_cycle, 'fin_cycle', None) or
+                                                  getattr(log.financial_cycle, 'cycle', None) or
+                                                  getattr(log.financial_cycle, 'id', ''))[:9]  # Max 9 chars
+                    
+                    period_code_value = ''
+                    if log.period_code:
+                        period_code_value = str(getattr(log.period_code, 'per_code', None) or
+                                              getattr(log.period_code, 'code', None) or
+                                              getattr(log.period_code, 'id', ''))[:3]  # Max 3 chars
+                    
+                    user_id_value = ''
+                    if log.user_id:
+                        user_id_value = str(getattr(log.user_id, 'user_id', None) or
+                                          getattr(log.user_id, 'username', None) or
+                                          getattr(log.user_id, 'id', ''))[:12]  # Max 12 chars
+                    
+                    auth_id_value = ''
+                    if log.auth_id:
+                        auth_id_value = str(getattr(log.auth_id, 'user_id', None) or
+                                          getattr(log.auth_id, 'username', None) or
+                                          getattr(log.auth_id, 'id', ''))[:12]  # Max 12 chars
+                    
+                    # Handle external_ref_no length limit (16 chars max)
+                    external_ref_no_value = (log.external_ref_no or '')[:16]
+                    
+                    # Ensure required fields have values
+                    if not module_value:
+                        module_value = 'GL'  # Default module
+                    if not trn_ref_no_value:
+                        trn_ref_no_value = f'TRN{log.ac_entry_sr_no}'[:15]  # Generate from ID
+                    if not ac_no_value:
+                        ac_no_value = f'AC{log.ac_entry_sr_no}'[:20]  # Generate from ID
+                    if not ac_ccy_value:
+                        ac_ccy_value = 'LAK'  # Default currency
+                    if not trn_code_value:
+                        trn_code_value = 'GL'  # Default transaction code
+                    if not financial_cycle_value:
+                        financial_cycle_value = '2025'  # Default financial cycle
+                    if not period_code_value:
+                        period_code_value = f'{log.trn_dt.year}{log.trn_dt.month:02d}' if log.trn_dt else '202507'
+                    
+                    eoc_log = STTB_EOC_DAILY_LOG(
+                        module=module_value,
+                        trn_ref_no=trn_ref_no_value,
+                        trn_ref_sub_no=log.trn_ref_sub_no or '',
+                        # Handle potential BigInt to Int conversion
+                        event_sr_no=min(log.event_sr_no or 0, 2147483647),  # Max int value
+                        event=log.event or '',
+                        ac_no=ac_no_value,
+                        ac_ccy=ac_ccy_value,
+                        drcr_ind=log.drcr_ind or 'D',
+                        trn_code=trn_code_value,
+                        fcy_amount=log.fcy_amount,
+                        exch_rate=log.exch_rate,
+                        lcy_amount=log.lcy_amount,
+                        external_ref_no=external_ref_no_value,
+                        addl_text=log.addl_text or '',
+                        addl_sub_text=log.addl_sub_text or '',
+                        trn_dt=log.trn_dt,
+                        type=log.glType or '',
+                        category=log.category or '',
+                        value_dt=log.value_dt,
+                        financial_cycle=financial_cycle_value,
+                        period_code=period_code_value,
+                        user_id=user_id_value,
+                        Maker_DT_Stamp=log.Maker_DT_Stamp,
+                        auth_id=auth_id_value,
+                        Checker_DT_Stamp=log.Checker_DT_Stamp,
+                        Auth_Status=log.Auth_Status or 'U',
+                        product=log.product or '',
+                        entry_seq_no=log.entry_seq_no
+                    )
+                    
+                    # Validate the object before adding to bulk list
+                    eoc_log.full_clean()
+                    eoc_logs.append(eoc_log)
+                    processed_ids.append(log.ac_entry_sr_no)
+                    
+                except ValidationError as ve:
+                    logger.error(f"Validation error for log ID {log.ac_entry_sr_no}: {ve}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing log ID {log.ac_entry_sr_no}: {str(e)}")
+                    continue
+            
+            if not eoc_logs:
+                return False, "ບໍ່ສາມາດປະມວນຜົນ journal ໃດໆໄດ້"
+            
+            # Bulk create records in STTB_EOC_DAILY_LOG
+            created_records = STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
+            
+            # Update source records to prevent reprocessing
+            # Option 1: Mark as processed
+            ACTB_DAIRY_LOG.objects.filter(
+                ac_entry_sr_no__in=processed_ids
+            ).update(Auth_Status='P')  # P for Processed
+            
+            # Option 2: Delete processed records (uncomment if needed)
+            # ACTB_DAIRY_LOG.objects.filter(
+            #     ac_entry_sr_no__in=processed_ids
+            # ).delete()
+            
+            logger.info(f"Successfully processed {len(created_records)} journal entries")
+            return True, f"ບັນທຶກ journal ສຳເລັດ: {len(created_records)} ລາຍການ"
         
     except Exception as e:
+        logger.error(f"Error in execute_bulk_journal: {str(e)}")
         return False, f"ຂໍ້ຜິດພາດໃນການບັນທຶກ journal: {str(e)}"
 
 def execute_balance_calculation(eod_function, user):
