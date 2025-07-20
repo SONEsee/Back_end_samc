@@ -6592,7 +6592,7 @@ def check_journal_submission_available(request):
             except MTTB_LCL_Holiday.DoesNotExist:
                 return Response({
                     "available": False,
-                    "reason": f"No holiday record for {year_str}-{month_str}."
+                    "reason": f"ບໍ່ສາມາດດລົງບັນຊີໃນວັນພັກໄດ້{year_str}-{month_str}."
                 }, status=status.HTTP_200_OK)
 
             if len(holiday_list) != 31:
@@ -6609,7 +6609,7 @@ def check_journal_submission_available(request):
                 }, status=status.HTTP_200_OK)
         else:
             # Log that working day check was bypassed
-            bypass_reason = "Working day check bypassed (MOD_NO = 'Y')"
+            bypass_reason = "ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີມື້ພັກໄດ້ (MOD_NO = 'Y')"
 
         # Step 2: Check EOD conditions (bypass if BACK_VALUE = 'Y')
         if not bypass_eod_check:
