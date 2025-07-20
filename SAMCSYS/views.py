@@ -6605,7 +6605,7 @@ def check_journal_submission_available(request):
             if holiday_list[day_index] != 'W':
                 return Response({
                     "available": False,
-                    "reason": f"Today ({today}) is not a working day."
+                    "reason": f"ມື້ນີ້ບໍ່ສາມາດບັນທຶກບັນຊີໄດ້ ວັນທີ({today}) ບໍ່ເເມ່ນວັນເຮັດການ."
                 }, status=status.HTTP_200_OK)
         else:
             # Log that working day check was bypassed
@@ -6625,7 +6625,7 @@ def check_journal_submission_available(request):
             if latest_next_working != today:
                 return Response({
                     "available": False,
-                    "reason": f"Today ({today}) does not match next working day ({latest_next_working})."
+                    "reason": f"ມື້ນີ້ວັນທີ ({today}) ກະລຸນາປິດບັນຊີຂອງວັນທີ່ ({latest_next_working}) ກ່ອນດໍາເນີນການ."
                 }, status=status.HTTP_200_OK)
 
             if latest_eod.eod_time != 'N':
@@ -6639,13 +6639,13 @@ def check_journal_submission_available(request):
 
         # Prepare response reason
         if bypass_working_day and bypass_eod_check:
-            reason = f"Today ({today}) is valid for journal submission. Both working day and EOD checks bypassed."
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີມື້ພັກ ເເລະ ລົງຍ້ອນຫຼັງໄດ້ (MOD_NO = 'Y', BACK_VALUE = 'Y')."
         elif bypass_working_day:
-            reason = f"Today ({today}) is valid for journal submission. Working day check bypassed (MOD_NO = 'Y')."
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີມື້ພັກໄດ້ (MOD_NO = 'Y')."
         elif bypass_eod_check:
-            reason = f"Today ({today}) is valid for journal submission. EOD check bypassed (BACK_VALUE = 'Y')."
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີຍ້ອນຫຼັງໄດ້ (BACK_VALUE = 'Y')."
         else:
-            reason = f"Today ({today}) is valid for journal submission."
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້."
 
         # All checks passed or bypassed
         return Response({
