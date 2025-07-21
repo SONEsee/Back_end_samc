@@ -6459,10 +6459,92 @@ def create_next_working_day_entry(user):
         return False, f"ຂໍ້ຜິດພາດໃນການສ້າງ entry ວັນເຮັດການໃໝ່: {str(e)}"
 
 
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from rest_framework import status
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def check_journal_submission_available(request):
+#     """
+#     GET: Check if today is available for journal submission.
+#     Returns True if:
+#     - Today is a working day (W)
+#     - Today matches the latest next_working_Day
+#     - eod_time is 'N' (not yet submitted)
+#     """
+#     try:
+#         tz = pytz.timezone('Asia/Bangkok')
+#         today = timezone.now().astimezone(tz).date()
+#         year_str = str(today.year)
+#         month_str = str(today.month).zfill(2)
+
+#         # Step 1: Check holiday list
+#         try:
+#             holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+#             holiday_list = holiday_record.Holiday_List
+#         except MTTB_LCL_Holiday.DoesNotExist:
+#             return Response({
+#                 "available": False,
+#                 "reason": f"No holiday record for {year_str}-{month_str}."
+#             }, status=status.HTTP_200_OK)
+
+#         if len(holiday_list) != 31:
+#             return Response({
+#                 "available": False,
+#                 "reason": "Holiday_List is invalid length."
+#             }, status=status.HTTP_200_OK)
+
+#         day_index = today.day - 1
+#         if holiday_list[day_index] != 'W':
+#             return Response({
+#                 "available": False,
+#                 "reason": f"Today ({today}) is not a working day."
+#             }, status=status.HTTP_200_OK)
+
+#         # Step 2: Check latest STTB_Dates
+#         try:
+#             latest_eod = STTB_Dates.objects.latest('date_id')
+#         except STTB_Dates.DoesNotExist:
+#             return Response({
+#                 "available": False,
+#                 "reason": "No EOD records found."
+#             }, status=status.HTTP_200_OK)
+
+#         latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+#         if latest_next_working != today:
+#             return Response({
+#                 "available": False,
+#                 "reason": f"Today ({today}) does not match next working day ({latest_next_working})."
+#             }, status=status.HTTP_200_OK)
+
+#         if latest_eod.eod_time != 'N':
+#             return Response({
+#                 "available": False,
+#                 "reason": "Journal already submitted for today."
+#             }, status=status.HTTP_200_OK)
+
+#         # All checks passed
+#         return Response({
+#             "available": True,
+#             "reason": f"Today ({today}) is valid for journal submission."
+#         }, status=status.HTTP_200_OK)
+
+#     except Exception as e:
+#         return Response({
+#             "available": False,
+#             "reason": f"Error checking availability: {str(e)}"
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+import pytz
+from django.utils import timezone
+from .models import MTTB_LCL_Holiday, STTB_Dates, MTTB_DATA_Entry
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -6470,9 +6552,9 @@ def check_journal_submission_available(request):
     """
     GET: Check if today is available for journal submission.
     Returns True if:
-    - Today is a working day (W)
-    - Today matches the latest next_working_Day
-    - eod_time is 'N' (not yet submitted)
+    - Today is a working day (W) OR MOD_NO = 'Y' (bypass condition)
+    - Today matches the latest next_working_Day OR BACK_VALUE = 'Y' (bypass condition)
+    - eod_time is 'N' (not yet submitted) OR BACK_VALUE = 'Y' (bypass condition)
     """
     try:
         tz = pytz.timezone('Asia/Bangkok')
@@ -6480,55 +6562,99 @@ def check_journal_submission_available(request):
         year_str = str(today.year)
         month_str = str(today.month).zfill(2)
 
-        # Step 1: Check holiday list
+        # Get MTTB_DATA_Entry configuration
         try:
-            holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
-            holiday_list = holiday_record.Holiday_List
-        except MTTB_LCL_Holiday.DoesNotExist:
-            return Response({
-                "available": False,
-                "reason": f"No holiday record for {year_str}-{month_str}."
-            }, status=status.HTTP_200_OK)
+            # Assuming you want the latest record or a specific one
+            # You might need to adjust this query based on your business logic
+            data_entry = MTTB_DATA_Entry.objects.filter(
+                # Record_Status='A',  # Assuming 'A' means active, adjust as needed
+                Auth_Status='A'     # Assuming 'A' means authorized, adjust as needed
+            ).first()
+            
+            # If no data entry found, use default behavior (no bypass)
+            if not data_entry:
+                bypass_working_day = False
+                bypass_eod_check = False
+            else:
+                bypass_working_day = data_entry.MOD_NO == 'Y'
+                bypass_eod_check = data_entry.BACK_VALUE == 'Y'
+                
+        except Exception as e:
+            # If error getting data entry, proceed with normal checks
+            bypass_working_day = False
+            bypass_eod_check = False
 
-        if len(holiday_list) != 31:
-            return Response({
-                "available": False,
-                "reason": "Holiday_List is invalid length."
-            }, status=status.HTTP_200_OK)
+        # Step 1: Check working day (bypass if MOD_NO = 'Y')
+        if not bypass_working_day:
+            try:
+                holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+                holiday_list = holiday_record.Holiday_List
+            except MTTB_LCL_Holiday.DoesNotExist:
+                return Response({
+                    "available": False,
+                    "reason": f"ບໍ່ສາມາດດລົງບັນຊີໃນວັນພັກໄດ້{year_str}-{month_str}."
+                }, status=status.HTTP_200_OK)
 
-        day_index = today.day - 1
-        if holiday_list[day_index] != 'W':
-            return Response({
-                "available": False,
-                "reason": f"Today ({today}) is not a working day."
-            }, status=status.HTTP_200_OK)
+            if len(holiday_list) != 31:
+                return Response({
+                    "available": False,
+                    "reason": "Holiday_List is invalid length."
+                }, status=status.HTTP_200_OK)
 
-        # Step 2: Check latest STTB_Dates
-        try:
-            latest_eod = STTB_Dates.objects.latest('date_id')
-        except STTB_Dates.DoesNotExist:
-            return Response({
-                "available": False,
-                "reason": "No EOD records found."
-            }, status=status.HTTP_200_OK)
+            day_index = today.day - 1
+            if holiday_list[day_index] != 'W':
+                return Response({
+                    "available": False,
+                    "reason": f"ມື້ນີ້ບໍ່ສາມາດບັນທຶກບັນຊີໄດ້ ວັນທີ({today}) ບໍ່ເເມ່ນວັນເຮັດການ."
+                }, status=status.HTTP_200_OK)
+        else:
+            # Log that working day check was bypassed
+            bypass_reason = "ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີມື້ພັກໄດ້ (MOD_NO = 'Y')"
 
-        latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
-        if latest_next_working != today:
-            return Response({
-                "available": False,
-                "reason": f"Today ({today}) does not match next working day ({latest_next_working})."
-            }, status=status.HTTP_200_OK)
+        # Step 2: Check EOD conditions (bypass if BACK_VALUE = 'Y')
+        if not bypass_eod_check:
+            try:
+                latest_eod = STTB_Dates.objects.latest('date_id')
+            except STTB_Dates.DoesNotExist:
+                return Response({
+                    "available": False,
+                    "reason": "No EOD records found."
+                }, status=status.HTTP_200_OK)
 
-        if latest_eod.eod_time != 'N':
-            return Response({
-                "available": False,
-                "reason": "Journal already submitted for today."
-            }, status=status.HTTP_200_OK)
+            latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+            if latest_next_working != today:
+                return Response({
+                    "available": False,
+                    "reason": f"ມື້ນີ້ວັນທີ ({today}) ກະລຸນາປິດບັນຊີຂອງວັນທີ່ ({latest_next_working}) ກ່ອນດໍາເນີນການ."
+                }, status=status.HTTP_200_OK)
 
-        # All checks passed
+            if latest_eod.eod_time != 'N':
+                return Response({
+                    "available": False,
+                    "reason": "Journal already submitted for today."
+                }, status=status.HTTP_200_OK)
+        else:
+            # Log that EOD check was bypassed
+            bypass_reason = "EOD check bypassed (BACK_VALUE = 'Y')"
+
+        # Prepare response reason
+        if bypass_working_day and bypass_eod_check:
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີມື້ພັກ ເເລະ ລົງຍ້ອນຫຼັງໄດ້ (MOD_NO = 'Y', BACK_VALUE = 'Y')."
+        elif bypass_working_day:
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີມື້ພັກໄດ້ (MOD_NO = 'Y')."
+        elif bypass_eod_check:
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. ອະນຸຍາດໃຫ້ບັນທຶກບັນຊີຍ້ອນຫຼັງໄດ້ (BACK_VALUE = 'Y')."
+        else:
+            reason = f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້."
+
+        # All checks passed or bypassed
         return Response({
             "available": True,
-            "reason": f"Today ({today}) is valid for journal submission."
+            "reason": reason,
+            "bypass_info": {
+                "working_day_bypassed": bypass_working_day,
+                "eod_check_bypassed": bypass_eod_check
+            }
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
@@ -6536,8 +6662,6 @@ def check_journal_submission_available(request):
             "available": False,
             "reason": f"Error checking availability: {str(e)}"
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 
 
 #---------Asset-------------
