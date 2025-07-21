@@ -5289,36 +5289,182 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             # User doesn't have canAuthorize permission - show only their own records
             return base_queryset.filter(Maker_Id=user)
 
+    # def list(self, request, *args, **kwargs):
+    #     """
+    #     Override list to add Value_date filtering
+    #     """
+    #     queryset = self.filter_queryset(self.get_queryset())
+        
+    #     # Apply date filtering if provided
+    #     date_param = request.query_params.get('Value_date')
+        
+    #     if date_param:
+    #         try:
+    #             # Parse the date string (e.g., "2025-07-18")
+    #             filter_date = parse_date(date_param)
+    #             if filter_date:
+    #                 # Option 1: Use __date lookup (recommended - simpler)
+    #                 queryset = queryset.filter(Value_date__date=filter_date)
+                    
+    #                 # Option 2: Alternative using date range (if __date doesn't work)
+    #                 # start_datetime = datetime.combine(filter_date, datetime.min.time())
+    #                 # end_datetime = datetime.combine(filter_date, datetime.max.time())
+    #                 # queryset = queryset.filter(Value_date__range=[start_datetime, end_datetime])
+                    
+    #             else:
+    #                 # If date parsing fails, return empty queryset
+    #                 queryset = queryset.none()
+    #         except ValueError:
+    #             # If date format is invalid, return empty queryset
+    #             queryset = queryset.none()
+        
+    #     # Get page from pagination
+    #     page = self.paginate_queryset(queryset)
+    #     if page is not None:
+    #         serializer = self.get_serializer(page, many=True)
+    #         return self.get_paginated_response(serializer.data)
+
+    #     serializer = self.get_serializer(queryset, many=True)
+    #     return Response(serializer.data)
     def list(self, request, *args, **kwargs):
         """
-        Override list to add Value_date filtering
+        Override list to add comprehensive date filtering and permission-based access
+        Supports:
+        - Specific date: Value_date=2024-01-15
+        - Date range: Value_date__gte=2024-01-01&Value_date__lte=2024-01-31
+        - Permission-based filtering: show_all=true/false
         """
         queryset = self.filter_queryset(self.get_queryset())
         
-        # Apply date filtering if provided
-        date_param = request.query_params.get('Value_date')
+        # Permission-based filtering
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
         
-        if date_param:
-            try:
-                # Parse the date string (e.g., "2025-07-18")
-                filter_date = parse_date(date_param)
-                if filter_date:
-                    # Option 1: Use __date lookup (recommended - simpler)
-                    queryset = queryset.filter(Value_date__date=filter_date)
-                    
-                    # Option 2: Alternative using date range (if __date doesn't work)
-                    # start_datetime = datetime.combine(filter_date, datetime.min.time())
-                    # end_datetime = datetime.combine(filter_date, datetime.max.time())
-                    # queryset = queryset.filter(Value_date__range=[start_datetime, end_datetime])
-                    
-                else:
-                    # If date parsing fails, return empty queryset
-                    queryset = queryset.none()
-            except ValueError:
-                # If date format is invalid, return empty queryset
+        # If user doesn't have authorization permission, filter to only their own records
+        if not show_all:
+            # Assuming the user ID is available in request.user
+            user_id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None)
+            if user_id:
+                queryset = queryset.filter(Maker_Id=user_id)
+            else:
+                # If no user ID found, return empty queryset for security
                 queryset = queryset.none()
         
-        # Get page from pagination
+        # Date filtering logic
+        try:
+            # 1. Handle specific date filtering (Value_date=2024-01-15)
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    # Filter for exact date match
+                    queryset = queryset.filter(Value_date__date=filter_date)
+                else:
+                    # Invalid date format, return empty queryset
+                    return Response({
+                        'error': 'Invalid date format for Value_date. Expected YYYY-MM-DD.',
+                        'results': [],
+                        'count': 0
+                    }, status=400)
+            
+            # 2. Handle date range filtering (Value_date__gte and Value_date__lte)
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                    else:
+                        return Response({
+                            'error': 'Invalid date format for Value_date__gte. Expected YYYY-MM-DD.',
+                            'results': [],
+                            'count': 0
+                        }, status=400)
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+                    else:
+                        return Response({
+                            'error': 'Invalid date format for Value_date__lte. Expected YYYY-MM-DD.',
+                            'results': [],
+                            'count': 0
+                        }, status=400)
+        
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Date filtering error: {str(e)}")
+            
+            return Response({
+                'error': 'Error processing date filters.',
+                'results': [],
+                'count': 0
+            }, status=400)
+        
+        # Additional filtering parameters
+        try:
+            # Module filtering
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+            
+            # Currency filtering
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+            
+            # Authorization status filtering
+            auth_status = request.query_params.get('Auth_Status')
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+            
+            # Search filtering (search in Reference_No and Addl_text)
+            search = request.query_params.get('search')
+            if search:
+                from django.db.models import Q
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search) |
+                    Q(Txn_code__icontains=search)
+                )
+            
+            # Exclude soft deleted records
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+            
+            # Ordering
+            ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
+            if ordering:
+                # Validate ordering field to prevent SQL injection
+                valid_fields = [
+                    'Maker_DT_Stamp', '-Maker_DT_Stamp',
+                    'Value_date', '-Value_date',
+                    'Reference_No', '-Reference_No',
+                    'Fcy_Amount', '-Fcy_Amount',
+                    'Auth_Status', '-Auth_Status'
+                ]
+                if ordering in valid_fields:
+                    queryset = queryset.order_by(ordering)
+                else:
+                    queryset = queryset.order_by('-Maker_DT_Stamp')  # Default ordering
+        
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Additional filtering error: {str(e)}")
+            
+            return Response({
+                'error': 'Error processing filters.',
+                'results': [],
+                'count': 0
+            }, status=400)
+            # Get page from pagination
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -5326,7 +5472,6 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-    
 
     def retrieve(self, request, *args, **kwargs):
         """
@@ -10027,7 +10172,7 @@ def mark_depreciation_as_accounted(aldm_id, user_id=None):
 
 def calculate_depreciation_schedule(mapping_id):
     """
-    ຟັງຊັ້ນຄິດຄ່າເສື່ອມລາຄາຄົບຖ້ວນ
+    ຟັງຊັ້ນຄິດຄ່າເສື່ອມລາຄາ - ວິທີແກ້: 90k → 0
     """
     try:
         # ດຶງຂໍ້ມູນ accounting_method
@@ -10055,19 +10200,24 @@ def calculate_depreciation_schedule(mapping_id):
         if not accounting_method.transaction_date:
             return {"error": "ບໍ່ມີວັນທີເລີ່ມຕົ້ນ"}
         
-        # ຂໍ້ມູນພື້ນຖານ
-        asset_value = float(asset.asset_value)
-        salvage_value = float(asset.asset_salvage_value or 0)
+        # ✅ ຂໍ້ມູນພື້ນຖານ - ວິທີແກ້ໃໝ່
+        original_asset_value = float(asset.asset_value)           # 100,000 (ເກັບຂໍ້ມູນ)
+        original_salvage_value = float(asset.asset_salvage_value or 0)  # 10,000 (ເກັບຂໍ້ມູນ)
+        total_depreciable = float(asset.accu_dpca_value_total or 0)     # 90,000 (ໃຊ້ຄຳນວນ)
         useful_life = int(asset.asset_useful_life)
         start_date = accounting_method.transaction_date
+        
+        # 🎯 ວິທີແກ້: ໃຊ້ total_depreciable ເປັນ "Virtual Asset Value"
+        virtual_asset_value = total_depreciable  # 90,000
+        virtual_salvage_value = 0                # 0 (ເພື່ອໃຫ້ Remaining = 0)
         
         # ຄິດວັນທີສິ້ນສຸດ
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
         total_days = (end_date - start_date + timedelta(days=1)).days
         
-        # ຄິດຄ່າເສື່ອມລາຄາ
-        depreciable_amount = asset_value - salvage_value
-        daily_depreciation = depreciable_amount / total_days
+        # ✅ ຄິດຄ່າເສື່ອມລາຄາ - ໃຊ້ Virtual Values
+        depreciable_amount = virtual_asset_value - virtual_salvage_value  # 90,000 - 0 = 90,000
+        daily_depreciation = depreciable_amount / total_days             # 90,000 / total_days
         
         # ສະຖານະການຫັກປັດຈຸບັນ
         current_count = int(asset.C_dpac or 0)
@@ -10097,22 +10247,32 @@ def calculate_depreciation_schedule(mapping_id):
         # ດຶງປະຫວັດການຫັກ (5 ເດືອນຫຼ້າສຸດ)
         history_result = get_depreciation_history(asset.asset_list_id, limit=5)
         
-        # ສ້າງຜົນລັບ
+        # ✅ ສ້າງຜົນລັບ - ສະແດງທັງຂໍ້ມູນຈິງ ແລະ Virtual
         result = {
             'asset_info': {
                 'asset_id': asset.asset_list_id,
                 'asset_name': asset.asset_spec or 'N/A',
-                'asset_value': asset_value,
-                'salvage_value': salvage_value,
+                'original_asset_value': original_asset_value,      # 100,000 (ຂໍ້ມູນຈິງ)
+                'original_salvage_value': original_salvage_value,  # 10,000 (ຂໍ້ມູນຈິງ)
+                'virtual_asset_value': virtual_asset_value,       # 90,000 (ໃຊ້ຄຳນວນ)
+                'virtual_salvage_value': virtual_salvage_value,   # 0 (ໃຊ້ຄຳນວນ)
                 'useful_life': useful_life,
-                'depreciation_method': asset.dpca_type or 'SL'
+                'depreciation_method': asset.dpca_type or 'SL',
+                'calculation_note': '🎯 ໃຊ้ accu_dpca_value_total ຄຳນວນເພື່ອໃຫ້ Remaining = 0'
             },
             'calculation_info': {
                 'start_date': start_date.strftime('%d/%m/%Y'),
                 'end_date': end_date.strftime('%d/%m/%Y'),
                 'total_days': total_days,
-                'depreciable_amount': round(depreciable_amount, 2),
-                'daily_depreciation': round(daily_depreciation, 2)
+                'depreciable_amount': round(depreciable_amount, 2),    # 90,000
+                'daily_depreciation': round(daily_depreciation, 2),
+                'final_target_value': 0,
+                'calculation_method': f'ຫັກ {virtual_asset_value:,.0f} ກີບ ໃນ {total_days} ວັນ → Remaining = 0',
+                'logic_explanation': {
+                    'step1': f'ເອົາ accu_dpca_value_total = {total_depreciable:,.0f} ກີບ',
+                    'step2': f'ຄຳນວນເປັນມື້ = {total_depreciable:,.0f} ÷ {total_days} = {daily_depreciation:.2f} ກີບ/ມື້',
+                    'step3': f'ຫັກຄົບແລ້ວ: Accumulated = {total_depreciable:,.0f}, Remaining = 0'
+                }
             },
             'depreciation_status': {
                 'total_months': total_months,
@@ -10121,7 +10281,7 @@ def calculate_depreciation_schedule(mapping_id):
                 'can_depreciate': can_depreciate,
                 'is_completed': is_completed,
                 'completion_percentage': round((current_count / total_months) * 100, 2),
-                'status_message': get_status_message(current_count, total_months)
+                'status_message': get_status_message_90k_to_zero(current_count, total_months, total_depreciable)
             },
             'monthly_examples': {
                 'first_month': {
@@ -10153,6 +10313,17 @@ def calculate_depreciation_schedule(mapping_id):
         
     except Exception as e:
         return {"error": f"General error: {str(e)}"}
+    
+def get_status_message_90k_to_zero(current_count, total_months, target_accumulated):
+    """ສ້າງຂໍ້ຄວາມສະຖານະ - ສຳລັບ 90k → 0"""
+    if current_count >= total_months:
+        return f"✅ ຫັກຄົບ {target_accumulated:,.0f} ກີບ! ມູນຄ່າຄົງເຫຼືອ = 0 ({current_count}/{total_months} ເດືອນ)"
+    elif current_count == 0:
+        return f"🆕 ຍັງບໍ່ໄດ້ເລີ່ມຫັກ (0/{total_months} ເດືອນ) - ຈະຫັກ {target_accumulated:,.0f} ກີບ → 0"
+    else:
+        remaining = total_months - current_count
+        return f"⏳ ກຳລັງຫັກ ({current_count}/{total_months} ເດືອນ) - ເຫຼືອ {remaining} ເດືອນ ເພື່ອຫັກຄົບ {target_accumulated:,.0f} ກີບ → 0"
+
 
 def get_status_message(current_count, total_months):
     """ສ້າງຂໍ້ຄວາມສະຖານະ"""
@@ -10165,7 +10336,7 @@ def get_status_message(current_count, total_months):
         return f"⏳ ກຳລັງຫັກ ({current_count}/{total_months} ເດືອນ) - ເຫຼືອ {remaining} ເດືອນ"
 
 def process_monthly_depreciation(mapping_id, user_id=None):
-    """ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ + ບັນທຶກປະຫວັດ"""
+    """ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ - ວິທີ 90k → 0"""
     try:
         # ກວດສອບສະຖານະກ່ອນ
         calc_result = calculate_depreciation_schedule(mapping_id)
@@ -10174,7 +10345,7 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         
         if not calc_result['depreciation_status']['can_depreciate']:
             return {
-                "error": "ຫັກຄົບຖ້ວນແລ້ວ! ບໍ່ສາມາດຫັກຕໍ່ໄດ້",
+                "error": "ຫັກຄົບ 90,000 ກີບ ແລ້ວ! ມູນຄ່າຄົງເຫຼືອ = 0",
                 "current_status": calc_result['depreciation_status']
             }
         
@@ -10191,7 +10362,14 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         
         start_date = accounting_method.transaction_date
         useful_life = int(asset.asset_useful_life)
+        total_months = useful_life * 12
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+        
+        # ✅ ຂໍ້ມູນພື້ນຖານ
+        virtual_asset_value = float(asset.accu_dpca_value_total or 0)  # 90,000
+        
+        # ✅ ກວດສອບວ່າເປັນເດືອນສຸດທ້າຍບໍ່
+        is_last_month = (next_month == total_months)
         
         # ຄິດວັນທີ່ຂອງເດືອນທີ່ຈະຫັກ
         month_start_date = start_date + relativedelta(months=current_count)
@@ -10211,22 +10389,38 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         if month_end > end_date:
             month_end = end_date
         
-        # ຄິດຈຳນວນວັນ ແລະ ຄ່າເສື່ອມລາຄາ
+        # ✅ ຄິດຈຳນວນວັນ ແລະ ຄ່າເສື່ອມລາຄາ
         days_in_month = (month_end - month_actual_start + timedelta(days=1)).days
         daily_depreciation = calc_result['calculation_info']['daily_depreciation']
-        monthly_depreciation = daily_depreciation * days_in_month
         
-        # ອັບເດດ database
+        # ✅ ການຄິດຄ່າເສື່ອມລາຄາ
         old_accumulated = float(asset.asset_accu_dpca_value or 0)
-        new_accumulated = old_accumulated + monthly_depreciation
-        new_remaining = calc_result['asset_info']['asset_value'] - new_accumulated
         
-        # ຖ້າຫັກຄົບແລ້ວ ໃຫ້ເຫຼືອແຕ່ salvage value
-        if next_month >= (useful_life * 12):
-            new_remaining = calc_result['asset_info']['salvage_value']
-            new_accumulated = calc_result['asset_info']['asset_value'] - new_remaining
+        if is_last_month:
+            # 🎯 ເດືອນສຸດທ້າຍ: ຫັກສ່ວນທີ່ເຫຼືອໃຫ້ຄົບ 90,000
+            monthly_depreciation = virtual_asset_value - old_accumulated  # ສ່ວນທີ່ເຫຼືອ
+            new_accumulated = virtual_asset_value  # 90,000
+            new_remaining = 0  # ✅ ເປົ້າໝາຍ
+            
+            print(f"🎯 ເດືອນສຸດທ້າຍ (ເດືອນທີ່ {next_month}):")
+            print(f"   - ເປົ້າໝາຍ: ຫັກຄົບ {virtual_asset_value:,.0f} ກີບ")
+            print(f"   - ຫັກມາແລ້ວ: {old_accumulated:,.2f}")
+            print(f"   - ຫັກເດືອນນີ້: {monthly_depreciation:,.2f}")
+            print(f"   - Accumulated: {new_accumulated:,.2f}")
+            print(f"   - Remaining: {new_remaining:,.2f}")
+            
+            calculation_note = f"ເດືອນສຸດທ້າຍ - ຫັກຄົບ {virtual_asset_value:,.0f} ກີບ"
+            
+        else:
+            # ເດືອນປົກກະຕິ
+            monthly_depreciation = daily_depreciation * days_in_month
+            new_accumulated = old_accumulated + monthly_depreciation
+            
+            # ✅ Remaining = Virtual Asset Value - Accumulated
+            new_remaining = virtual_asset_value - new_accumulated
+            calculation_note = "ຫັກປົກກະຕິ"
         
-        # 📝 ເກັບປະຫວັດກ່ອນອັບເດດຊັບສິນ
+        # 📝 ເກັບປະຫວັດ
         history_data = {
             'month_number': next_month,
             'month_year': f"{get_month_name_la(month_actual_start.month)} {month_actual_start.year}",
@@ -10243,14 +10437,12 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         history_result = create_depreciation_history(asset, history_data, user_id)
         
         if not history_result['success']:
-            return {
-                "error": f"ບັນທຶກປະຫວັດຜິດພາດ: {history_result['error']}"
-            }
+            return {"error": f"ບັນທຶກປະຫວັດຜິດພາດ: {history_result['error']}"}
         
-        # ອັບເດດຊັບສິນ
+        # ✅ ອັບເດດຊັບສິນ - ໃຊ້ Virtual Values
         asset.C_dpac = str(next_month)
         asset.asset_accu_dpca_value = Decimal(str(new_accumulated))
-        asset.asset_value_remain = Decimal(str(new_remaining))
+        asset.asset_value_remain = Decimal(str(new_remaining))  # ຈະເປັນ 0 ເມື່ອຫັກຄົບ
         asset.asset_latest_date_dpca = datetime.now().date()
         asset.save()
         
@@ -10264,7 +10456,10 @@ def process_monthly_depreciation(mapping_id, user_id=None):
                 'monthly_depreciation': round(monthly_depreciation, 2),
                 'old_accumulated': round(old_accumulated, 2),
                 'new_accumulated': round(new_accumulated, 2),
-                'remaining_value': round(new_remaining, 2)
+                'remaining_value': round(new_remaining, 2),
+                'is_final_month': is_last_month,
+                'calculation_note': calculation_note,
+                'target_achieved': f"ຫັກຄົບ {virtual_asset_value:,.0f} ກີບ, Remaining = 0" if is_last_month else None
             },
             'history_records': {
                 'main_record_id': history_result['main_record_id'],
@@ -10272,14 +10467,16 @@ def process_monthly_depreciation(mapping_id, user_id=None):
             },
             'updated_status': {
                 'C_dpac': next_month,
-                'total_months': useful_life * 12,
-                'remaining_months': (useful_life * 12) - next_month,
-                'is_completed': next_month >= (useful_life * 12)
+                'total_months': total_months,
+                'remaining_months': total_months - next_month,
+                'is_completed': next_month >= total_months,
+                'final_achieved': new_accumulated == virtual_asset_value and new_remaining == 0 if is_last_month else None
             }
         }
         
     except Exception as e:
         return {"error": f"Process error: {str(e)}"}
+
 
 # =====================================
 # Bulk Processing Functions
