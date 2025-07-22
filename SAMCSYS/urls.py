@@ -83,6 +83,7 @@ from .views import (
     setup_default_eod_functions,
     calculate_depreciation_api,
     calculate_depreciation_schedule,
+    FAAssetListDepreciationInMonthViewSet
     
 
 )
@@ -139,6 +140,7 @@ router.register(r'asset_transfer', FATransferLogsViewSet , basename='asset_trans
 router.register(r'asset_photo', FAAssetPhotosViewSet , basename='asset_photo')
 router.register(r'asset_mainten_log', FAMaintenanceLogsViewSet , basename='asset_mainten_log')
 router.register(r'asset_account', FAAccountingMethodViewSet , basename='asset_account')
+router.register(r'asset_list_dpca_inmain', FAAssetListDepreciationInMonthViewSet, basename='asset_list_dpca_inmain')
 router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
 router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
