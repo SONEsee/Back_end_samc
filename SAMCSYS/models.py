@@ -1516,3 +1516,18 @@ class MasterCode(models.Model):
     BOL_name = models.CharField(max_length=255, null=True, blank=True)
     class Meta:
         verbose_name_plural = 'MasterCode'
+
+class FA_Asset_List_Depreciation_InMonth (models.Model):
+    aldim_id = models.AutoField(primary_key=True)
+    dpca_month = models.CharField(max_length=7, null=True, blank=True)  
+    C_dpca = models.CharField(max_length=5, null=True, blank=True, default='0')
+    dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    dpca_status = models.CharField(max_length=20, null=True, blank=True, default='PENDING')
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list_depreciation_inmain')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_list_depreciation_inmain')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'AssestListDepreciationInMain'

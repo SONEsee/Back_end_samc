@@ -6671,11 +6671,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
-                     FA_Accounting_Method,FA_Asset_List_Depreciation_Main,FA_Asset_List_Depreciation)
+                     FA_Accounting_Method,FA_Asset_List_Depreciation_Main,FA_Asset_List_Depreciation,FA_Asset_List_Depreciation_InMonth)
 from .serializers import (FAAssetTypeSerializer,FAChartOfAssetSerializer,FASuppliersSerializer,FALocationSerializer,FAExpenseCategorySerializer,
     FAAssetListSerializer,FAAssetListDisposalSerializer,FAAssetListDepreciationMainSerializer,FAAssetListDepreciationSerializer,
-    FAAssetExpenseSerializer,FATransferLogsSerializer,FAAssetPhotosSerializer,FAMaintenanceLogsSerializer,FAAccountingMethodSerializer)
+    FAAssetExpenseSerializer,FATransferLogsSerializer,FAAssetPhotosSerializer,FAMaintenanceLogsSerializer,FAAccountingMethodSerializer,FAAssetListDepreciationInMonthSerializer)
 from django.utils import timezone
+from django.db.models.functions import Substr
 
 class FAAssetTypeViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetTypeSerializer
@@ -7701,6 +7702,68 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
+class FAAssetListDepreciationInMonthViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetListDepreciationInMonthSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_List_Depreciation_InMonth.objects.all()
+
+        # แยกปีและเดือนจาก string "MM-YYYY"
+        queryset = queryset.annotate(
+            dpca_year=Substr('dpca_month', 4, 4),     # 'YYYY'
+            dpca_month_num=Substr('dpca_month', 1, 2) # 'MM'
+        ).order_by('-dpca_year', '-dpca_month_num')   # เรียงจากล่าสุดไปเก่าสุด
+
+        dpca_status = self.request.query_params.get('dpca_status')
+        if dpca_status:
+            queryset = queryset.filter(dpca_status=dpca_status)
+
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O'"""
