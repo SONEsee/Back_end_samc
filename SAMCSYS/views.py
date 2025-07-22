@@ -4341,7 +4341,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 # Find journal entries matching the Reference_sub_No
                 journal_entries = DETB_JRNL_LOG.objects.filter(
                     Reference_sub_No=reference_sub_no,
-                    Auth_Status='P'
+                    Auth_Status__in=['P','U']
                 )
 
                 if not journal_entries.exists():
@@ -4836,7 +4836,10 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
                         
                         # Prepare additional sub text
-                        addl_sub_text = f"Approved Entry - {entry.Dr_cr} - {entry.Account_no}"
+                        # addl_sub_text = f"Approved Entry - {entry.Dr_cr} - {entry.Account_no}"
+                        addl_sub_text = f"{entry.Addl_sub_text[:30] if entry.Addl_sub_text else ''}"
+
+
                         
                         # Common data for both ACTB_DAIRY_LOG and ACTB_DAIRY_LOG_HISTORY tables
                         daily_log_data = {
@@ -4860,6 +4863,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                             'lcy_cr': lcy_cr,
                             'external_ref_no': entry.Reference_No[:30],
                             'addl_text': entry.Addl_text or '',
+                            # 'addl_sub_text':  entry.addl_sub_text or '',
                             'addl_sub_text': addl_sub_text,
                             'trn_dt': entry.Value_date.date() if entry.Value_date else None,
                             'glid': gl_master,  # ForeignKey to MTTB_GLMaster
