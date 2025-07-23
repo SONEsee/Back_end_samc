@@ -10355,23 +10355,23 @@ def get_month_name_la(month_num):
     }
     return months.get(month_num, f'ເດືອນ {month_num}')
 
+
 def get_current_user_id():
     """ຫາ user_id ປັດຈຸບັນ - ແກ້ໄຂແລ້ວ"""
     try:
-        # ວິທີທີ 1: ຫາ user ທຳອິດທີ່ມີຢູ່
         first_user = MTTB_Users.objects.first()
         if first_user:
             return first_user.user_id
         else:
-            return None  # ບໍ່ມີ user ໃດເລີຍ
+            return None
     except Exception as e:
         print(f"Get user error: {str(e)}")
         return None
+
 def validate_user_id(user_id):
     """ກວດສອບວ່າ user_id ມີຢູ່ບໍ"""
     if not user_id:
         return None
-    
     try:
         user = MTTB_Users.objects.get(user_id=user_id)
         return user.user_id
@@ -10390,23 +10390,19 @@ def create_depreciation_history(asset, depreciation_data, user_id=None):
     ສ້າງປະຫວັດການຫັກຄ່າເສື່ອມລາຄາໃນທັງ 2 ຕາຕະລາງ - ມີການ UPDATE/INSERT
     """
     try:
-        # ✅ ກວດສອບ user_id ກ່ອນ
         if user_id:
             validated_user_id = validate_user_id(user_id)
         else:
             validated_user_id = get_current_user_id()
         
-        # ຖ້າບໍ່ມີ user ທີ່ຖືກຕ້ອງ ໃຫ້ບັນທຶກໂດຍບໍ່ມີ user
         if not validated_user_id:
             print("Warning: ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ - ຈະບັນທຶກໂດຍບໍ່ມີ user")
         
         current_time = datetime.now()
         depreciation_date = depreciation_data['period_start']
         
-        # ຄຳອະທິບາຍການຫັກ
         description = f"ຫັກຄ່າເສື່ອມລາຄາເດືອນທີ່ {depreciation_data['month_number']} ({depreciation_data['month_year']})"
         
-        # 1. ບັນທຶກໃນ FA_Asset_List_Depreciation_Main (ຫຼັກ) - ສ້າງໃໝ່ທຸກຄັ້ງ
         main_record_data = {
             'asset_list_id': asset,
             'dpca_year': str(depreciation_date.year),
@@ -10417,21 +10413,17 @@ def create_depreciation_history(asset, depreciation_data, user_id=None):
             'remaining_value': Decimal(str(depreciation_data['remaining_value'])),
             'accumulated_dpca': Decimal(str(depreciation_data['new_accumulated'])),
             'dpca_desc': description,
-            'dpca_ac_yesno': 'N',  # ຍັງບໍ່ໄດ້ບັນຊີ
+            'dpca_ac_yesno': 'N',
             'dpca_datetime': current_time,
-            'Record_Status': 'C',  # Created
+            'Record_Status': 'C',
         }
         
-        # ເພີ່ມ user ຖ້າມີ
         if validated_user_id:
             main_record_data['Maker_Id_id'] = validated_user_id
             main_record_data['Maker_DT_Stamp'] = current_time
         
         main_record = FA_Asset_List_Depreciation_Main.objects.create(**main_record_data)
         
-        # 2. 🔄 UPDATE/INSERT ໃນ FA_Asset_List_Depreciation (ລາຍລະອຽດ)
-        
-        # ກວດສອບວ່າມີ record ເກົ່າຢູ່ບໍ່ສຳລັບ asset_list_id ນີ້
         existing_record = FA_Asset_List_Depreciation.objects.filter(
             asset_list_id=asset
         ).order_by('-dpca_date').first()
@@ -10443,29 +10435,24 @@ def create_depreciation_history(asset, depreciation_data, user_id=None):
             'remaining_value': Decimal(str(depreciation_data['remaining_value'])),
             'accumulated_dpca': Decimal(str(depreciation_data['new_accumulated'])),
             'dpca_desc': description,
-            'dpca_ac_yesno': 'N',  # ຍັງບໍ່ໄດ້ບັນຊີ
+            'dpca_ac_yesno': 'N',
             'dpca_datetime': current_time,
-            'Record_Status': 'C',  # Created
+            'Record_Status': 'C',
         }
         
-        # ເພີ່ມ user ຖ້າມີ
         if validated_user_id:
             detail_record_data['Maker_Id_id'] = validated_user_id
             detail_record_data['Maker_DT_Stamp'] = current_time
         
         if existing_record:
-            # ✅ UPDATE - ອັບເດດ record ເກົ່າ
             for key, value in detail_record_data.items():
                 setattr(existing_record, key, value)
             existing_record.save()
-            
             detail_record_id = existing_record.ald_id
             operation_type = "UPDATE"
         else:
-            # ✅ INSERT - ສ້າງ record ໃໝ່
             detail_record_data['asset_list_id'] = asset
             detail_record = FA_Asset_List_Depreciation.objects.create(**detail_record_data)
-            
             detail_record_id = detail_record.ald_id
             operation_type = "INSERT"
         
@@ -10482,6 +10469,7 @@ def create_depreciation_history(asset, depreciation_data, user_id=None):
             'success': False,
             'error': f"History recording error: {str(e)}"
         }
+
 
 def get_depreciation_history(asset_list_id, limit=None):
     """
@@ -10591,13 +10579,11 @@ def calculate_depreciation_schedule(mapping_id):
     ຟັງຊັ້ນຄິດຄ່າເສື່ອມລາຄາ - ວິທີແກ້: 90k → 0
     """
     try:
-        # ດຶງຂໍ້ມູນ accounting_method
         try:
             accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
         except FA_Accounting_Method.DoesNotExist:
             return {"error": f"ບໍ່ພົບ mapping_id: {mapping_id}"}
         
-        # ດຶງຂໍ້ມູນ asset
         try:
             if accounting_method.asset_list_id:
                 asset = accounting_method.asset_list_id
@@ -10608,7 +10594,6 @@ def calculate_depreciation_schedule(mapping_id):
         except FA_Asset_Lists.DoesNotExist:
             return {"error": f"ບໍ່ພົບຊັບສິນ: {accounting_method.ref_id}"}
         
-        # ກວດສອບຂໍ້ມູນພື້ນຖານ
         if not asset.asset_value:
             return {"error": "ບໍ່ມີມູນຄ່າຊັບສິນ"}
         if not asset.asset_useful_life:
@@ -10616,71 +10601,64 @@ def calculate_depreciation_schedule(mapping_id):
         if not accounting_method.transaction_date:
             return {"error": "ບໍ່ມີວັນທີເລີ່ມຕົ້ນ"}
         
-        # ✅ ຂໍ້ມູນພື້ນຖານ - ວິທີແກ້ໃໝ່
-        original_asset_value = float(asset.asset_value)           # 100,000 (ເກັບຂໍ້ມູນ)
-        original_salvage_value = float(asset.asset_salvage_value or 0)  # 10,000 (ເກັບຂໍ້ມູນ)
-        total_depreciable = float(asset.accu_dpca_value_total or 0)     # 90,000 (ໃຊ້ຄຳນວນ)
+        original_asset_value = float(asset.asset_value)
+        original_salvage_value = float(asset.asset_salvage_value or 0)
+        total_depreciable = float(asset.accu_dpca_value_total or 0)
         useful_life = int(asset.asset_useful_life)
+        accu_dpca_value_total=int(asset.accu_dpca_value_total)
         start_date = accounting_method.transaction_date
         
-        # 🎯 ວິທີແກ້: ໃຊ້ total_depreciable ເປັນ "Virtual Asset Value"
-        virtual_asset_value = total_depreciable  # 90,000
-        virtual_salvage_value = 0                # 0 (ເພື່ອໃຫ້ Remaining = 0)
+        virtual_asset_value = total_depreciable
+        virtual_salvage_value = 0
         
-        # ຄິດວັນທີສິ້ນສຸດ
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
         total_days = (end_date - start_date + timedelta(days=1)).days
         
-        # ✅ ຄິດຄ່າເສື່ອມລາຄາ - ໃຊ້ Virtual Values
-        depreciable_amount = virtual_asset_value - virtual_salvage_value  # 90,000 - 0 = 90,000
-        daily_depreciation = depreciable_amount / total_days             # 90,000 / total_days
+        depreciable_amount = virtual_asset_value - virtual_salvage_value
+        daily_depreciation = depreciable_amount / total_days
         
-        # ສະຖານະການຫັກປັດຈຸບັນ
         current_count = int(asset.C_dpac or 0)
         total_months = useful_life * 12
         remaining_months = total_months - current_count
         can_depreciate = current_count < total_months
         is_completed = current_count >= total_months
         
-        # ຄິດການຫັກເດືອນພິເສດ
-        first_month_start = start_date
-        first_month_end = datetime(start_date.year, start_date.month, 
-                                 get_last_day_of_month(start_date.year, start_date.month)).date()
-        first_month_days = (first_month_end - first_month_start + timedelta(days=1)).days
-        first_month_depreciation = daily_depreciation * first_month_days
+        # ຄິດຄ່າເສື່ອມລາຄາສຳລັບຕົວຢ່າງເດືອນຕ່າງໆໂດຍໃຊ້ຈຳນວນມື້ຕົວຈິງ
+        monthly_examples = {}
+        current_date = start_date
+        for month_offset in range(3):  # ສະແດງຕົວຢ່າງ 3 ເດືອນ
+            month_start = current_date + relativedelta(months=month_offset)
+            month_end = datetime(month_start.year, month_start.month,
+                               get_last_day_of_month(month_start.year, month_start.month)).date()
+            if month_end > end_date:
+                month_end = end_date
+            days_in_month = (month_end - month_start + timedelta(days=1)).days
+            monthly_depreciation = daily_depreciation * days_in_month
+            monthly_examples[f"month_{month_offset + 1}"] = {
+                'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+                'days': days_in_month,
+                'depreciation': round(monthly_depreciation, 2)
+            }
         
-        last_month_start = datetime(end_date.year, end_date.month, 1).date()
-        last_month_end = end_date
-        last_month_days = (last_month_end - last_month_start + timedelta(days=1)).days
-        last_month_depreciation = daily_depreciation * last_month_days
-        
-        # ເດືອນປົກກະຕິ
-        monthly_30_days = daily_depreciation * 30
-        monthly_31_days = daily_depreciation * 31
-        monthly_28_days = daily_depreciation * 28
-        monthly_29_days = daily_depreciation * 29
-        
-        # ດຶງປະຫວັດການຫັກ (5 ເດືອນຫຼ້າສຸດ)
         history_result = get_depreciation_history(asset.asset_list_id, limit=5)
         
-        # ✅ ສ້າງຜົນລັບ - ສະແດງທັງຂໍ້ມູນຈິງ ແລະ Virtual
         result = {
             'asset_info': {
                 'asset_id': asset.asset_list_id,
                 'asset_name': asset.asset_spec or 'N/A',
-                'original_asset_value': original_asset_value,      # 100,000 (ຂໍ້ມູນຈິງ)
-                'original_salvage_value': original_salvage_value,  # 10,000 (ຂໍ້ມູນຈິງ)
-                'virtual_asset_value': virtual_asset_value,       # 90,000 (ໃຊ້ຄຳນວນ)
-                'virtual_salvage_value': virtual_salvage_value,   # 0 (ໃຊ້ຄຳນວນ)
+                'original_asset_value': original_asset_value,
+                'original_salvage_value': original_salvage_value,
+                'virtual_asset_value': virtual_asset_value,
+                'virtual_salvage_value': virtual_salvage_value,
                 'useful_life': useful_life,
                 'depreciation_method': asset.dpca_type or 'SL',
-                'calculation_note': '🎯 ໃຊ้ accu_dpca_value_total ຄຳນວນເພື່ອໃຫ້ Remaining = 0'
+                'calculation_note': '🎯 ໃຊ້ accu_dpca_value_total ຄຳນວນເພື່ອໃຫ້ Remaining = 0'
             },
             'calculation_info': {
                 'start_date': start_date.strftime('%d/%m/%Y'),
                 'end_date': end_date.strftime('%d/%m/%Y'),
                 'total_days': total_days,
-                'depreciable_amount': round(depreciable_amount, 2),    # 90,000
+                'depreciable_amount': round(depreciable_amount, 2),
                 'daily_depreciation': round(daily_depreciation, 2),
                 'final_target_value': 0,
                 'calculation_method': f'ຫັກ {virtual_asset_value:,.0f} ກີບ ໃນ {total_days} ວັນ → Remaining = 0',
@@ -10699,24 +10677,7 @@ def calculate_depreciation_schedule(mapping_id):
                 'completion_percentage': round((current_count / total_months) * 100, 2),
                 'status_message': get_status_message_90k_to_zero(current_count, total_months, total_depreciable)
             },
-            'monthly_examples': {
-                'first_month': {
-                    'period': f"{first_month_start.strftime('%d/%m/%Y')} - {first_month_end.strftime('%d/%m/%Y')}",
-                    'days': first_month_days,
-                    'depreciation': round(first_month_depreciation, 2)
-                },
-                'last_month': {
-                    'period': f"{last_month_start.strftime('%d/%m/%Y')} - {last_month_end.strftime('%d/%m/%Y')}",
-                    'days': last_month_days,
-                    'depreciation': round(last_month_depreciation, 2)
-                },
-                'regular_months': {
-                    '30_days': round(monthly_30_days, 2),
-                    '31_days': round(monthly_31_days, 2),
-                    '28_days_feb': round(monthly_28_days, 2),
-                    '29_days_feb': round(monthly_29_days, 2)
-                }
-            },
+            'monthly_examples': monthly_examples,  # ໃຊ້ຈຳນວນມື້ຕົວຈິງ
             'accounting_method': {
                 'mapping_id': accounting_method.mapping_id,
                 'ref_id': accounting_method.ref_id,
@@ -10729,6 +10690,7 @@ def calculate_depreciation_schedule(mapping_id):
         
     except Exception as e:
         return {"error": f"General error: {str(e)}"}
+
     
 def get_status_message_90k_to_zero(current_count, total_months, target_accumulated):
     """ສ້າງຂໍ້ຄວາມສະຖານະ - ສຳລັບ 90k → 0"""
@@ -10752,7 +10714,7 @@ def get_status_message(current_count, total_months):
         return f"⏳ ກຳລັງຫັກ ({current_count}/{total_months} ເດືອນ) - ເຫຼືອ {remaining} ເດືອນ"
 
 def process_monthly_depreciation(mapping_id, user_id=None):
-    """ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ - ວິທີ 90k → 0"""
+    """ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ - ວິທີ Vue.js: ໃຊ້ຈຳນວນມື້ຕົວຈິງ, ຮັບປະກັນມູນຄ່າສະສົມຄົບ depreciable_amount"""
     try:
         # ກວດສອບສະຖານະກ່ອນ
         calc_result = calculate_depreciation_schedule(mapping_id)
@@ -10761,7 +10723,7 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         
         if not calc_result['depreciation_status']['can_depreciate']:
             return {
-                "error": "ຫັກຄົບ 90,000 ກີບ ແລ້ວ! ມູນຄ່າຄົງເຫຼືອ = 0",
+                "error": "ຫັກຄົບມູນຄ່າທີ່ສາມາດຫັກເສື່ອມໄດ້ແລ້ວ! ມູນຄ່າຄົງເຫຼືອ = salvage_value",
                 "current_status": calc_result['depreciation_status']
             }
         
@@ -10772,7 +10734,7 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         else:
             asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
         
-        # ຄິດຄ່າເສື່ອມລາຄາເດືອນຕໍ່ໄປ
+   
         current_count = int(asset.C_dpac or 0)
         next_month = current_count + 1
         
@@ -10781,8 +10743,15 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         total_months = useful_life * 12
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
         
-        # ✅ ຂໍ້ມູນພື້ນຖານ
-        virtual_asset_value = float(asset.accu_dpca_value_total or 0)  # 90,000
+        # ✅ ຂໍ້ມູນພື້ນຖານ (ໃຊ້ Decimal ເພື່ອຄວາມແມ່ນຍຳ)
+        asset_value = Decimal(str(asset.asset_value or 0))  
+        accu_dpca_value_total = Decimal(str(asset.accu_dpca_value_total))
+        salvage_value = Decimal(str(asset.asset_salvage_value or 0))  
+        depreciable_amount = asset_value - salvage_value  
+        
+        # ຄ່າເສື່ອມຕໍ່ປີ ແລະ ຕໍ່ເດືອນ
+        annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+        monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
         # ✅ ກວດສອບວ່າເປັນເດືອນສຸດທ້າຍບໍ່
         is_last_month = (next_month == total_months)
@@ -10805,36 +10774,66 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         if month_end > end_date:
             month_end = end_date
         
-        # ✅ ຄິດຈຳນວນວັນ ແລະ ຄ່າເສື່ອມລາຄາ
+        # ✅ ຄິດຈຳນວນມື້ຕົວຈິງ
         days_in_month = (month_end - month_actual_start + timedelta(days=1)).days
-        daily_depreciation = calc_result['calculation_info']['daily_depreciation']
+        total_days_in_month = get_last_day_of_month(month_start_date.year, month_start_date.month)
         
-        # ✅ ການຄິດຄ່າເສື່ອມລາຄາ
-        old_accumulated = float(asset.asset_accu_dpca_value or 0)
+        # ✅ ການຄິດຄ່າເສື່ອມລາຄາໃໝ່ (ຕາມວິທີ Vue.js)
+        old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
         
-        if is_last_month:
-            # 🎯 ເດືອນສຸດທ້າຍ: ຫັກສ່ວນທີ່ເຫຼືອໃຫ້ຄົບ 90,000
-            monthly_depreciation = virtual_asset_value - old_accumulated  # ສ່ວນທີ່ເຫຼືອ
-            new_accumulated = virtual_asset_value  # 90,000
-            new_remaining = 0  # ✅ ເປົ້າໝາຍ
+        if next_month == 1:
+            # 🎯 ງວດທຳອິດ: ມູນຄ່າຕົ້ນງວດ
+            setup_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            monthly_depreciation_value = setup_value
+            end_value = (monthly_depreciation - setup_value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            new_accumulated = monthly_depreciation_value
+            new_remaining = accu_dpca_value_total - new_accumulated
+            calculation_note = f"ງວດທຳອິດ - ມູນຄ່າຕົ້ນງວດ = ({monthly_depreciation:,.2f} × {days_in_month}) ÷ {total_days_in_month} = {monthly_depreciation_value:,.2f} ກີບ"
             
-            print(f"🎯 ເດືອນສຸດທ້າຍ (ເດືອນທີ່ {next_month}):")
-            print(f"   - ເປົ້າໝາຍ: ຫັກຄົບ {virtual_asset_value:,.0f} ກີບ")
-            print(f"   - ຫັກມາແລ້ວ: {old_accumulated:,.2f}")
-            print(f"   - ຫັກເດືອນນີ້: {monthly_depreciation:,.2f}")
+            print(f"🎯 ງວດທຳອິດ (ເດືອນທີ່ {next_month}):")
+            print(f"   - ວັນໃຊ້ຈິງ: {days_in_month}/{total_days_in_month} ມື້")
+            print(f"   - ຄ່າເສື່ອມຕໍ່ເດືອນ: {monthly_depreciation:,.2f}")
+            print(f"   - ມູນຄ່າຕົ້ນງວດ: {setup_value:,.2f}")
+            print(f"   - ມູນຄ່າທ້າຍງວດ: {end_value:,.2f}")
             print(f"   - Accumulated: {new_accumulated:,.2f}")
             print(f"   - Remaining: {new_remaining:,.2f}")
             
-            calculation_note = f"ເດືອນສຸດທ້າຍ - ຫັກຄົບ {virtual_asset_value:,.0f} ກີບ"
+        elif is_last_month:
+            # 🎯 ງວດສຸດທ້າຍ: ຄ່າເສື່ອມ = ມູນຄ່າທີ່ເຫຼືອຈົນກວ່າຈະຄົບ depreciable_amount
+            remaining_to_depreciate = depreciable_amount - old_accumulated
+            monthly_depreciation_value = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            new_accumulated = old_accumulated + monthly_depreciation_value
+            new_remaining = accu_dpca_value_total - new_accumulated
+            end_value = Decimal('0')  # ບໍ່ມີມູນຄ່າທ້າຍງວດໃນເດືອນສຸດທ້າຍ
+            calculation_note = f"ງວດສຸດທ້າຍ - ຫັກຄົບ {depreciable_amount:,.0f} ກີບ (ຄ່າເສື່ອມ = {monthly_depreciation_value:,.2f})"
+            
+            print(f"🎯 ງວດສຸດທ້າຍ (ເດືອນທີ່ {next_month}):")
+            print(f"   - ເປົ້າໝາຍ: ຫັກຄົບ {depreciable_amount:,.0f} ກີບ")
+            print(f"   - ຫັກມາແລ້ວ: {old_accumulated:,.2f}")
+            print(f"   - ຄ່າເສື່ອມເດືອນນີ້: {monthly_depreciation_value:,.2f}")
+            print(f"   - Accumulated: {new_accumulated:,.2f}")
+            print(f"   - Remaining: {new_remaining:,.2f}")
             
         else:
-            # ເດືອນປົກກະຕິ
-            monthly_depreciation = daily_depreciation * days_in_month
-            new_accumulated = old_accumulated + monthly_depreciation
+         
+            monthly_depreciation_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            new_accumulated = old_accumulated + monthly_depreciation_value
+            new_remaining = accu_dpca_value_total - new_accumulated
+            end_value = Decimal('0')  
+            calculation_note = f"ງວດປົກກະຕິ - ຄ່າເສື່ອມ = ({monthly_depreciation:,.2f} × {days_in_month}) ÷ {total_days_in_month} = {monthly_depreciation_value:,.2f}"
             
-            # ✅ Remaining = Virtual Asset Value - Accumulated
-            new_remaining = virtual_asset_value - new_accumulated
-            calculation_note = "ຫັກປົກກະຕິ"
+            print(f"🎯 ງວດປົກກະຕິ (ເດືອນທີ່ {next_month}):")
+            print(f"   - ວັນໃຊ້ຈິງ: {days_in_month}/{total_days_in_month} ມື້")
+            print(f"   - ຄ່າເສື່ອມເດືອນນີ້: {monthly_depreciation_value:,.2f}")
+            print(f"   - Accumulated: {new_accumulated:,.2f}")
+            print(f"   - Remaining: {new_remaining:,.2f}")
+        
+        # 📝 ກວດສອບຄວາມຖືກຕ້ອງ
+        if new_accumulated > depreciable_amount:
+            monthly_depreciation_value = (monthly_depreciation_value - (new_accumulated - depreciable_amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            new_accumulated = depreciable_amount
+            new_remaining = asset_value - new_accumulated
+            calculation_note += f" | ປັບປ່ຽນເພື່ອໃຫ້ accumulated = {depreciable_amount:,.0f}"
         
         # 📝 ເກັບປະຫວັດ
         history_data = {
@@ -10843,22 +10842,25 @@ def process_monthly_depreciation(mapping_id, user_id=None):
             'period_start': month_actual_start,
             'period_end': month_end,
             'days_count': days_in_month,
-            'monthly_depreciation': monthly_depreciation,
-            'old_accumulated': old_accumulated,
-            'new_accumulated': new_accumulated,
-            'remaining_value': new_remaining
+            'total_days_in_month': total_days_in_month,
+            'monthly_depreciation': float(monthly_depreciation_value),
+            'setup_value': float(setup_value) if next_month == 1 else None,
+            'end_value': float(end_value) if next_month == 1 else None,
+            'old_accumulated': float(old_accumulated),
+            'new_accumulated': float(new_accumulated),
+            'remaining_value': float(new_remaining)
         }
         
-        # ບັນທຶກປະຫວັດ
+        
         history_result = create_depreciation_history(asset, history_data, user_id)
         
         if not history_result['success']:
             return {"error": f"ບັນທຶກປະຫວັດຜິດພາດ: {history_result['error']}"}
         
-        # ✅ ອັບເດດຊັບສິນ - ໃຊ້ Virtual Values
+      
         asset.C_dpac = str(next_month)
-        asset.asset_accu_dpca_value = Decimal(str(new_accumulated))
-        asset.asset_value_remain = Decimal(str(new_remaining))  # ຈະເປັນ 0 ເມື່ອຫັກຄົບ
+        asset.asset_accu_dpca_value = new_accumulated
+        asset.asset_value_remain = new_remaining
         asset.asset_latest_date_dpca = datetime.now().date()
         asset.save()
         
@@ -10869,13 +10871,16 @@ def process_monthly_depreciation(mapping_id, user_id=None):
                 'month_year': f"{get_month_name_la(month_actual_start.month)} {month_actual_start.year}",
                 'period': f"{month_actual_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
                 'days_count': days_in_month,
-                'monthly_depreciation': round(monthly_depreciation, 2),
-                'old_accumulated': round(old_accumulated, 2),
-                'new_accumulated': round(new_accumulated, 2),
-                'remaining_value': round(new_remaining, 2),
+                'total_days_in_month': total_days_in_month,
+                'monthly_depreciation': float(monthly_depreciation_value),
+                'setup_value': float(setup_value) if next_month == 1 else None,
+                'end_value': float(end_value) if next_month == 1 else None,
+                'old_accumulated': float(old_accumulated),
+                'new_accumulated': float(new_accumulated),
+                'remaining_value': float(new_remaining),
                 'is_final_month': is_last_month,
                 'calculation_note': calculation_note,
-                'target_achieved': f"ຫັກຄົບ {virtual_asset_value:,.0f} ກີບ, Remaining = 0" if is_last_month else None
+                'target_achieved': f"ຫັກຄົບ {depreciable_amount:,.0f} ກີບ, Remaining = {salvage_value:,.0f}" if is_last_month else None
             },
             'history_records': {
                 'main_record_id': history_result['main_record_id'],
@@ -10886,13 +10891,12 @@ def process_monthly_depreciation(mapping_id, user_id=None):
                 'total_months': total_months,
                 'remaining_months': total_months - next_month,
                 'is_completed': next_month >= total_months,
-                'final_achieved': new_accumulated == virtual_asset_value and new_remaining == 0 if is_last_month else None
+                'final_achieved': new_accumulated >= depreciable_amount and new_remaining <= salvage_value if is_last_month else None
             }
         }
         
     except Exception as e:
         return {"error": f"Process error: {str(e)}"}
-
 
 # =====================================
 # Bulk Processing Functions
