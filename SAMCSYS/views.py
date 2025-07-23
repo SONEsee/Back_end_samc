@@ -6784,6 +6784,7 @@ def check_journal_submission_available(request):
     - Today matches the latest next_working_Day OR BACK_VALUE = 'Y' (bypass condition)
     - eod_time is 'N' (not yet submitted) OR BACK_VALUE = 'Y' (bypass condition)
     """
+    # <-------------- Make Change here -------------->
     try:
         tz = pytz.timezone('Asia/Bangkok')
         today = timezone.now().astimezone(tz).date()
@@ -6833,7 +6834,7 @@ def check_journal_submission_available(request):
             if holiday_list[day_index] != 'W':
                 return Response({
                     "available": False,
-                    "reason": f"ມື້ນີ້ບໍ່ສາມາດບັນທຶກບັນຊີໄດ້ ວັນທີ({today}) ບໍ່ເເມ່ນວັນເຮັດການ."
+                    "reason": f"ມື້ນີ້ບໍ່ສາມາດບັນທຶກບັນຊີໄດ້ ວັນທີ ({today}) ບໍ່ເເມ່ນວັນເຮັດການ."
                 }, status=status.HTTP_200_OK)
         else:
             # Log that working day check was bypassed
