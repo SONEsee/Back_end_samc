@@ -43,6 +43,8 @@ from .views import (
     MTTB_TRN_CodeViewSet,
     Data_EntryViewSet,
     list_villages,
+    list_provinces,
+    list_districts,
     GLTreeAPIView,
     GLTreeAll,
     JRNLLogViewSet,
@@ -160,6 +162,9 @@ urlpatterns = [
     path('api/gl-tree/', gl_tree, name='gl-tree'),
     path('api/count-menus/', count_menus_by_module, name='count-menus'),
     path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
+    # Pherm Sum lup Village Tree:
+    path('api/provinces/', list_provinces, name='list_provinces'),
+    path('api/districts/', list_districts, name='list_districts'),
     path('api/villages_list/', list_villages, name='list_villages'),
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   

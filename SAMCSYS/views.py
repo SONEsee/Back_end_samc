@@ -3572,7 +3572,38 @@ class VillageViewSet(viewsets.ModelViewSet):
                 "message": f"ລົບຂໍ້ມູນບໍ່ສຳເລັດ: {str(e)}"
             }, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated])
+def list_provinces(request):
+    """Get all provinces"""
+    queryset = MTTB_ProvinceInfo.objects.all().order_by('pro_id')
+    serializer = ProvinceSerializer(queryset, many=True)
+    
+    return Response({
+        "status": True,
+        "message": "ສຳເລັດການດຶງຂໍ້ມູນແຂວງ",
+        "count": queryset.count(),
+        "data": serializer.data
+    }, status=status.HTTP_200_OK)
 
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated])
+def list_districts(request):
+    """Get all districts with optional province filter"""
+    queryset = MTTB_DistrictInfo.objects.all().order_by('pro_id', 'dis_code')
+    pro_id = request.query_params.get('pro_id')
+    
+    if pro_id:
+        queryset = queryset.filter(pro_id=pro_id)
+    
+    serializer = DistrictSerializer(queryset, many=True)
+    
+    return Response({
+        "status": True,
+        "message": "ສຳເລັດການດຶງຂໍ້ມູນເມືອງ",
+        "count": queryset.count(),
+        "data": serializer.data
+    }, status=status.HTTP_200_OK)
 @api_view(['GET']) 
 @permission_classes([IsAuthenticated])
 def list_villages(request):
@@ -5460,7 +5491,7 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status','Reference_No']  # Removed 'delete_stat' from filter
     search_fields = ['Reference_No', 'Addl_text']
-    ordering_fields = ['Maker_DT_Stamp', 'Value_date']
+    ordering_fields = ['-Auth_Status', 'Checker_Id','Maker_DT_Stamp', 'Value_date']
     
 
     # def get_queryset(self):
