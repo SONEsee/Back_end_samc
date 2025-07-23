@@ -79,11 +79,14 @@ from .views import (
     force_logout_user_test,
     session_check,
     JournalProcessV2ViewSet,
-    
     end_of_day_journal_view,
     check_journal_submission_available,
     validate_eod_prerequisites_view,
-    setup_default_eod_functions
+    setup_default_eod_functions,
+    calculate_depreciation_api,
+    calculate_depreciation_schedule,
+    FAAssetListDepreciationInMonthViewSet
+    
 
 )
 from rest_framework_simplejwt.views import (
@@ -139,10 +142,11 @@ router.register(r'asset_transfer', FATransferLogsViewSet , basename='asset_trans
 router.register(r'asset_photo', FAAssetPhotosViewSet , basename='asset_photo')
 router.register(r'asset_mainten_log', FAMaintenanceLogsViewSet , basename='asset_mainten_log')
 router.register(r'asset_account', FAAccountingMethodViewSet , basename='asset_account')
+router.register(r'asset_list_dpca_inmain', FAAssetListDepreciationInMonthViewSet, basename='asset_list_dpca_inmain')
 router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
 router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
-
+app_name = 'depreciation'
 
 urlpatterns = [
     #TOKEN
@@ -186,13 +190,15 @@ urlpatterns = [
     path('api/force-logout-all/',force_logout_all_users, name='force-logout-all'),
     path('api/revoked-sessions/',get_revoked_sessions, name='revoked-sessions'),
     path('api/session-check/', session_check, name='session-check'),
-
-    # ໃນ urls.py
-path('api/process-journal/', YourProcessViewSet.as_view({'post': 'process_journal_data'})),
-path('journal/process-v2/', 
+    path('api/process-journal/', YourProcessViewSet.as_view({'post': 'process_journal_data'})),
+    path('journal/process-v2/', 
          JournalProcessV2ViewSet.as_view({'post': 'process_journal_data'}), 
          name='journal-process-v2'),
-# ຫຼື
+    path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
+    path('api/depreciation/', calculate_depreciation_api),
+    path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
+
+
 
 ]
 if settings.DEBUG:

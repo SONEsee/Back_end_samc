@@ -663,7 +663,7 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Depreciation_Main,
     FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,FA_Asset_List_Depreciation,
-    FA_Accounting_Method, MasterCode, MasterType)
+    FA_Accounting_Method, MasterCode, MasterType, FA_Asset_List_Depreciation_InMonth)
 
 class AssetTypeDetailSerializer(serializers.ModelSerializer):
     class Meta:
@@ -847,6 +847,11 @@ class FAMaintenanceLogsSerializer(serializers.ModelSerializer):
 class FAAccountingMethodSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Accounting_Method
+        fields = '__all__'
+
+class FAAssetListDepreciationInMonthSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FA_Asset_List_Depreciation_InMonth
         fields = '__all__'
 
 
