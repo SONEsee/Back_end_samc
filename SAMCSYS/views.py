@@ -2737,6 +2737,7 @@ def count_submenus_per_menu(request):
 
     return Response(result)
 
+
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -2750,6 +2751,12 @@ from .serializers import MTTB_LCL_HolidaySerializer
 class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
     """
     ViewSet for MTTB_LCL_Holiday model providing CRUD operations.
+    
+    Holiday_List now always contains exactly 31 characters:
+    - H: Holiday
+    - W: Working day
+    - N: Weekend day
+    - O: Non-existent day in month (e.g., Feb 29-31)
     
     list: Get all holidays with optional filtering
     create: Create a new holiday (no authentication required)
@@ -2925,6 +2932,195 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
     
     def perform_destroy(self, instance):
         instance.delete()
+
+# from rest_framework.decorators import action
+# from rest_framework.response import Response
+# from rest_framework.permissions import IsAuthenticated, AllowAny
+# from django_filters.rest_framework import DjangoFilterBackend
+# from django.utils import timezone
+# from rest_framework import filters
+# from rest_framework import viewsets, status
+# from .models import MTTB_LCL_Holiday
+# from .serializers import MTTB_LCL_HolidaySerializer
+
+# class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet for MTTB_LCL_Holiday model providing CRUD operations.
+    
+#     list: Get all holidays with optional filtering
+#     create: Create a new holiday (no authentication required)
+#     retrieve: Get a specific holiday by ID
+#     update: Update a holiday (full update)
+#     partial_update: Update a holiday (partial update)
+#     destroy: Delete a holiday
+#     """
+#     queryset = MTTB_LCL_Holiday.objects.all()
+#     serializer_class = MTTB_LCL_HolidaySerializer
+#     lookup_field = 'lcl_holiday_id'
+    
+#     # Enable filtering, searching, and ordering
+#     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    
+#     # Define filterable fields
+#     filterset_fields = {
+#         'HYear': ['exact', 'in'],
+#         'HMonth': ['exact', 'in'],
+#         'HDate': ['exact', 'gte', 'lte', 'range'],
+#         'Holiday_List': ['exact'],
+#         'Record_Status': ['exact', 'in'],
+#         'Auth_Status': ['exact', 'in'],
+#         'Once_Auth': ['exact'],
+#         'Maker_Id': ['exact'],
+#         'Checker_Id': ['exact']
+#     }
+    
+#     # Define searchable fields
+#     search_fields = ['lcl_holiday_id', 'HYear', 'HMonth']
+    
+#     # Define ordering fields
+#     ordering_fields = ['lcl_holiday_id', 'HDate', 'HYear', 'HMonth', 'Maker_DT_Stamp']
+#     ordering = ['-Maker_DT_Stamp']  # Default ordering
+    
+#     def get_permissions(self):
+#         # Allow anyone to create a new holiday, require auth elsewhere
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+    
+#     def perform_create(self, serializer):
+#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Maker_Id=maker,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+    
+#     def perform_update(self, serializer):
+#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Checker_Id=checker,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+    
+#     def get_queryset(self):
+#         """
+#         Optionally restricts the returned holidays based on query parameters.
+#         """
+#         queryset = super().get_queryset()
+        
+#         # Example: Filter holidays by date range
+#         start_date = self.request.query_params.get('start_date', None)
+#         end_date = self.request.query_params.get('end_date', None)
+        
+#         if start_date and end_date:
+#             queryset = queryset.filter(HDate__range=[start_date, end_date])
+        
+#         # Example: Filter only active records
+#         active_only = self.request.query_params.get('active_only', None)
+#         if active_only and active_only.lower() == 'true':
+#             queryset = queryset.filter(Record_Status='O')
+        
+#         return queryset
+    
+
+#     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+#     def pending_authorization(self, request):
+#         """
+#         Get all holidays pending authorization (Auth_Status='U')
+#         """
+#         pending = self.get_queryset().filter(Auth_Status='U')
+#         serializer = self.get_serializer(pending, many=True)
+#         return Response(serializer.data)
+    
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def authorize(self, request, lcl_holiday_id=None):
+#         """
+#         Authorize a holiday record
+#         """
+#         holiday = self.get_object()
+        
+#         if holiday.Auth_Status == 'A':
+#             return Response(
+#                 {'detail': 'Holiday already authorized'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         # Prevent self-authorization
+#         if holiday.Maker_Id and holiday.Maker_Id == request.user:
+#             return Response(
+#                 {'detail': 'Cannot authorize your own record'},
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
+        
+#         holiday.Auth_Status = 'A'
+#         holiday.Checker_Id = request.user
+#         holiday.Checker_DT_Stamp = timezone.now()
+#         holiday.save()
+        
+#         serializer = self.get_serializer(holiday)
+#         return Response(serializer.data)
+    
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def reject(self, request, lcl_holiday_id=None):
+#         """
+#         Reject a holiday record
+#         """
+#         holiday = self.get_object()
+        
+#         if holiday.Auth_Status == 'U':
+#             return Response(
+#                 {'detail': 'Holiday already rejected'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         holiday.Auth_Status = 'U'
+#         holiday.Checker_Id = request.user
+#         holiday.Checker_DT_Stamp = timezone.now()
+#         holiday.save()
+        
+#         serializer = self.get_serializer(holiday)
+#         return Response(serializer.data)
+    
+#     @action(detail=False, methods=['get'])
+#     def by_year_month(self, request):
+#         """
+#         Get holidays for a specific year and month
+#         """
+#         year = request.query_params.get('year', None)
+#         month = request.query_params.get('month', None)
+        
+#         if not year:
+#             return Response(
+#                 {'detail': 'Year parameter is required'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         queryset = self.get_queryset().filter(HYear=year)
+        
+#         if month:
+#             queryset = queryset.filter(HMonth=month)
+        
+#         serializer = self.get_serializer(queryset, many=True)
+#         return Response(serializer.data)
+    
+#     @action(detail=False, methods=['get'])
+#     def upcoming(self, request):
+#         """
+#         Get upcoming holidays (HDate >= today)
+#         """
+#         from datetime import date
+#         today = date.today()
+        
+#         upcoming = self.get_queryset().filter(
+#             HDate__gte=today,
+#             Record_Status='C',
+#             Auth_Status='A'
+#         ).order_by('HDate')
+        
+#         serializer = self.get_serializer(upcoming, many=True)
+#         return Response(serializer.data)
+    
+#     def perform_destroy(self, instance):
+#         instance.delete()
 
 from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
