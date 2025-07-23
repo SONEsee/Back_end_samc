@@ -2737,6 +2737,7 @@ def count_submenus_per_menu(request):
 
     return Response(result)
 
+
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -2750,6 +2751,12 @@ from .serializers import MTTB_LCL_HolidaySerializer
 class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
     """
     ViewSet for MTTB_LCL_Holiday model providing CRUD operations.
+    
+    Holiday_List now always contains exactly 31 characters:
+    - H: Holiday
+    - W: Working day
+    - N: Weekend day
+    - O: Non-existent day in month (e.g., Feb 29-31)
     
     list: Get all holidays with optional filtering
     create: Create a new holiday (no authentication required)
@@ -2925,6 +2932,195 @@ class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
     
     def perform_destroy(self, instance):
         instance.delete()
+
+# from rest_framework.decorators import action
+# from rest_framework.response import Response
+# from rest_framework.permissions import IsAuthenticated, AllowAny
+# from django_filters.rest_framework import DjangoFilterBackend
+# from django.utils import timezone
+# from rest_framework import filters
+# from rest_framework import viewsets, status
+# from .models import MTTB_LCL_Holiday
+# from .serializers import MTTB_LCL_HolidaySerializer
+
+# class MTTB_LCL_HolidayViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet for MTTB_LCL_Holiday model providing CRUD operations.
+    
+#     list: Get all holidays with optional filtering
+#     create: Create a new holiday (no authentication required)
+#     retrieve: Get a specific holiday by ID
+#     update: Update a holiday (full update)
+#     partial_update: Update a holiday (partial update)
+#     destroy: Delete a holiday
+#     """
+#     queryset = MTTB_LCL_Holiday.objects.all()
+#     serializer_class = MTTB_LCL_HolidaySerializer
+#     lookup_field = 'lcl_holiday_id'
+    
+#     # Enable filtering, searching, and ordering
+#     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    
+#     # Define filterable fields
+#     filterset_fields = {
+#         'HYear': ['exact', 'in'],
+#         'HMonth': ['exact', 'in'],
+#         'HDate': ['exact', 'gte', 'lte', 'range'],
+#         'Holiday_List': ['exact'],
+#         'Record_Status': ['exact', 'in'],
+#         'Auth_Status': ['exact', 'in'],
+#         'Once_Auth': ['exact'],
+#         'Maker_Id': ['exact'],
+#         'Checker_Id': ['exact']
+#     }
+    
+#     # Define searchable fields
+#     search_fields = ['lcl_holiday_id', 'HYear', 'HMonth']
+    
+#     # Define ordering fields
+#     ordering_fields = ['lcl_holiday_id', 'HDate', 'HYear', 'HMonth', 'Maker_DT_Stamp']
+#     ordering = ['-Maker_DT_Stamp']  # Default ordering
+    
+#     def get_permissions(self):
+#         # Allow anyone to create a new holiday, require auth elsewhere
+#         if self.request.method == 'POST':
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+    
+#     def perform_create(self, serializer):
+#         maker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Maker_Id=maker,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+    
+#     def perform_update(self, serializer):
+#         checker = self.request.user if self.request.user and self.request.user.is_authenticated else None
+#         serializer.save(
+#             Checker_Id=checker,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+    
+#     def get_queryset(self):
+#         """
+#         Optionally restricts the returned holidays based on query parameters.
+#         """
+#         queryset = super().get_queryset()
+        
+#         # Example: Filter holidays by date range
+#         start_date = self.request.query_params.get('start_date', None)
+#         end_date = self.request.query_params.get('end_date', None)
+        
+#         if start_date and end_date:
+#             queryset = queryset.filter(HDate__range=[start_date, end_date])
+        
+#         # Example: Filter only active records
+#         active_only = self.request.query_params.get('active_only', None)
+#         if active_only and active_only.lower() == 'true':
+#             queryset = queryset.filter(Record_Status='O')
+        
+#         return queryset
+    
+
+#     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+#     def pending_authorization(self, request):
+#         """
+#         Get all holidays pending authorization (Auth_Status='U')
+#         """
+#         pending = self.get_queryset().filter(Auth_Status='U')
+#         serializer = self.get_serializer(pending, many=True)
+#         return Response(serializer.data)
+    
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def authorize(self, request, lcl_holiday_id=None):
+#         """
+#         Authorize a holiday record
+#         """
+#         holiday = self.get_object()
+        
+#         if holiday.Auth_Status == 'A':
+#             return Response(
+#                 {'detail': 'Holiday already authorized'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         # Prevent self-authorization
+#         if holiday.Maker_Id and holiday.Maker_Id == request.user:
+#             return Response(
+#                 {'detail': 'Cannot authorize your own record'},
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
+        
+#         holiday.Auth_Status = 'A'
+#         holiday.Checker_Id = request.user
+#         holiday.Checker_DT_Stamp = timezone.now()
+#         holiday.save()
+        
+#         serializer = self.get_serializer(holiday)
+#         return Response(serializer.data)
+    
+#     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+#     def reject(self, request, lcl_holiday_id=None):
+#         """
+#         Reject a holiday record
+#         """
+#         holiday = self.get_object()
+        
+#         if holiday.Auth_Status == 'U':
+#             return Response(
+#                 {'detail': 'Holiday already rejected'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         holiday.Auth_Status = 'U'
+#         holiday.Checker_Id = request.user
+#         holiday.Checker_DT_Stamp = timezone.now()
+#         holiday.save()
+        
+#         serializer = self.get_serializer(holiday)
+#         return Response(serializer.data)
+    
+#     @action(detail=False, methods=['get'])
+#     def by_year_month(self, request):
+#         """
+#         Get holidays for a specific year and month
+#         """
+#         year = request.query_params.get('year', None)
+#         month = request.query_params.get('month', None)
+        
+#         if not year:
+#             return Response(
+#                 {'detail': 'Year parameter is required'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         queryset = self.get_queryset().filter(HYear=year)
+        
+#         if month:
+#             queryset = queryset.filter(HMonth=month)
+        
+#         serializer = self.get_serializer(queryset, many=True)
+#         return Response(serializer.data)
+    
+#     @action(detail=False, methods=['get'])
+#     def upcoming(self, request):
+#         """
+#         Get upcoming holidays (HDate >= today)
+#         """
+#         from datetime import date
+#         today = date.today()
+        
+#         upcoming = self.get_queryset().filter(
+#             HDate__gte=today,
+#             Record_Status='C',
+#             Auth_Status='A'
+#         ).order_by('HDate')
+        
+#         serializer = self.get_serializer(upcoming, many=True)
+#         return Response(serializer.data)
+    
+#     def perform_destroy(self, instance):
+#         instance.delete()
 
 from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -3376,7 +3572,38 @@ class VillageViewSet(viewsets.ModelViewSet):
                 "message": f"ລົບຂໍ້ມູນບໍ່ສຳເລັດ: {str(e)}"
             }, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated])
+def list_provinces(request):
+    """Get all provinces"""
+    queryset = MTTB_ProvinceInfo.objects.all().order_by('pro_id')
+    serializer = ProvinceSerializer(queryset, many=True)
+    
+    return Response({
+        "status": True,
+        "message": "ສຳເລັດການດຶງຂໍ້ມູນແຂວງ",
+        "count": queryset.count(),
+        "data": serializer.data
+    }, status=status.HTTP_200_OK)
 
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated])
+def list_districts(request):
+    """Get all districts with optional province filter"""
+    queryset = MTTB_DistrictInfo.objects.all().order_by('pro_id', 'dis_code')
+    pro_id = request.query_params.get('pro_id')
+    
+    if pro_id:
+        queryset = queryset.filter(pro_id=pro_id)
+    
+    serializer = DistrictSerializer(queryset, many=True)
+    
+    return Response({
+        "status": True,
+        "message": "ສຳເລັດການດຶງຂໍ້ມູນເມືອງ",
+        "count": queryset.count(),
+        "data": serializer.data
+    }, status=status.HTTP_200_OK)
 @api_view(['GET']) 
 @permission_classes([IsAuthenticated])
 def list_villages(request):
@@ -5264,11 +5491,8 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status','Reference_No']  # Removed 'delete_stat' from filter
     search_fields = ['Reference_No', 'Addl_text']
-    ordering_fields = ['Maker_DT_Stamp', 'Value_date']
-    
+    ordering_fields = ['-Auth_Status', 'Checker_Id','Maker_DT_Stamp', 'Value_date']
 
-    # def get_queryset(self):
-    #     return DETB_JRNL_LOG_MASTER.objects.filter(delete_stat__isnull=True).exclude(delete_stat='D')
     def get_queryset(self):
         """
         Filter queryset based on show_all parameter (from frontend canAuthorize permission)
@@ -6560,6 +6784,7 @@ def check_journal_submission_available(request):
     - Today matches the latest next_working_Day OR BACK_VALUE = 'Y' (bypass condition)
     - eod_time is 'N' (not yet submitted) OR BACK_VALUE = 'Y' (bypass condition)
     """
+    # <-------------- Make Change here -------------->
     try:
         tz = pytz.timezone('Asia/Bangkok')
         today = timezone.now().astimezone(tz).date()
@@ -6609,7 +6834,7 @@ def check_journal_submission_available(request):
             if holiday_list[day_index] != 'W':
                 return Response({
                     "available": False,
-                    "reason": f"ມື້ນີ້ບໍ່ສາມາດບັນທຶກບັນຊີໄດ້ ວັນທີ({today}) ບໍ່ເເມ່ນວັນເຮັດການ."
+                    "reason": f"ມື້ນີ້ບໍ່ສາມາດບັນທຶກບັນຊີໄດ້ ວັນທີ ({today}) ບໍ່ເເມ່ນວັນເຮັດການ."
                 }, status=status.HTTP_200_OK)
         else:
             # Log that working day check was bypassed
@@ -6675,11 +6900,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Disposal,FA_Asset_Expense,FA_Transfer_Logs,FA_Asset_Photos,FA_Maintenance_Logs,
-                     FA_Accounting_Method,FA_Asset_List_Depreciation_Main,FA_Asset_List_Depreciation)
+                     FA_Accounting_Method,FA_Asset_List_Depreciation_Main,FA_Asset_List_Depreciation,FA_Asset_List_Depreciation_InMonth)
 from .serializers import (FAAssetTypeSerializer,FAChartOfAssetSerializer,FASuppliersSerializer,FALocationSerializer,FAExpenseCategorySerializer,
     FAAssetListSerializer,FAAssetListDisposalSerializer,FAAssetListDepreciationMainSerializer,FAAssetListDepreciationSerializer,
-    FAAssetExpenseSerializer,FATransferLogsSerializer,FAAssetPhotosSerializer,FAMaintenanceLogsSerializer,FAAccountingMethodSerializer)
+    FAAssetExpenseSerializer,FATransferLogsSerializer,FAAssetPhotosSerializer,FAMaintenanceLogsSerializer,FAAccountingMethodSerializer,FAAssetListDepreciationInMonthSerializer)
 from django.utils import timezone
+from django.db.models.functions import Substr
 
 class FAAssetTypeViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetTypeSerializer
@@ -7705,6 +7931,68 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
+class FAAssetListDepreciationInMonthViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetListDepreciationInMonthSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FA_Asset_List_Depreciation_InMonth.objects.all()
+
+        # แยกปีและเดือนจาก string "MM-YYYY"
+        queryset = queryset.annotate(
+            dpca_year=Substr('dpca_month', 4, 4),     # 'YYYY'
+            dpca_month_num=Substr('dpca_month', 1, 2) # 'MM'
+        ).order_by('-dpca_year', '-dpca_month_num')   # เรียงจากล่าสุดไปเก่าสุด
+
+        dpca_status = self.request.query_params.get('dpca_status')
+        if dpca_status:
+            queryset = queryset.filter(dpca_status=dpca_status)
+
+        return queryset
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+    
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O'"""

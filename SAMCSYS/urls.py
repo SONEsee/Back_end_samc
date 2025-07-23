@@ -43,6 +43,8 @@ from .views import (
     MTTB_TRN_CodeViewSet,
     Data_EntryViewSet,
     list_villages,
+    list_provinces,
+    list_districts,
     GLTreeAPIView,
     GLTreeAll,
     JRNLLogViewSet,
@@ -83,6 +85,7 @@ from .views import (
     setup_default_eod_functions,
     calculate_depreciation_api,
     calculate_depreciation_schedule,
+    FAAssetListDepreciationInMonthViewSet
     
 
 )
@@ -139,6 +142,7 @@ router.register(r'asset_transfer', FATransferLogsViewSet , basename='asset_trans
 router.register(r'asset_photo', FAAssetPhotosViewSet , basename='asset_photo')
 router.register(r'asset_mainten_log', FAMaintenanceLogsViewSet , basename='asset_mainten_log')
 router.register(r'asset_account', FAAccountingMethodViewSet , basename='asset_account')
+router.register(r'asset_list_dpca_inmain', FAAssetListDepreciationInMonthViewSet, basename='asset_list_dpca_inmain')
 router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
 router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
@@ -162,6 +166,9 @@ urlpatterns = [
     path('api/gl-tree/', gl_tree, name='gl-tree'),
     path('api/count-menus/', count_menus_by_module, name='count-menus'),
     path('api/count-sub-menus/', count_submenus_per_menu, name='count-sub-menus'),
+    # Pherm Sum lup Village Tree:
+    path('api/provinces/', list_provinces, name='list_provinces'),
+    path('api/districts/', list_districts, name='list_districts'),
     path('api/villages_list/', list_villages, name='list_villages'),
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
