@@ -5492,10 +5492,7 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
     filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status','Reference_No']  # Removed 'delete_stat' from filter
     search_fields = ['Reference_No', 'Addl_text']
     ordering_fields = ['-Auth_Status', 'Checker_Id','Maker_DT_Stamp', 'Value_date']
-    
 
-    # def get_queryset(self):
-    #     return DETB_JRNL_LOG_MASTER.objects.filter(delete_stat__isnull=True).exclude(delete_stat='D')
     def get_queryset(self):
         """
         Filter queryset based on show_all parameter (from frontend canAuthorize permission)
