@@ -6785,6 +6785,8 @@ def check_journal_submission_available(request):
     - eod_time is 'N' (not yet submitted) OR BACK_VALUE = 'Y' (bypass condition)
     """
     # <-------------- Make Change here -------------->
+
+    # test update chanegs Journal Submisison Validated
     try:
         tz = pytz.timezone('Asia/Bangkok')
         today = timezone.now().astimezone(tz).date()
