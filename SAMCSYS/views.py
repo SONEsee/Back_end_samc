@@ -9955,6 +9955,11 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def process_journal_data(self, request):
         try:
+            # Debug logging
+            print(f"Request method: {request.method}")
+            print(f"Request data: {request.data}")
+            print(f"Request user: {request.user}")
+            
             data = request.data
             glsub_ids = []
             glsub_map = {}  
@@ -9985,7 +9990,6 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
                             'message': f'ບໍ່ພົບ gl_code: {gl_code_part} ໃນ MTTB_GLMaster'
                         }, status=status.HTTP_400_BAD_REQUEST)
 
-                    
                     current_time = timezone.now()
                     
                     try:
@@ -9996,20 +10000,39 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
                             'message': f'ບໍ່ພົບຜູ້ໃຊ້: {request.user.user_id}'
                         }, status=status.HTTP_400_BAD_REQUEST)
                     
+                    # ກວດສອບວ່າມີ GLSub record ຢູ່ແລ້ວຫຼືບໍ່
+                    existing_glsub = MTTB_GLSub.objects.filter(glsub_code=account_no).first()
                     
-                    glsub_record = MTTB_GLSub.objects.create(
-                        glsub_code=account_no,
-                        glsub_Desc_la=addl_sub_text,
-                        gl_code=gl_code_obj, 
-                        Maker_DT_Stamp=current_time,
-                        Checker_DT_Stamp=current_time,
-                        Maker_Id=maker_user,  
-                        Checker_Id=maker_user, 
-                        Record_Status="O",
-                        Auth_Status="A"
-                    )
+                    if existing_glsub:
+                        # ຖ້າມີແລ້ວ, ອັບເດດຂໍ້ມູນ
+                        existing_glsub.glsub_Desc_la = addl_sub_text
+                        existing_glsub.gl_code = gl_code_obj
+                        existing_glsub.Checker_DT_Stamp = current_time
+                        existing_glsub.Checker_Id = maker_user
+                        existing_glsub.Record_Status = "O"
+                        existing_glsub.Auth_Status = "A"
+                        existing_glsub.save()
+                        
+                        glsub_record = existing_glsub
+                        action_taken = "updated"
+                        
+                    else:
+                        # ຖ້າບໍ່ມີ, ສ້າງໃໝ່
+                        glsub_record = MTTB_GLSub.objects.create(
+                            glsub_code=account_no,
+                            glsub_Desc_la=addl_sub_text,
+                            gl_code=gl_code_obj, 
+                            Maker_DT_Stamp=current_time,
+                            Checker_DT_Stamp=current_time,
+                            Maker_Id=maker_user,  
+                            Checker_Id=maker_user, 
+                            Record_Status="O",
+                            Auth_Status="A"
+                        )
+                        
+                        action_taken = "created"
+                    
                     glsub_id = glsub_record.glsub_id
-
                     glsub_ids.append(glsub_id)
                     glsub_map[account_no] = glsub_id
 
@@ -10114,12 +10137,12 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
                         journal_response = {
                             'success': False,
                             'error': f'ViewSet Error: {str(e)} | Direct call error: {str(e2)}',
-                            'note': 'GLSub records created. Please create journal entry manually.'
+                            'note': 'GLSub records processed. Please create journal entry manually.'
                         }
 
                 return Response({
                     'success': True,
-                    'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ (ສ້າງ GLSub ໃໝ່ທັງໝົດ)',
+                    'message': 'ປະມວນຜົນແລະບັນທຶກຂໍ້ມູນສຳເລັດແລ້ວ (ກວດສອບ/ອັບເດດ/ສ້າງ GLSub)',
                     'processed_data': processed_data,
                     'glsub_ids': glsub_ids,
                     'alt_ccy_code': alt_ccy_code,  
@@ -10127,11 +10150,16 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
                 }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
+            # Debug error details
+            import traceback
+            print(f"Error occurred: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
+            
             return Response({
                 'success': False,
-                'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+                'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}',
+                'traceback': traceback.format_exc() if hasattr(traceback, 'format_exc') else str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
-
 # class JournalProcessV2ViewSet(viewsets.ModelViewSet):
 
 #     @action(detail=False, methods=['post'])
