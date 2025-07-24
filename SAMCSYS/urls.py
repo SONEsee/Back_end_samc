@@ -85,7 +85,10 @@ from .views import (
     setup_default_eod_functions,
     calculate_depreciation_api,
     calculate_depreciation_schedule,
-    FAAssetListDepreciationInMonthViewSet
+    FAAssetListDepreciationInMonthViewSet,
+    trial_balance_view,
+    DairyReportViewSet,
+    bulk_insert_dairy_report
     
 
 )
@@ -146,6 +149,7 @@ router.register(r'asset_list_dpca_inmain', FAAssetListDepreciationInMonthViewSet
 router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
 router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
+router.register(r'dairy-report', DairyReportViewSet)
 app_name = 'depreciation'
 
 urlpatterns = [
@@ -177,6 +181,8 @@ urlpatterns = [
     path('api/end-of-day-journal/check/', check_journal_submission_available),
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
+    path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
+    path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
 
 
     

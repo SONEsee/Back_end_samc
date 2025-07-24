@@ -928,3 +928,29 @@ class GLSubDisplaySerializer(serializers.ModelSerializer):
             'Checker_DT_Stamp', 'Auth_Status', 'Once_Auth'
         ]
 
+from rest_framework import serializers
+from .models import Dairy_Report
+
+class DairyReportSerializer(serializers.ModelSerializer):
+    CCy_Code_display = serializers.CharField(source='CCy_Code.ccy_code', read_only=True)
+    Fin_year_display = serializers.CharField(source='Fin_year.fin_year', read_only=True)
+    Period_code_display = serializers.CharField(source='Period_code.period_code', read_only=True)
+    Maker_display = serializers.CharField(source='Maker_Id.username', read_only=True)
+
+    class Meta:
+        model = Dairy_Report
+        fields = '__all__'
+        read_only_fields = ('DP_ID', 'InsertDate', 'UpdateDate')
+
+    def validate(self, data):
+        """
+        Custom validation for the dairy report data
+        """
+        # Add any custom validation logic here
+        if data.get('StartDate') and data.get('EndDate'):
+            if data['StartDate'] > data['EndDate']:
+                raise serializers.ValidationError({
+                    'EndDate': 'ວັນທີສິ້ນສຸດຕ້ອງບໍ່ນ້ອຍກວ່າວັນທີເລີ່ມຕົ້ນ'
+                })
+        
+        return data
