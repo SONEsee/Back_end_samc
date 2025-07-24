@@ -11662,3 +11662,238 @@ def trial_balance_view(request):
             "status": "error",
             "message": "Internal Server Error: " + str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db import transaction
+from django.core.exceptions import ValidationError
+from datetime import datetime
+import logging
+
+from .models import Dairy_Report, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
+from .serializers import DairyReportSerializer
+
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_insert_dairy_report(request):
+    """
+    Bulk insert trial balance data into Dairy_Report model
+    Expected payload:
+    {
+        "data": [
+            {
+                "acc_no": "110",
+                "Desc": "Cash or Cash Equivalent",
+                "CCy_Code": "LAK",
+                "OP_DR": 0.0,
+                "OP_CR": 0.0,
+                "Mo_DR": 2116880.0,
+                "Mo_Cr": 3710692001.0,
+                "C1_DR": 0.0,
+                "C1_CR": 3708575121.0,
+                "Fin_year": "2025",
+                "Period_code": "202507",
+                "StartDate": "2023-01-01",
+                "EndDate": "2025-07-24",
+                "Category": "TRIAL_BALANCE"
+            }
+        ]
+    }
+    """
+    try:
+        # Validate request data
+        if not request.data or 'data' not in request.data:
+            return Response({
+                'status': 'error',
+                'message': 'ບໍ່ມີຂໍ້ມູນສຳລັບການນຳເຂົ້າ (No data provided for import)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        data_list = request.data['data']
+        
+        if not isinstance(data_list, list) or len(data_list) == 0:
+            return Response({
+                'status': 'error',
+                'message': 'ຂໍ້ມູນບໍ່ຖືກຕ້ອງ ຫຼື ເປັນລິສຄ່າງ (Invalid data format or empty list)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        created_records = []
+        failed_records = []
+        
+        with transaction.atomic():
+            for index, item in enumerate(data_list):
+                try:
+                    # Get or create related objects
+                    ccy_obj = None
+                    if item.get('CCy_Code'):
+                        try:
+                            ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code=item['CCy_Code'])
+                        except MTTB_Ccy_DEFN.DoesNotExist:
+                            logger.warning(f"Currency {item['CCy_Code']} not found for record {index}")
+
+                    fin_year_obj = None
+                    if item.get('Fin_year'):
+                        try:
+                            fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_year=item['Fin_year'])
+                        except MTTB_Fin_Cycle.DoesNotExist:
+                            logger.warning(f"Financial year {item['Fin_year']} not found for record {index}")
+
+                    period_obj = None
+                    if item.get('Period_code'):
+                        try:
+                            period_obj = MTTB_Per_Code.objects.get(period_code=item['Period_code'])
+                        except MTTB_Per_Code.DoesNotExist:
+                            logger.warning(f"Period code {item['Period_code']} not found for record {index}")
+
+                    # Parse dates
+                    start_date = None
+                    end_date = None
+                    
+                    if item.get('StartDate'):
+                        try:
+                            start_date = datetime.strptime(item['StartDate'], '%Y-%m-%d').date()
+                        except ValueError:
+                            logger.warning(f"Invalid start date format for record {index}: {item['StartDate']}")
+
+                    if item.get('EndDate'):
+                        try:
+                            end_date = datetime.strptime(item['EndDate'], '%Y-%m-%d').date()
+                        except ValueError:
+                            logger.warning(f"Invalid end date format for record {index}: {item['EndDate']}")
+
+                    # Create Dairy_Report record
+                    dairy_report = Dairy_Report(
+                        acc_no=item.get('acc_no', ''),
+                        Desc=item.get('Desc', ''),
+                        CCy_Code=ccy_obj,
+                        Fin_year=fin_year_obj,
+                        Period_code=period_obj,
+                        StartDate=start_date,
+                        EndDate=end_date,
+                        Category=item.get('Category', 'TRIAL_BALANCE'),
+                        OP_DR=item.get('OP_DR', 0),
+                        OP_CR=item.get('OP_CR', 0),
+                        Mo_DR=item.get('Mo_DR', 0),
+                        Mo_Cr=item.get('Mo_Cr', 0),
+                        C1_DR=item.get('C1_DR', 0),
+                        C1_CR=item.get('C1_CR', 0),
+                        # Set LCY fields to same values (you can modify this logic as needed)
+                        OP_DR_lcy=item.get('OP_DR', 0),
+                        OP_CR_lcy=item.get('OP_CR', 0),
+                        Mo_DR_lcy=item.get('Mo_DR', 0),
+                        Mo_Cr_lcy=item.get('Mo_Cr', 0),
+                        C1_DR_lcy=item.get('C1_DR', 0),
+                        C1_CR_lcy=item.get('C1_CR', 0),
+                        Maker_Id=request.user,
+                        MSegment=item.get('MSegment', '')
+                    )
+                    
+                    # Validate the model
+                    dairy_report.full_clean()
+                    dairy_report.save()
+                    
+                    created_records.append({
+                        'index': index,
+                        'acc_no': dairy_report.acc_no,
+                        'id': dairy_report.DP_ID
+                    })
+                    
+                except ValidationError as ve:
+                    error_message = f"Validation error for record {index}: {str(ve)}"
+                    logger.error(error_message)
+                    failed_records.append({
+                        'index': index,
+                        'acc_no': item.get('acc_no', 'Unknown'),
+                        'error': error_message
+                    })
+                    
+                except Exception as e:
+                    error_message = f"Error processing record {index}: {str(e)}"
+                    logger.error(error_message)
+                    failed_records.append({
+                        'index': index,
+                        'acc_no': item.get('acc_no', 'Unknown'),
+                        'error': error_message
+                    })
+
+        # Prepare response
+        response_data = {
+            'status': 'success',
+            'message': f'ການນຳເຂົ້າສຳເລັດ (Import completed)',
+            'total_records': len(data_list),
+            'inserted_count': len(created_records),
+            'failed_count': len(failed_records),
+            'created_records': created_records
+        }
+
+        if failed_records:
+            response_data['failed_records'] = failed_records
+            response_data['message'] += f' - {len(failed_records)} ລາຍການຜິດພາດ (records failed)'
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Bulk insert error: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການນຳເຂົ້າຂໍ້ມູນ: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Alternative ViewSet approach (if you prefer using ViewSets)
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
+class DairyReportViewSet(viewsets.ModelViewSet):
+    queryset = Dairy_Report.objects.all()
+    serializer_class = DairyReportSerializer
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['post'], url_path='bulk-insert')
+    def bulk_insert(self, request):
+        """
+        Custom action for bulk inserting dairy report data
+        """
+        return bulk_insert_dairy_report(request)
+
+    @action(detail=False, methods=['delete'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """
+        Custom action for bulk deleting dairy report data by criteria
+        """
+        try:
+            # Get filter criteria from request
+            fin_year = request.data.get('fin_year')
+            period_code = request.data.get('period_code')
+            ccy_code = request.data.get('ccy_code')
+            category = request.data.get('category', 'TRIAL_BALANCE')
+
+            # Build filter query
+            filter_kwargs = {'Category': category}
+            
+            if fin_year:
+                filter_kwargs['Fin_year__fin_year'] = fin_year
+            if period_code:
+                filter_kwargs['Period_code__period_code'] = period_code
+            if ccy_code:
+                filter_kwargs['CCy_Code__ccy_code'] = ccy_code
+
+            # Delete matching records
+            deleted_count, _ = Dairy_Report.objects.filter(**filter_kwargs).delete()
+
+            return Response({
+                'status': 'success',
+                'message': f'ລຶບຂໍ້ມູນສຳເລັດ - {deleted_count} ລາຍການ',
+                'deleted_count': deleted_count
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Bulk delete error: {str(e)}")
+            return Response({
+                'status': 'error',
+                'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
