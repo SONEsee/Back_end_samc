@@ -1836,9 +1836,9 @@ class BranchInfo(models.Model):
 
 class Dairy_Report(models.Model):
     DP_ID = models.IntegerField(primary_key=True, auto_created=True)
-    gl_code = models.ForeignKey(MTTB_GLMaster, null=True, blank=True, on_delete=models.CASCADE)
+    # gl_code = models.ForeignKey(MTTB_GLMaster, null=True, blank=True, on_delete=models.CASCADE)
     # update tarm concept
-    acc_no = models.CharField(max_length=100, null=True, blank=True)
+    gl_code = models.CharField(max_length=100, null=True, blank=True)
     Desc = models.CharField(max_length=255, null=True, blank=True)
     CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN, null=True, blank=True, on_delete=models.CASCADE)
     Fin_year = models.ForeignKey(MTTB_Fin_Cycle, null=True, blank=True, on_delete=models.CASCADE)
