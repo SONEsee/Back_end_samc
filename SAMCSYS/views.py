@@ -11587,3 +11587,72 @@ def validate_eod_prerequisites_view(request):
             'message': 'ບໍ່ສາມາດກວດສອບໄດ້'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+# Store Procedures 
+from django.db import connection
+def run_trial_balance_proc(ac_ccy_id: str, date_start: str, date_end: str):
+    with connection.cursor() as cursor:
+        # Use parameterized SQL to prevent SQL injection
+        sql = """
+            DECLARE @return_value INT;
+            EXEC @return_value = dbo.Somtop_Trail_Balance_By_Currency_Temp_NewTest_ACTB
+                @ac_ccy_id = %s,
+                @DateStart = %s,
+                @DateEnd = %s;
+            SELECT @return_value AS return_value;
+        """
+        cursor.execute(sql, [ac_ccy_id, date_start, date_end])
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+import logging
+
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trial_balance_view(request):
+    ac_ccy_id = request.data.get("ac_ccy_id")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+
+    if not all([ac_ccy_id, date_start, date_end]):
+        return Response({
+            "status": "error",
+            "message": "Missing required parameters: ac_ccy_id, date_start, or date_end."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        logger.info(f"[TrialBalance] Executing stored procedure for ccy_id={ac_ccy_id} from {date_start} to {date_end}")
+
+        with connection.cursor() as cursor:
+            query = """
+                EXEC dbo.Somtop_Trail_Balance_By_Currency_Temp_NewTest_ACTB
+                    @ac_ccy_id = %s,
+                    @DateStart = %s,
+                    @DateEnd = %s
+            """
+            cursor.execute(query, [ac_ccy_id, date_start, date_end])
+            columns = [col[0] for col in cursor.description]
+            result = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        logger.info(f"[TrialBalance] Procedure completed successfully. Rows fetched: {len(result)}")
+
+        return Response({
+            "status": "success",
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.exception(f"[TrialBalance] Error executing stored procedure: {str(e)}")
+        return Response({
+            "status": "error",
+            "message": "Internal Server Error: " + str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
