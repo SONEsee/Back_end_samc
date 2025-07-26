@@ -5479,7 +5479,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             ).first()
             
             if exc_rate:
-                return exc_rate.Sale_Rate
+                return exc_rate.Buy_Rate
             else:
                 # Fallback to currency definition or default
                 currency = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
