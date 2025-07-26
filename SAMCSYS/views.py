@@ -10420,14 +10420,7 @@ class JournalProcessV2ViewSet(viewsets.ModelViewSet):
 # ເພີ່ມໃນ views.py ຂອງທ່ານ
 # =====================================
 
-import json
-from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
-from decimal import Decimal, ROUND_HALF_UP
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
-from django.db import transaction
+
 
 # Import models ຂອງທ່ານ - ເພີ່ມຕາຕະລາງປະຫວັດ
 import json
