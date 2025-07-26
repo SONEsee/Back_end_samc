@@ -10357,11 +10357,22 @@ from django.views.decorators.http import require_http_methods
 from django.db import transaction
 
 # Import models ຂອງທ່ານ - ເພີ່ມຕາຕະລາງປະຫວັດ
+import json
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+from decimal import Decimal, ROUND_HALF_UP
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.db import transaction
+
+# Import models ຂອງທ່ານ - ເພີ່ມຕາຕະລາງປະຫວັດ
 from .models import (
     FA_Accounting_Method, 
     FA_Asset_Lists,
     FA_Asset_List_Depreciation_Main,
     FA_Asset_List_Depreciation,
+    FA_Asset_List_Depreciation_InMonth,  # ເພີ່ມ model ໃໝ່
     MTTB_Users
 )
 
@@ -10384,7 +10395,6 @@ def get_month_name_la(month_num):
         9: 'ກັນຍາ', 10: 'ຕຸລາ', 11: 'ພະຈິກ', 12: 'ທັນວາ'
     }
     return months.get(month_num, f'ເດືອນ {month_num}')
-
 
 def get_current_user_id():
     """ຫາ user_id ປັດຈຸບັນ - ແກ້ໄຂແລ້ວ"""
@@ -10411,6 +10421,7 @@ def validate_user_id(user_id):
     except Exception as e:
         print(f"Validate user error: {str(e)}")
         return None
+
 # =====================================
 # History Recording Functions
 # =====================================
@@ -10500,6 +10511,70 @@ def create_depreciation_history(asset, depreciation_data, user_id=None):
             'error': f"History recording error: {str(e)}"
         }
 
+def create_depreciation_in_month_record(result_data, user_id=None):
+    """
+    ສ້າງບັນທຶກຂໍ້ມູນໃສ່ FA_Asset_List_Depreciation_InMonth
+    """
+    try:
+        # ກວດສອບ user_id
+        if user_id:
+            validated_user_id = validate_user_id(user_id)
+        else:
+            validated_user_id = get_current_user_id()
+        
+        if not validated_user_id:
+            print("Warning: ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ - ຈະບັນທຶກໂດຍບໍ່ມີ user")
+        
+        current_time = datetime.now()
+        
+        # ດຶງຂໍ້ມູນຈາກ result_data
+        summary = result_data['summary']
+        total_items = summary['total_items']
+        success = summary.get('success', True)  # ຖ້າບໍ່ມີ success ໃນ summary ໃຫ້ຖືວ່າ True
+        
+        # ຄຳນວນຜົນບວກຂອງ monthly_depreciation
+        total_depreciation = Decimal('0.00')
+        for detail in result_data['details']:
+            if detail['status'] == 'success' and 'depreciation_processed' in detail:
+                total_depreciation += Decimal(str(detail['depreciation_processed']['monthly_depreciation']))
+        
+        # ປ່ຽນ timestamp ໃຫ້ເປັນຮູບແບບ YYYY-MM
+        timestamp_str = result_data.get('timestamp', current_time.isoformat())
+        timestamp = datetime.fromisoformat(timestamp_str)
+        dpca_month = timestamp.strftime('%Y-%m')
+        
+        # ກຳນົດສະຖານະ
+        dpca_status = 'SUCCESS' if success else 'FAILED'
+        
+        # ສ້າງຂໍ້ມູນສຳລັບບັນທຶກ
+        in_month_record_data = {
+            'dpca_month': dpca_month,
+            'C_dpca': str(total_items),
+            'dpca_value': total_depreciation.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+            'dpca_status': dpca_status,
+            'Record_Status': 'C',
+        }
+        
+        if validated_user_id:
+            in_month_record_data['Maker_Id_id'] = validated_user_id
+            in_month_record_data['Maker_DT_Stamp'] = current_time
+            in_month_record_data['Checker_Id_id'] = validated_user_id
+            in_month_record_data['Checker_DT_Stamp'] = current_time
+        
+        # ບັນທຶກລົງຕາຕະລາງ
+        in_month_record = FA_Asset_List_Depreciation_InMonth.objects.create(**in_month_record_data)
+        
+        return {
+            'success': True,
+            'in_month_record_id': in_month_record.aldim_id,
+            'user_id_used': validated_user_id
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"In-month recording error: {str(e)}"
+        }
 
 def get_depreciation_history(asset_list_id, limit=None):
     """
@@ -10721,7 +10796,6 @@ def calculate_depreciation_schedule(mapping_id):
     except Exception as e:
         return {"error": f"General error: {str(e)}"}
 
-    
 def get_status_message_90k_to_zero(current_count, total_months, target_accumulated):
     """ສ້າງຂໍ້ຄວາມສະຖານະ - ສຳລັບ 90k → 0"""
     if current_count >= total_months:
@@ -10731,7 +10805,6 @@ def get_status_message_90k_to_zero(current_count, total_months, target_accumulat
     else:
         remaining = total_months - current_count
         return f"⏳ ກຳລັງຫັກ ({current_count}/{total_months} ເດືອນ) - ເຫຼືອ {remaining} ເດືອນ ເພື່ອຫັກຄົບ {target_accumulated:,.0f} ກີບ → 0"
-
 
 def get_status_message(current_count, total_months):
     """ສ້າງຂໍ້ຄວາມສະຖານະ"""
@@ -10764,7 +10837,6 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         else:
             asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
         
-   
         current_count = int(asset.C_dpac or 0)
         next_month = current_count + 1
         
@@ -10845,7 +10917,6 @@ def process_monthly_depreciation(mapping_id, user_id=None):
             print(f"   - Remaining: {new_remaining:,.2f}")
             
         else:
-         
             monthly_depreciation_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             new_accumulated = old_accumulated + monthly_depreciation_value
             new_remaining = accu_dpca_value_total - new_accumulated
@@ -10881,13 +10952,12 @@ def process_monthly_depreciation(mapping_id, user_id=None):
             'remaining_value': float(new_remaining)
         }
         
-        
         history_result = create_depreciation_history(asset, history_data, user_id)
         
         if not history_result['success']:
             return {"error": f"ບັນທຶກປະຫວັດຜິດພາດ: {history_result['error']}"}
         
-      
+        # 📝 ອັບເດດຂໍ້ມູນຊັບສິນ
         asset.C_dpac = str(next_month)
         asset.asset_accu_dpca_value = new_accumulated
         asset.asset_value_remain = new_remaining
@@ -10991,7 +11061,7 @@ def get_depreciable_assets():
         return {"error": f"Get depreciable assets error: {str(e)}"}
 
 def process_bulk_depreciation(mapping_ids, check_only=False, user_id=None):
-    """ຫັກຄ່າເສື່ອມລາຄາຫຼາຍລາຍການພ້ອມກັນ + ບັນທຶກປະຫວັດ - ແກ້ໄຂແລ້ວ"""
+    """ຫັກຄ່າເສື່ອມລາຄາຫຼາຍລາຍການພ້ອມກັນ + ບັນທຶກປະຫວັດ ແລະ InMonth"""
     try:
         results = []
         success_count = 0
@@ -11060,6 +11130,23 @@ def process_bulk_depreciation(mapping_ids, check_only=False, user_id=None):
                 })
                 error_count += 1
         
+        # ✅ ບັນທຶກຂໍ້ມູນໃສ່ FA_Asset_List_Depreciation_InMonth ຖ້າບໍ່ແມ່ນ check_only
+        in_month_record_result = None
+        if not check_only:
+            result_data = {
+                'summary': {
+                    'total_items': len(mapping_ids),
+                    'success_count': success_count,
+                    'error_count': error_count,
+                    'check_only': check_only,
+                    'user_id_used': validated_user_id,
+                    'success': success_count > 0 and error_count == 0
+                },
+                'details': results,
+                'timestamp': datetime.now().isoformat()
+            }
+            in_month_record_result = create_depreciation_in_month_record(result_data, validated_user_id)
+        
         return {
             'summary': {
                 'total_items': len(mapping_ids),
@@ -11068,11 +11155,156 @@ def process_bulk_depreciation(mapping_ids, check_only=False, user_id=None):
                 'check_only': check_only,
                 'user_id_used': validated_user_id
             },
-            'details': results
+            'details': results,
+            'in_month_record': in_month_record_result
         }
         
     except Exception as e:
         return {"error": f"Bulk processing error: {str(e)}"}
+
+# =====================================
+# Monthly Depreciation Due Functions
+# =====================================
+
+def get_depreciation_due_this_month(target_month=None, target_year=None):
+    """
+    ຫາລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນທີ່ກຳນົດ
+    """
+    try:
+        current_date = datetime.now()
+        
+        # ຖ້າບໍ່ໃສ່ໃຊ້ເດືອນ/ປີປັດຈຸບັນ
+        if not target_month:
+            target_month = current_date.month
+        if not target_year:
+            target_year = current_date.year
+            
+        # ວັນທີ່ເລີ່ມຕົ້ນແລະສິ້ນສຸດຂອງເດືອນ
+        month_start = datetime(target_year, target_month, 1).date()
+        month_end = datetime(target_year, target_month, 
+                           get_last_day_of_month(target_year, target_month)).date()
+        
+        # ດຶງລາຍການທີ່ຄວນຫັກ
+        accounting_methods = FA_Accounting_Method.objects.all()
+        due_items = []
+        overdue_items = []
+        up_to_date_items = []
+        
+        for method in accounting_methods:
+            try:
+                # ດຶງຂໍ້ມູນ asset
+                if method.asset_list_id:
+                    asset = method.asset_list_id
+                elif method.ref_id:
+                    asset = FA_Asset_Lists.objects.get(asset_list_id=method.ref_id)
+                else:
+                    continue
+                
+                # ກວດສອບວ່າຫັກໄດ້ບໍ
+                if not (asset.asset_value and asset.asset_useful_life):
+                    continue
+                
+                current_count = int(asset.C_dpac or 0)
+                useful_life = int(asset.asset_useful_life)
+                total_months = useful_life * 12
+                start_date = method.transaction_date
+                
+                # ຖ້າຫັກຄົບແລ້ວ ຂ້າມ
+                if current_count >= total_months:
+                    continue
+                
+                # ຄິດວ່າເດືອນຕໍ່ໄປຄວນຫັກເມື່ອໃດ
+                next_month_number = current_count + 1
+                
+                # ຄິດວັນທີ່ທີ່ຄວນຫັກເດືອນຕໍ່ໄປ
+                if next_month_number == 1:
+                    # ເດືອນທຳອິດ - ເລີ່ມຈາກວັນທີເລີ່ມຊັບສິນ
+                    due_date = start_date
+                else:
+                    # ເດືອນອື່ນໆ - ເລີ່ມຕົ້ນເດືອນ
+                    due_date = (start_date + relativedelta(months=current_count)).replace(day=1)
+                
+                # ຄິດວັນທີ່ສິ້ນສຸດການຫັກເດືອນນັ້ນ
+                if next_month_number == 1:
+                    due_end_date = datetime(start_date.year, start_date.month,
+                                          get_last_day_of_month(start_date.year, start_date.month)).date()
+                else:
+                    month_calc = start_date + relativedelta(months=current_count)
+                    due_end_date = datetime(month_calc.year, month_calc.month,
+                                          get_last_day_of_month(month_calc.year, month_calc.month)).date()
+                
+                # ຄິດຄ່າເສື່ອມລາຄາທີ່ຄວນຫັກ
+                calc_result = calculate_depreciation_schedule(method.mapping_id)
+                if 'error' in calc_result:
+                    continue
+                
+                daily_depreciation = calc_result['calculation_info']['daily_depreciation']
+                
+                if next_month_number == 1:
+                    days_count = (due_end_date - due_date + timedelta(days=1)).days
+                else:
+                    days_count = get_last_day_of_month(due_end_date.year, due_end_date.month)
+                
+                expected_depreciation = daily_depreciation * days_count
+                
+                # ສ້າງຂໍ້ມູນລາຍການ
+                item_data = {
+                    'mapping_id': method.mapping_id,
+                    'asset_id': asset.asset_list_id,
+                    'asset_name': asset.asset_spec or 'N/A',
+                    'asset_value': float(asset.asset_value),
+                    'current_month': next_month_number,
+                    'total_months': total_months,
+                    'due_date': due_date.strftime('%d/%m/%Y'),
+                    'due_end_date': due_end_date.strftime('%d/%m/%Y'),
+                    'days_count': days_count,
+                    'expected_depreciation': round(expected_depreciation, 2),
+                    'last_depreciation_date': asset.asset_latest_date_dpca.strftime('%d/%m/%Y') if asset.asset_latest_date_dpca else 'ຍັງບໍ່ໄດ້ຫັກ',
+                    'status_category': '',
+                    'due_month_year': f"{get_month_name_la(due_date.month)} {due_date.year}",
+                    'completion_percentage': round((current_count / total_months) * 100, 2)
+                }
+                
+                # ຈັດປະເພດຕາມສະຖານະ
+                if due_date <= month_end and due_end_date >= month_start:
+                    # ຕ້ອງຫັກໃນເດືອນທີ່ກຳນົດ
+                    item_data['status_category'] = 'due'
+                    due_items.append(item_data)
+                elif due_date < month_start:
+                    # ຄ້າງຫັກ (ເດືອນທີ່ຜ່ານມາ)
+                    item_data['status_category'] = 'overdue'
+                    overdue_items.append(item_data)
+                else:
+                    # ຍັງບໍ່ຮອດກຳນົດຫັກ
+                    item_data['status_category'] = 'up_to_date'
+                    up_to_date_items.append(item_data)
+                    
+            except Exception as e:
+                continue  # ຂ້າມລາຍການທີ່ມີບັນຫາ
+        
+        # ສັງລວມຜົນ
+        total_items = len(due_items) + len(overdue_items) + len(up_to_date_items)
+        
+        return {
+            'success': True,
+            'summary': {
+                'target_month': f"{get_month_name_la(target_month)} {target_year}",
+                'month_period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+                'total_items': total_items,
+                'due_count': len(due_items),
+                'overdue_count': len(overdue_items),
+                'up_to_date_count': len(up_to_date_items)
+            },
+            'due_items': due_items,
+            'overdue_items': overdue_items,
+            'up_to_date_items': up_to_date_items
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Get monthly due error: {str(e)}"
+        }
 
 # =====================================
 # ✅ SQL ສຳລັບກວດສອບ/ສ້າງ Users:
@@ -11088,14 +11320,15 @@ VALUES (1, 'admin', 'admin123', 'admin@example.com', 1);
 -- ຫຼື ຫາ user_id ທີ່ມີຢູ່ແລ້ວ:
 SELECT MIN(user_id) as first_user_id FROM SAMCSYS_mttb_users WHERE is_active = 1;
 """
+
 # =====================================
-# API ຄົບທຸກອັນໃນໂຕດຽວ - ເພີ່ມ History Management
+# API ຄົບທຸກອັນໃນໂຕດຽວ - ເພີ່ມ History Management, InMonth, ແລະ get_monthly_due
 # =====================================
 
 @csrf_exempt
 def calculate_depreciation_api(request):
     """
-    API ຄິດຄ່າເສື່ອມລາຄາຄົບໃນໂຕດຽວ - ມີການເກັບປະຫວັດ
+    API ຄິດຄ່າເສື່ອມລາຄາຄົບໃນໂຕດຽວ - ມີການເກັບປະຫວັດ, InMonth, ແລະດຶງລາຍການທີ່ຕ້ອງຫັກ
     
     Actions:
     - calculate: ຄິດຄ່າເສື່ອມລາຄາ + ສະຖານະ + ປະຫວັດ (ຕ້ອງມີ mapping_id)
@@ -11103,10 +11336,11 @@ def calculate_depreciation_api(request):
     - status: ເບິ່ງສະຖານະປັດຈຸບັນ (ຕ້ອງມີ mapping_id)
     - bulk_list: ລາຍການຊັບສິນທີ່ຫັກໄດ້ (ບໍ່ຕ້ອງ parameters)
     - bulk_check: ກວດສອບລາຍການກ່ອນຫັກ (ຕ້ອງມີ mapping_ids)
-    - bulk_process: ຫັກລາຍການທີ່ເລືອກ + ບັນທຶກປະຫວັດ (ຕ້ອງມີ mapping_ids)
-    - bulk_process_all: ຫັກທຸກລາຍການພ້ອມກັນ + ບັນທຶກປະຫວັດ (ບໍ່ຕ້ອງ parameters)
+    - bulk_process: ຫັກລາຍການທີ່ເລືອກ + ບັນທຶກປະຫວັດ + InMonth (ຕ້ອງມີ mapping_ids)
+    - bulk_process_all: ຫັກທຸກລາຍການພ້ອມກັນ + ບັນທຶກປະຫວັດ + InMonth (ບໍ່ຕ້ອງ parameters)
     - get_history: ດຶງປະຫວັດການຫັກຄ່າເສື່ອມລາຄາ (ຕ້ອງມີ asset_list_id)
     - mark_accounted: ໝາຍການຫັກວ່າບັນຊີແລ້ວ (ຕ້ອງມີ aldm_id)
+    - get_monthly_due: ດຶງລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນ (ບໍ່ຕ້ອງ parameters, optional: target_month, target_year)
     """
     try:
         # ກວດສອບ method
@@ -11128,6 +11362,8 @@ def calculate_depreciation_api(request):
             asset_list_id = data.get('asset_list_id')
             aldm_id = data.get('aldm_id')
             user_id = data.get('user_id')
+            target_month = data.get('target_month')
+            target_year = data.get('target_year')
             action = data.get('action', 'calculate')  # default: calculate
         else:  # GET
             mapping_id = request.GET.get('mapping_id')
@@ -11136,6 +11372,8 @@ def calculate_depreciation_api(request):
             asset_list_id = request.GET.get('asset_list_id')
             aldm_id = request.GET.get('aldm_id')
             user_id = request.GET.get('user_id')
+            target_month = request.GET.get('target_month')
+            target_year = request.GET.get('target_year')
             action = request.GET.get('action', 'calculate')
         
         # ✅ ກວດສອບ parameters ຕາມ action ທີ່ຖືກຕ້ອງ
@@ -11186,7 +11424,7 @@ def calculate_depreciation_api(request):
                     }
                 })
         
-        # Actions ທີ່ບໍ່ຕ້ອງ parameters: bulk_list, bulk_process_all
+        # Actions ທີ່ບໍ່ຕ້ອງ parameters: bulk_list, bulk_process_all, get_monthly_due
         
         # ✅ ເອີ້ນໃຊ້ຟັງຊັ້ນຕາມ action
         if action == 'calculate':
@@ -11212,40 +11450,18 @@ def calculate_depreciation_api(request):
         elif action == 'bulk_list':
             # ລາຍການຊັບສິນທີ່ຫັກໄດ້ - ບໍ່ຕ້ອງ parameters
             result = get_depreciable_assets()
-        elif action == 'get_monthly_due':
-            # ລາຍການທີ່ຕ້ອງຫັກໃນເດືອນ
-            month = data.get('month') if request.method == 'POST' else request.GET.get('month')
-            year = data.get('year') if request.method == 'POST' else request.GET.get('year')
-            if month:
-                month = int(month)
-            if year:
-                year = int(year)
-            result = get_depreciation_due_this_month(month, year)
-        elif action == 'get_next_months_due':
-            # ລາຍການທີ່ຕ້ອງຫັກໃນອີກ 3 ເດືອນຂ້າງໜ້າ
-            months_ahead = data.get('months_ahead', 3) if request.method == 'POST' else int(request.GET.get('months_ahead', 3))
-            result = get_next_few_months_due(months_ahead)
-        elif action == 'process_monthly_due':
-            # ຫັກທຸກລາຍການທີ່ຕ້ອງຫັກໃນເດືອນ
-            month = data.get('month') if request.method == 'POST' else request.GET.get('month')
-            year = data.get('year') if request.method == 'POST' else request.GET.get('year')
-            if month:
-                month = int(month)
-            if year:
-                year = int(year)
-            with transaction.atomic():
-                result = process_monthly_due_depreciation(month, year, user_id)
+            
         elif action == 'bulk_check':
             # ກວດສອບລາຍການກ່ອນຫັກ
             result = process_bulk_depreciation(mapping_ids, check_only=True, user_id=user_id)
             
         elif action == 'bulk_process':
-            # ຫັກລາຍການທີ່ເລືອກ + ບັນທຶກປະຫວັດ
+            # ຫັກລາຍການທີ່ເລືອກ + ບັນທຶກປະຫວັດ + InMonth
             with transaction.atomic():
                 result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
                 
         elif action == 'bulk_process_all':
-            # ຫັກທຸກລາຍການທີ່ຫັກໄດ້ + ບັນທຶກປະຫວັດ - ບໍ່ຕ້ອງ parameters
+            # ຫັກທຸກລາຍການທີ່ຫັກໄດ້ + ບັນທຶກປະຫວັດ + InMonth
             depreciable_assets = get_depreciable_assets()
             if 'error' in depreciable_assets:
                 return JsonResponse(depreciable_assets, status=400)
@@ -11283,6 +11499,14 @@ def calculate_depreciation_api(request):
         elif action == 'mark_accounted':
             # ໝາຍການຫັກວ່າບັນຊີແລ້ວ
             result = mark_depreciation_as_accounted(aldm_id, user_id)
+        
+        elif action == 'get_monthly_due':
+            # ດຶງລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນ
+            if target_month:
+                target_month = int(target_month)
+            if target_year:
+                target_year = int(target_year)
+            result = get_depreciation_due_this_month(target_month, target_year)
                 
         else:
             return JsonResponse({
@@ -11292,14 +11516,15 @@ def calculate_depreciation_api(request):
                     'need_mapping_ids': ['bulk_check', 'bulk_process'],
                     'need_asset_list_id': ['get_history'],
                     'need_aldm_id': ['mark_accounted'],
-                    'no_parameters': ['bulk_list', 'bulk_process_all']
+                    'no_parameters': ['bulk_list', 'bulk_process_all', 'get_monthly_due']
                 },
                 'examples': {
                     'single': '{"mapping_id": 19, "action": "calculate"}',
                     'bulk_check': '{"action": "bulk_check", "mapping_ids": [19, 20]}',
                     'bulk_all': '{"action": "bulk_process_all", "user_id": 1}',
                     'history': '{"action": "get_history", "asset_list_id": 101, "limit": 10}',
-                    'account': '{"action": "mark_accounted", "aldm_id": 1, "user_id": 1}'
+                    'account': '{"action": "mark_accounted", "aldm_id": 1, "user_id": 1}',
+                    'monthly_due': '{"action": "get_monthly_due", "target_month": 7, "target_year": 2025}'
                 }
             })
         
