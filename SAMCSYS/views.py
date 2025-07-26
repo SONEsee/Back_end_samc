@@ -10790,7 +10790,8 @@ def calculate_depreciation_schedule(mapping_id):
             return {"error": "ບໍ່ມີມູນຄ່າຊັບສິນ"}
         if not asset.asset_useful_life:
             return {"error": "ບໍ່ມີອາຍຸການໃຊ້ງານ"}
-        if not accounting_method.transaction_date:
+        # if not accounting_method.transaction_date:
+        if not asset.dpca_start_date:
             return {"error": "ບໍ່ມີວັນທີເລີ່ມຕົ້ນ"}
         
         original_asset_value = float(asset.asset_value)
@@ -10798,7 +10799,7 @@ def calculate_depreciation_schedule(mapping_id):
         total_depreciable = float(asset.accu_dpca_value_total or 0)
         useful_life = int(asset.asset_useful_life)
         accu_dpca_value_total=int(asset.accu_dpca_value_total)
-        start_date = accounting_method.transaction_date
+        start_date = asset.dpca_start_date
         
         virtual_asset_value = total_depreciable
         virtual_salvage_value = 0
@@ -10873,7 +10874,7 @@ def calculate_depreciation_schedule(mapping_id):
             'accounting_method': {
                 'mapping_id': accounting_method.mapping_id,
                 'ref_id': accounting_method.ref_id,
-                'transaction_date': accounting_method.transaction_date.strftime('%d/%m/%Y')
+                'transaction_date': asset.dpca_start_date.strftime('%d/%m/%Y')
             },
             'depreciation_history': history_result if history_result['success'] else []
         }
@@ -10927,7 +10928,7 @@ def process_monthly_depreciation(mapping_id, user_id=None):
         current_count = int(asset.C_dpac or 0)
         next_month = current_count + 1
         
-        start_date = accounting_method.transaction_date
+        start_date = asset.dpca_start_date
         useful_life = int(asset.asset_useful_life)
         total_months = useful_life * 12
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
@@ -11302,7 +11303,7 @@ def process_monthly_depreciation_with_inmonth(mapping_id, user_id=None, in_month
         current_count = int(asset.C_dpac or 0)
         next_month = current_count + 1
         
-        start_date = accounting_method.transaction_date
+        start_date = asset.dpca_start_date
         useful_life = int(asset.asset_useful_life)
         total_months = useful_life * 12
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
@@ -11475,7 +11476,7 @@ def get_depreciation_due_this_month(target_month=None, target_year=None):
                 current_count = int(asset.C_dpac or 0)
                 useful_life = int(asset.asset_useful_life)
                 total_months = useful_life * 12
-                start_date = method.transaction_date
+                start_date = asset.dpca_start_date
                 
                 # ຖ້າຫັກຄົບແລ້ວ ຂ້າມ
                 if current_count >= total_months:
@@ -11866,7 +11867,7 @@ def get_depreciation_due_this_month(target_month=None, target_year=None):
                 current_count = int(asset.C_dpac or 0)
                 useful_life = int(asset.asset_useful_life)
                 total_months = useful_life * 12
-                start_date = method.transaction_date
+                start_date = asset.dpca_start_date
                 
                 # ຖ້າຫັກຄົບແລ້ວ ຂ້າມ
                 if current_count >= total_months:
@@ -12064,7 +12065,383 @@ def process_monthly_due_depreciation(target_month=None, target_year=None, user_i
             'success': False,
             'error': f"Process monthly due error: {str(e)}"
         }
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
 
+def get_overdue_depreciation_items():
+    """
+    🔍 ຫາລາຍການຊັບສິນທີ່ຄ້າງຫັກຄ່າເສື່ອມລາຄາ (ເລືອນກຳນົດແລ້ວ)
+    
+    Returns:
+        dict: ລາຍການຄ້າງຫັກພ້ອມລາຍລະອຽດ
+    """
+    try:
+        current_date = datetime.now().date()
+        overdue_items = []
+        warning_items = []  # ໃກ້ເລືອນກຳນົດ (7 ມື້)
+        
+        # ດຶງລາຍການ accounting methods ທັງໝົດ
+        accounting_methods = FA_Accounting_Method.objects.all()
+        
+        for method in accounting_methods:
+            try:
+                # ດຶງຂໍ້ມູນ asset
+                if method.asset_list_id:
+                    asset = method.asset_list_id
+                elif method.ref_id:
+                    asset = FA_Asset_Lists.objects.get(asset_list_id=method.ref_id)
+                else:
+                    continue
+                
+                # ກວດສອບວ່າຫັກໄດ້ບໍ
+                if not (asset.asset_value and asset.asset_useful_life):
+                    continue
+                
+                current_count = int(asset.C_dpac or 0)
+                useful_life = int(asset.asset_useful_life)
+                total_months = useful_life * 12
+                start_date = asset.dpca_start_date
+                
+                # ຖ້າຫັກຄົບແລ້ວ ຂ້າມ
+                if current_count >= total_months:
+                    continue
+                
+                # ຄິດເດືອນຕໍ່ໄປທີ່ຄວນຫັກ
+                next_month_number = current_count + 1
+                
+                # ຄິດວັນທີ່ທີ່ຄວນຫັກ
+                if next_month_number == 1:
+                    # ເດືອນທຳອິດ - ເລີ່ມຈາກວັນທີເລີ່ມຊັບສິນ
+                    due_date = start_date
+                    due_end_date = datetime(start_date.year, start_date.month,
+                                          get_last_day_of_month(start_date.year, start_date.month)).date()
+                else:
+                    # ເດືອນອື່ນໆ - ເລີ່ມຕົ້ນເດືອນ
+                    month_calc = start_date + relativedelta(months=current_count)
+                    due_date = datetime(month_calc.year, month_calc.month, 1).date()
+                    due_end_date = datetime(month_calc.year, month_calc.month,
+                                          get_last_day_of_month(month_calc.year, month_calc.month)).date()
+                
+                # ຄິດຄ່າເສື່ອມລາຄາທີ່ຄວນຫັກ
+                calc_result = calculate_depreciation_schedule(method.mapping_id)
+                if 'error' in calc_result:
+                    continue
+                
+                daily_depreciation = calc_result['calculation_info']['daily_depreciation']
+                days_count = (due_end_date - due_date + timedelta(days=1)).days
+                expected_depreciation = daily_depreciation * days_count
+                
+                # ຄິດຈຳນວນວັນທີ່ຄ້າງ
+                days_overdue = (current_date - due_end_date).days
+                
+                # ສ້າງຂໍ້ມູນລາຍການ
+                item_data = {
+                    'mapping_id': method.mapping_id,
+                    'asset_id': asset.asset_list_id,
+                    'asset_name': asset.asset_spec or 'N/A',
+                    'asset_value': float(asset.asset_value),
+                    'current_month': next_month_number,
+                    'total_months': total_months,
+                    'due_date': due_date.strftime('%d/%m/%Y'),
+                    'due_end_date': due_end_date.strftime('%d/%m/%Y'),
+                    'days_count': days_count,
+                    'expected_depreciation': round(expected_depreciation, 2),
+                    'last_depreciation_date': asset.asset_latest_date_dpca.strftime('%d/%m/%Y') if asset.asset_latest_date_dpca else 'ຍັງບໍ່ໄດ້ຫັກ',
+                    'due_month_year': f"{get_month_name_la(due_date.month)} {due_date.year}",
+                    'completion_percentage': round((current_count / total_months) * 100, 2),
+                    'days_overdue': days_overdue,
+                    'overdue_months': round(days_overdue / 30, 1)  # ປະມານເດືອນ
+                }
+                
+                # ຈັດປະເພດຕາມລະດັບຄວາມເລືອນ
+                if days_overdue > 0:
+                    # ຄ້າງຫັກແລ້ວ
+                    if days_overdue <= 7:
+                        item_data['urgency_level'] = 'low'
+                        item_data['urgency_message'] = f"⚠️ ຄ້າງ {days_overdue} ມື້"
+                        item_data['urgency_color'] = 'yellow'
+                    elif days_overdue <= 30:
+                        item_data['urgency_level'] = 'medium'
+                        item_data['urgency_message'] = f"🔸 ຄ້າງ {days_overdue} ມື້ ({item_data['overdue_months']} ເດືອນ)"
+                        item_data['urgency_color'] = 'orange'
+                    elif days_overdue <= 90:
+                        item_data['urgency_level'] = 'high'
+                        item_data['urgency_message'] = f"🔴 ຄ້າງ {days_overdue} ມື້ ({item_data['overdue_months']} ເດືອນ)"
+                        item_data['urgency_color'] = 'red'
+                    else:
+                        item_data['urgency_level'] = 'critical'
+                        item_data['urgency_message'] = f"🆘 ຄ້າງ {days_overdue} ມື້ ({item_data['overdue_months']} ເດືອນ) - ສຸກເສີນ!"
+                        item_data['urgency_color'] = 'dark-red'
+                    
+                    overdue_items.append(item_data)
+                    
+                elif days_overdue >= -7 and days_overdue <= 0:
+                    # ໃກ້ເລືອນກຳນົດ (7 ມື້ຂ້າງໜ້າ)
+                    days_until_due = abs(days_overdue)
+                    item_data['urgency_level'] = 'warning'
+                    item_data['urgency_message'] = f"⏰ ເຫຼືອ {days_until_due} ມື້"
+                    item_data['urgency_color'] = 'blue'
+                    item_data['days_until_due'] = days_until_due
+                    
+                    warning_items.append(item_data)
+                    
+            except Exception as e:
+                print(f"Error processing mapping_id {method.mapping_id}: {str(e)}")
+                continue
+        
+        # ຈັດລຽງຕາມລະດັບຄວາມສຳຄັນ
+        overdue_items.sort(key=lambda x: x['days_overdue'], reverse=True)  # ຄ້າງນານທີ່ສຸດກ່ອນ
+        warning_items.sort(key=lambda x: x['days_until_due'])  # ໃກ້ກຳນົດທີ່ສຸດກ່ອນ
+        
+        # ສະຖິຕິ
+        total_overdue = len(overdue_items)
+        critical_count = len([x for x in overdue_items if x['urgency_level'] == 'critical'])
+        high_count = len([x for x in overdue_items if x['urgency_level'] == 'high'])
+        medium_count = len([x for x in overdue_items if x['urgency_level'] == 'medium'])
+        low_count = len([x for x in overdue_items if x['urgency_level'] == 'low'])
+        
+        # ຄຳນວນມູນຄ່າຄ້າງຫັກລວມ
+        total_overdue_value = sum([item['expected_depreciation'] for item in overdue_items])
+        
+        return {
+            'success': True,
+            'summary': {
+                'total_overdue': total_overdue,
+                'total_warning': len(warning_items),
+                'total_overdue_value': round(total_overdue_value, 2),
+                'breakdown': {
+                    'critical': critical_count,    # > 90 ມື້
+                    'high': high_count,           # 31-90 ມື້  
+                    'medium': medium_count,       # 8-30 ມື້
+                    'low': low_count             # 1-7 ມື້
+                },
+                'generated_date': current_date.strftime('%d/%m/%Y'),
+                'urgency_legend': {
+                    'critical': '🆘 ຄ້າງເກີນ 90 ມື້ - ສຸກເສີນ!',
+                    'high': '🔴 ຄ້າງ 31-90 ມື້ - ສຳຄັນ',
+                    'medium': '🔸 ຄ້າງ 8-30 ມື້ - ປານກາງ', 
+                    'low': '⚠️ ຄ້າງ 1-7 ມື້ - ຕໍ່າ',
+                    'warning': '⏰ ໃກ້ກຳນົດ 7 ມື້'
+                }
+            },
+            'overdue_items': overdue_items,
+            'warning_items': warning_items
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Get overdue items error: {str(e)}"
+        }
+def get_overdue_by_urgency_level(urgency_level=None):
+    """
+    🎯 ຫາລາຍການຄ້າງຫັກຕາມລະດັບຄວາມສຳຄັນ
+    
+    Args:
+        urgency_level: 'critical', 'high', 'medium', 'low', 'warning' ຫຼື None (ທັງໝົດ)
+    """
+    try:
+        overdue_result = get_overdue_depreciation_items()
+        
+        if not overdue_result['success']:
+            return overdue_result
+        
+        if not urgency_level:
+            # ສົ່ງຄືນທັງໝົດ
+            return overdue_result
+        
+        # ກອງຕາມລະດັບ
+        filtered_overdue = [
+            item for item in overdue_result['overdue_items'] 
+            if item['urgency_level'] == urgency_level
+        ]
+        
+        filtered_warning = [
+            item for item in overdue_result['warning_items']
+            if urgency_level == 'warning'
+        ]
+        
+        return {
+            'success': True,
+            'urgency_level': urgency_level,
+            'summary': {
+                'total_filtered': len(filtered_overdue) + len(filtered_warning),
+                'urgency_description': overdue_result['summary']['urgency_legend'].get(urgency_level, 'ບໍ່ມີຂໍ້ມູນ')
+            },
+            'overdue_items': filtered_overdue,
+            'warning_items': filtered_warning if urgency_level == 'warning' else []
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Get overdue by urgency error: {str(e)}"
+        }
+def process_overdue_depreciation(urgency_levels=None, user_id=None):
+    """
+    🔧 ຫັກຄ່າເສື່ອມລາຄາທີ່ຄ້າງທັງໝົດ ຫຼື ຕາມລະດັບທີ່ເລືອກ
+    
+    Args:
+        urgency_levels: ['critical', 'high'] ຫຼື None (ທັງໝົດ)
+        user_id: User ID
+    """
+    try:
+        # ຫາລາຍການຄ້າງຫັກ
+        overdue_result = get_overdue_depreciation_items()
+        
+        if not overdue_result['success']:
+            return overdue_result
+        
+        # ເລືອກລາຍການຕາມລະດັບ
+        items_to_process = []
+        
+        if urgency_levels:
+            # ເລືອກເຉພາະລະດັບທີ່ຕ້ອງການ
+            for item in overdue_result['overdue_items']:
+                if item['urgency_level'] in urgency_levels:
+                    items_to_process.append(item)
+        else:
+            # ຫັກທັງໝົດ
+            items_to_process = overdue_result['overdue_items']
+        
+        if not items_to_process:
+            return {
+                'success': True,
+                'message': f"ບໍ່ມີລາຍການຄ້າງຫັກທີ່ຕ້ອງການປະມວນຜົນ",
+                'summary': {
+                    'total_items': 0,
+                    'success_count': 0,
+                    'error_count': 0
+                },
+                'details': []
+            }
+        
+        # ດຶງ mapping_ids
+        mapping_ids = [item['mapping_id'] for item in items_to_process]
+        
+        # ຫັກທຸກລາຍການ
+        with transaction.atomic():
+            process_result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
+        
+        # ເພີ່ມຂໍ້ມູນເສີມ
+        process_result['overdue_processing'] = {
+            'urgency_levels_processed': urgency_levels or 'all',
+            'total_overdue_items': len(overdue_result['overdue_items']),
+            'processed_items': len(items_to_process),
+            'skipped_items': len(overdue_result['overdue_items']) - len(items_to_process)
+        }
+        
+        return process_result
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Process overdue error: {str(e)}"
+        }
+@csrf_exempt
+def overdue_depreciation_api(request):
+    """
+    API ສຳລັບຈັດການລາຍການຄ້າງຫັກຄ່າເສື່ອມລາຄາ
+    
+    Actions:
+    - get_overdue: ດຶງລາຍການຄ້າງຫັກທັງໝົດ
+    - get_by_urgency: ດຶງຕາມລະດັບຄວາມສຳຄັນ (ຕ້ອງມີ urgency_level)
+    - process_overdue: ຫັກລາຍການຄ້າງຫັກທັງໝົດ
+    - process_by_urgency: ຫັກຕາມລະດັບທີ່ເລືອກ (ຕ້ອງມີ urgency_levels)
+    """
+    try:
+        # ກວດສອບ method
+        if request.method not in ['POST', 'GET']:
+            return JsonResponse({'error': 'ໃຊ້ POST ຫຼື GET method'})
+        
+        # ດຶງຂໍ້ມູນ
+        if request.method == 'POST':
+            if not request.body:
+                return JsonResponse({'error': 'ບໍ່ມີ request body'})
+            
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError as e:
+                return JsonResponse({'error': f'JSON error: {str(e)}'})
+            
+            action = data.get('action', 'get_overdue')
+            urgency_level = data.get('urgency_level')
+            urgency_levels = data.get('urgency_levels', [])
+            user_id = data.get('user_id')
+        else:  # GET
+            action = request.GET.get('action', 'get_overdue')
+            urgency_level = request.GET.get('urgency_level')
+            urgency_levels_str = request.GET.get('urgency_levels', '')
+            urgency_levels = urgency_levels_str.split(',') if urgency_levels_str else []
+            user_id = request.GET.get('user_id')
+        
+        # ເອີ້ນໃຊ້ຟັງຊັ້ນຕາມ action
+        if action == 'get_overdue':
+            # ດຶງລາຍການຄ້າງຫັກທັງໝົດ
+            result = get_overdue_depreciation_items()
+            
+        elif action == 'get_by_urgency':
+            # ດຶງຕາມລະດັບຄວາມສຳຄັນ
+            if not urgency_level:
+                return JsonResponse({
+                    'error': 'ໃສ່ urgency_level',
+                    'valid_levels': ['critical', 'high', 'medium', 'low', 'warning'],
+                    'example': '{"action": "get_by_urgency", "urgency_level": "critical"}'
+                })
+            result = get_overdue_by_urgency_level(urgency_level)
+            
+        elif action == 'process_overdue':
+            # ຫັກລາຍການຄ້າງຫັກທັງໝົດ
+            result = process_overdue_depreciation(urgency_levels=None, user_id=user_id)
+            
+        elif action == 'process_by_urgency':
+            # ຫັກຕາມລະດັບທີ່ເລືອກ
+            if not urgency_levels:
+                return JsonResponse({
+                    'error': 'ໃສ່ urgency_levels',
+                    'valid_levels': ['critical', 'high', 'medium', 'low'],
+                    'examples': {
+                        'POST': '{"action": "process_by_urgency", "urgency_levels": ["critical", "high"], "user_id": 1}',
+                        'GET': '?action=process_by_urgency&urgency_levels=critical,high&user_id=1'
+                    }
+                })
+            result = process_overdue_depreciation(urgency_levels=urgency_levels, user_id=user_id)
+            
+        else:
+            return JsonResponse({
+                'error': f'action "{action}" ບໍ່ຖືກຕ້ອງ',
+                'valid_actions': ['get_overdue', 'get_by_urgency', 'process_overdue', 'process_by_urgency'],
+                'examples': {
+                    'get_all': '{"action": "get_overdue"}',
+                    'get_critical': '{"action": "get_by_urgency", "urgency_level": "critical"}',
+                    'process_all': '{"action": "process_overdue", "user_id": 1}',
+                    'process_urgent': '{"action": "process_by_urgency", "urgency_levels": ["critical", "high"], "user_id": 1}'
+                }
+            })
+        
+        # ກວດສອບຜົນລັບ
+        if isinstance(result, dict) and 'error' in result:
+            return JsonResponse(result, status=400)
+        
+        return JsonResponse({
+            'success': True,
+            'action': action,
+            'data': result,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = {
+            'error': str(e),
+            'type': type(e).__name__,
+            'traceback': traceback.format_exc()
+        }
+        print("Overdue API Error Details:", error_details)
+        return JsonResponse(error_details, status=500)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def setup_default_eod_functions(request):
