@@ -1221,6 +1221,7 @@ class FA_Asset_Lists(models.Model):
     asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
     asset_ac_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='ac_asset_lists')
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    delete_Stat = models.CharField(max_length=1, null=True, blank=True, default='')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_lists')
@@ -1298,6 +1299,7 @@ class FA_Asset_List_Depreciation_Main (models.Model):
 class FA_Asset_List_Depreciation (models.Model):
     ald_id = models.AutoField(primary_key=True)
     asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
+    aldm_id = models.ForeignKey('FA_Asset_List_Depreciation_InMonth', null=True, blank=True, on_delete=models.CASCADE)
     dpca_date = models.DateField(null=True, blank=True)  
     dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
     dpca_no_of_days = models.IntegerField(null=True, blank=True) 

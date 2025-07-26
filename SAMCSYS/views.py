@@ -5068,7 +5068,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         # ACTB_DAIRY_LOG data (with ForeignKey references)
                         actb_log_data = {
                             'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
-                            'trn_ref_no': entry,  # ForeignKey to DETB_JRNL_LOG (the entry itself!)
+                            'trn_ref_no': entry.Reference_No,  # ForeignKey to DETB_JRNL_LOG (the entry itself!)
                             'trn_ref_sub_no': entry.Reference_sub_No,
                             'event_sr_no': idx + 1,
                             'event': 'JRNL',
