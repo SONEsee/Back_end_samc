@@ -11917,56 +11917,53 @@ def bulk_insert_dairy_report(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# Alternative ViewSet approach (if you prefer using ViewSets)
-from rest_framework import viewsets
-from rest_framework.decorators import action
+# # Alternative ViewSet approach (if you prefer using ViewSets)
+# from rest_framework import viewsets
+# from rest_framework.decorators import action
 
-class DairyReportViewSet(viewsets.ModelViewSet):
-    queryset = Dairy_Report.objects.all()
-    serializer_class = DairyReportSerializer
-    permission_classes = [IsAuthenticated]
+# class DairyReportViewSet(viewsets.ModelViewSet):
+#     queryset = Dairy_Report.objects.all()
+#     serializer_class = DairyReportSerializer
+#     permission_classes = [IsAuthenticated]
 
-    @action(detail=False, methods=['post'], url_path='bulk-insert')
-    def bulk_insert(self, request):
-        """
-        Custom action for bulk inserting dairy report data
-        """
-        return bulk_insert_dairy_report(request)
+#     @action(detail=False, methods=['post'], url_path='bulk-insert')
+#     def bulk_insert(self, request):
+#         """
+#         Custom action for bulk inserting dairy report data
+#         """
+#         return bulk_insert_dairy_report(request)
 
-    @action(detail=False, methods=['delete'], url_path='bulk-delete')
-    def bulk_delete(self, request):
-        """
-        Custom action for bulk deleting dairy report data by criteria
-        """
-        try:
-            # Get filter criteria from request
-            fin_year = request.data.get('fin_year')
-            period_code = request.data.get('period_code')
-            ccy_code = request.data.get('ccy_code')
-            category = request.data.get('category', 'TRIAL_BALANCE')
-
-            # Build filter query
-            filter_kwargs = {'Category': category}
-            
-            if fin_year:
-                filter_kwargs['Fin_year__fin_year'] = fin_year
-            if period_code:
-                filter_kwargs['Period_code__period_code'] = period_code
-            if ccy_code:
-                filter_kwargs['CCy_Code__ccy_code'] = ccy_code
-
-            # Delete matching records
-            deleted_count, _ = Dairy_Report.objects.filter(**filter_kwargs).delete()
-
-            return Response({
-                'status': 'success',
-                'message': f'ລຶບຂໍ້ມູນສຳເລັດ - {deleted_count} ລາຍການ',
-                'deleted_count': deleted_count
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Bulk delete error: {str(e)}")
-            return Response({
-                'status': 'error',
-                'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_delete(request):
+    """
+    Custom action for bulk deleting dairy report data by criteria
+    """
+    try:
+        # Get filter criteria from request
+        fin_year = request.data.get('fin_year')
+        period_code = request.data.get('period_code')
+        ccy_code = request.data.get('ccy_code')
+        category = request.data.get('category', 'TRIAL_BALANCE')
+        # Build filter query
+        filter_kwargs = {'Category': category}
+        
+        if fin_year:
+            filter_kwargs['Fin_year__fin_year'] = fin_year
+        if period_code:
+            filter_kwargs['Period_code__period_code'] = period_code
+        if ccy_code:
+            filter_kwargs['CCy_Code__ccy_code'] = ccy_code
+        # Delete matching records
+        deleted_count, _ = Dairy_Report.objects.filter(**filter_kwargs).delete()
+        return Response({
+            'status': 'success',
+            'message': f'ລຶບຂໍ້ມູນສຳເລັດ - {deleted_count} ລາຍການ',
+            'deleted_count': deleted_count
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Bulk delete error: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

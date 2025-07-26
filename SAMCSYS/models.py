@@ -1275,6 +1275,7 @@ class FA_Asset_Lists(models.Model):
 class FA_Asset_List_Depreciation_Main (models.Model):
     aldm_id = models.AutoField(primary_key=True)
     asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
+    aldm_month_id = models.ForeignKey('FA_Asset_List_Depreciation_InMonth', null=True, blank=True, on_delete=models.CASCADE)
     dpca_year = models.CharField(max_length=4, null=True, blank=True)
     dpca_month = models.CharField(max_length=7, null=True, blank=True)
     dpca_date = models.DateField(null=True, blank=True)  
