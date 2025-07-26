@@ -5063,15 +5063,12 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
                         
                         # Prepare additional sub text
-                        # addl_sub_text = f"Approved Entry - {entry.Dr_cr} - {entry.Account_no}"
                         addl_sub_text = f"{entry.Addl_sub_text[:30] if entry.Addl_sub_text else ''}"
-
-
                         
-                        # Common data for both ACTB_DAIRY_LOG and ACTB_DAIRY_LOG_HISTORY tables
-                        daily_log_data = {
+                        # ACTB_DAIRY_LOG data (with ForeignKey references)
+                        actb_log_data = {
                             'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
-                            'trn_ref_no': entry,  # ForeignKey to DETB_JRNL_LOG entry
+                            'trn_ref_no': entry.Reference_No,  # ForeignKey to DETB_JRNL_LOG (the entry itself!)
                             'trn_ref_sub_no': entry.Reference_sub_No,
                             'event_sr_no': idx + 1,
                             'event': 'JRNL',
@@ -5088,9 +5085,8 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                             'fcy_cr': fcy_cr,
                             'lcy_dr': lcy_dr,
                             'lcy_cr': lcy_cr,
-                            'external_ref_no': entry.Reference_No[:30],
+                            'external_ref_no': '',
                             'addl_text': entry.Addl_text or '',
-                            # 'addl_sub_text':  entry.addl_sub_text or '',
                             'addl_sub_text': addl_sub_text,
                             'trn_dt': entry.Value_date.date() if entry.Value_date else None,
                             'glid': gl_master,  # ForeignKey to MTTB_GLMaster
@@ -5099,9 +5095,49 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                             'value_dt': entry.Value_date.date() if entry.Value_date else None,
                             'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
                             'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
-                            'user_id': request.user,  # ForeignKey to MTTB_Users
+                            'Maker_id': request.user,  # ForeignKey to MTTB_Users
                             'Maker_DT_Stamp': current_time,
-                            'auth_id': request.user,  # ForeignKey to MTTB_Users (approver)
+                            'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
+                            'Checker_DT_Stamp': current_time,
+                            'Auth_Status': 'A',  # Authorized
+                            'product': 'GL',
+                            'entry_seq_no': idx + 1,
+                            'delete_stat': None
+                        }
+                        
+                        # ACTB_DAIRY_LOG_HISTORY data (with CharField references)
+                        actb_hist_data = {
+                            'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
+                            'trn_ref_no': entry.Reference_No,  # CharField (Reference_No string)
+                            'trn_ref_sub_no': entry.Reference_sub_No,
+                            'event_sr_no': idx + 1,
+                            'event': 'JRNL',
+                            'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
+                            'ac_no_full': entry.Account_no,
+                            'ac_relative': entry.Ac_relatives,
+                            'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
+                            'drcr_ind': entry.Dr_cr,
+                            'trn_code': entry.Txn_code,  # ForeignKey to MTTB_TRN_Code
+                            'fcy_amount': fcy_amount,
+                            'exch_rate': exchange_rate,
+                            'lcy_amount': lcy_amount,
+                            'fcy_dr': fcy_dr,
+                            'fcy_cr': fcy_cr,
+                            'lcy_dr': lcy_dr,
+                            'lcy_cr': lcy_cr,
+                            'external_ref_no': '',
+                            'addl_text': entry.Addl_text or '',
+                            'addl_sub_text': addl_sub_text,
+                            'trn_dt': entry.Value_date.date() if entry.Value_date else None,
+                            'glid': gl_master,  # ForeignKey to MTTB_GLMaster
+                            'glType': gl_type,  # CharField from GLMaster
+                            'category': category,  # CharField from GLMaster
+                            'value_dt': entry.Value_date.date() if entry.Value_date else None,
+                            'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
+                            'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
+                            'Maker_id': request.user,  # ForeignKey to MTTB_Users
+                            'Maker_DT_Stamp': current_time,
+                            'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
                             'Checker_DT_Stamp': current_time,
                             'Auth_Status': 'A',  # Authorized
                             'product': 'GL',
@@ -5110,12 +5146,24 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         }
                         
                         # Create ACTB_DAIRY_LOG entry
-                        daily_log_entry = ACTB_DAIRY_LOG.objects.create(**daily_log_data)
-                        daily_log_entries_created += 1
+                        try:
+                            daily_log_entry = ACTB_DAIRY_LOG.objects.create(**actb_log_data)
+                            daily_log_entries_created += 1
+                            print(f"Created ACTB_DAIRY_LOG entry {daily_log_entry.ac_entry_sr_no}")
+                        except Exception as log_error:
+                            print(f"Error creating ACTB_DAIRY_LOG: {str(log_error)}")
+                            import traceback
+                            traceback.print_exc()
                         
                         # Create ACTB_DAIRY_LOG_HISTORY entry  
-                        daily_log_hist_entry = ACTB_DAIRY_LOG_HISTORY.objects.create(**daily_log_data)
-                        daily_log_hist_entries_created += 1
+                        try:
+                            daily_log_hist_entry = ACTB_DAIRY_LOG_HISTORY.objects.create(**actb_hist_data)
+                            daily_log_hist_entries_created += 1
+                            print(f"Created ACTB_DAIRY_LOG_HISTORY entry {daily_log_hist_entry.ac_entry_sr_no}")
+                        except Exception as hist_error:
+                            print(f"Error creating ACTB_DAIRY_LOG_HISTORY: {str(hist_error)}")
+                            import traceback
+                            traceback.print_exc()
                         
                 except Exception as daily_log_error:
                     # Log the error but don't fail the entire approval process
@@ -6389,6 +6437,9 @@ def execute_eod_function(eod_function, user):
 from django.db import transaction
 from django.core.exceptions import ValidationError
 import logging
+
+logger = logging.getLogger(__name__)
+
 def execute_bulk_journal(eod_function, user):
     """
     Execute the bulk journal function (move data from ACTB_DAIRY_LOG to STTB_EOC_DAILY_LOG)
@@ -6412,112 +6463,130 @@ def execute_bulk_journal(eod_function, user):
                 try:
                     # Debug: Print log data to understand the structure
                     logger.debug(f"Processing log ID {log.ac_entry_sr_no}")
-                    logger.debug(f"Module: {log.module}, TRN_REF_NO: {log.trn_ref_no}, AC_NO: {log.ac_no}")
                     
-                    # Extract values with proper handling for ForeignKeys and field length limits
+                    # Extract ForeignKey values properly
+                    # Module field
                     module_value = ''
                     if log.module:
-                        # Try different possible field names for module
-                        module_value = str(getattr(log.module, 'module_code', None) or 
-                                         getattr(log.module, 'code', None) or 
-                                         getattr(log.module, 'id', ''))[:2]  # Max 2 chars
-                    
-                    trn_ref_no_value = ''
-                    if log.trn_ref_no:
-                        # Try different possible field names for trn_ref_no
-                        trn_ref_no_value = str(getattr(log.trn_ref_no, 'trn_ref_no', None) or
-                                             getattr(log.trn_ref_no, 'reference_no', None) or
-                                             getattr(log.trn_ref_no, 'id', ''))[:15]  # Max 15 chars
-                    
-                    ac_no_value = ''
-                    if log.ac_no:
-                        # Try different possible field names for ac_no
-                        ac_no_value = str(getattr(log.ac_no, 'gl_sub_code', None) or
-                                        getattr(log.ac_no, 'account_code', None) or
-                                        getattr(log.ac_no, 'code', None) or
-                                        getattr(log.ac_no, 'id', ''))[:20]  # Max 20 chars
-                    
-                    ac_ccy_value = ''
-                    if log.ac_ccy:
-                        ac_ccy_value = str(getattr(log.ac_ccy, 'ccy_code', None) or
-                                         getattr(log.ac_ccy, 'code', None) or
-                                         getattr(log.ac_ccy, 'id', ''))[:3]  # Max 3 chars
-                    
-                    trn_code_value = ''
-                    if log.trn_code:
-                        trn_code_value = str(getattr(log.trn_code, 'trn_code', None) or
-                                           getattr(log.trn_code, 'code', None) or
-                                           getattr(log.trn_code, 'id', ''))[:3]  # Max 3 chars
-                    
-                    financial_cycle_value = ''
-                    if log.financial_cycle:
-                        financial_cycle_value = str(getattr(log.financial_cycle, 'fin_cycle', None) or
-                                                  getattr(log.financial_cycle, 'cycle', None) or
-                                                  getattr(log.financial_cycle, 'id', ''))[:9]  # Max 9 chars
-                    
-                    period_code_value = ''
-                    if log.period_code:
-                        period_code_value = str(getattr(log.period_code, 'per_code', None) or
-                                              getattr(log.period_code, 'code', None) or
-                                              getattr(log.period_code, 'id', ''))[:3]  # Max 3 chars
-                    
-                    user_id_value = ''
-                    if log.user_id:
-                        user_id_value = str(getattr(log.user_id, 'user_id', None) or
-                                          getattr(log.user_id, 'username', None) or
-                                          getattr(log.user_id, 'id', ''))[:12]  # Max 12 chars
-                    
-                    auth_id_value = ''
-                    if log.auth_id:
-                        auth_id_value = str(getattr(log.auth_id, 'user_id', None) or
-                                          getattr(log.auth_id, 'username', None) or
-                                          getattr(log.auth_id, 'id', ''))[:12]  # Max 12 chars
-                    
-                    # Handle external_ref_no length limit (16 chars max)
-                    external_ref_no_value = (log.external_ref_no or '')[:16]
-                    
-                    # Ensure required fields have values
+                        module_value = str(getattr(log.module, 'module_code', 
+                                         getattr(log.module, 'code', 
+                                         getattr(log.module, 'module_Id',
+                                         getattr(log.module, 'id', '')))))[:2]  # Max 2 chars
                     if not module_value:
                         module_value = 'GL'  # Default module
+                    
+                    # Transaction reference number - from DETB_JRNL_LOG ForeignKey
+                    trn_ref_no_value = ''
+                    if log.trn_ref_no:
+                        trn_ref_no_value = str(getattr(log.trn_ref_no, 'Reference_No', 
+                                             getattr(log.trn_ref_no, 'JRNLLog_id',
+                                             getattr(log.trn_ref_no, 'id', ''))))[:35]  # Max 35 chars
                     if not trn_ref_no_value:
-                        trn_ref_no_value = f'TRN{log.ac_entry_sr_no}'[:15]  # Generate from ID
+                        trn_ref_no_value = f'TRN{log.ac_entry_sr_no}'[:35]
+                    
+                    # Account number - from MTTB_GLSub ForeignKey
+                    ac_no_value = ''
+                    if log.ac_no:
+                        ac_no_value = str(getattr(log.ac_no, 'gl_sub_code', 
+                                        getattr(log.ac_no, 'account_no', 
+                                        getattr(log.ac_no, 'account_code',
+                                        getattr(log.ac_no, 'code',
+                                        getattr(log.ac_no, 'id', ''))))))[:50]  # Max 50 chars
                     if not ac_no_value:
-                        ac_no_value = f'AC{log.ac_entry_sr_no}'[:20]  # Generate from ID
+                        ac_no_value = f'AC{log.ac_entry_sr_no}'[:50]
+                    
+                    # Currency - from MTTB_Ccy_DEFN ForeignKey
+                    ac_ccy_value = ''
+                    if log.ac_ccy:
+                        ac_ccy_value = str(getattr(log.ac_ccy, 'ccy_code', 
+                                         getattr(log.ac_ccy, 'currency_code',
+                                         getattr(log.ac_ccy, 'code', 
+                                         getattr(log.ac_ccy, 'id', '')))))[:3]  # Max 3 chars
                     if not ac_ccy_value:
                         ac_ccy_value = 'LAK'  # Default currency
+                    
+                    # Transaction code - from MTTB_TRN_Code ForeignKey
+                    trn_code_value = ''
+                    if log.trn_code:
+                        trn_code_value = str(getattr(log.trn_code, 'trn_code', 
+                                           getattr(log.trn_code, 'transaction_code',
+                                           getattr(log.trn_code, 'code', 
+                                           getattr(log.trn_code, 'id', '')))))[:3]  # Max 3 chars
                     if not trn_code_value:
                         trn_code_value = 'GL'  # Default transaction code
+                    
+                    # Financial cycle - from MTTB_Fin_Cycle ForeignKey
+                    financial_cycle_value = ''
+                    if log.financial_cycle:
+                        financial_cycle_value = str(getattr(log.financial_cycle, 'fin_cycle', 
+                                                  getattr(log.financial_cycle, 'financial_cycle',
+                                                  getattr(log.financial_cycle, 'cycle', 
+                                                  getattr(log.financial_cycle, 'id', '')))))[:9]  # Max 9 chars
                     if not financial_cycle_value:
                         financial_cycle_value = '2025'  # Default financial cycle
+                    
+                    # Period code - from MTTB_Per_Code ForeignKey
+                    period_code_value = ''
+                    if log.period_code:
+                        period_code_value = str(getattr(log.period_code, 'per_code', 
+                                              getattr(log.period_code, 'period_code',
+                                              getattr(log.period_code, 'code', 
+                                              getattr(log.period_code, 'id', '')))))[:6]  # Max 6 chars
                     if not period_code_value:
                         period_code_value = f'{log.trn_dt.year}{log.trn_dt.month:02d}' if log.trn_dt else '202507'
                     
+                    # Maker ID - from MTTB_Users ForeignKey
+                    maker_id_value = ''
+                    if log.Maker_id:
+                        maker_id_value = str(getattr(log.Maker_id, 'user_id', 
+                                           getattr(log.Maker_id, 'username', 
+                                           getattr(log.Maker_id, 'id', ''))))[:12]  # Max 12 chars
+                    
+                    # Checker ID - from MTTB_Users ForeignKey
+                    checker_id_value = ''
+                    if log.Checker_id:
+                        checker_id_value = str(getattr(log.Checker_id, 'user_id', 
+                                             getattr(log.Checker_id, 'username', 
+                                             getattr(log.Checker_id, 'id', ''))))[:12]  # Max 12 chars
+                    
+                    # Handle event_sr_no conversion from BigInt to Int
+                    event_sr_no_value = log.event_sr_no or 0
+                    if event_sr_no_value > 2147483647:  # Max int value
+                        event_sr_no_value = 2147483647
+                    
+                    # Create STTB_EOC_DAILY_LOG object
                     eoc_log = STTB_EOC_DAILY_LOG(
+                        # Note: ac_entry_sr_no is AutoField, so we don't set it
                         module=module_value,
                         trn_ref_no=trn_ref_no_value,
                         trn_ref_sub_no=log.trn_ref_sub_no or '',
-                        # Handle potential BigInt to Int conversion
-                        event_sr_no=min(log.event_sr_no or 0, 2147483647),  # Max int value
+                        event_sr_no=event_sr_no_value,
                         event=log.event or '',
                         ac_no=ac_no_value,
+                        ac_no_full=log.ac_no_full or '',
+                        gl_acc_relative=log.ac_relative or '',  # ACTB.ac_relative -> EOC.gl_acc_relative
                         ac_ccy=ac_ccy_value,
                         drcr_ind=log.drcr_ind or 'D',
                         trn_code=trn_code_value,
-                        fcy_amount=log.fcy_amount,
-                        exch_rate=log.exch_rate,
-                        lcy_amount=log.lcy_amount,
-                        external_ref_no=external_ref_no_value,
+                        fcy_dr=log.fcy_dr or 0,
+                        fcy_cr=log.fcy_cr or 0,
+                        lcy_dr=log.lcy_dr or 0,
+                        lcy_cr=log.lcy_cr or 0,
+                        fcy_amount=log.fcy_amount or 0,
+                        exch_rate=log.exch_rate or 1,
+                        lcy_amount=log.lcy_amount or 0,
+                        external_ref_no=(log.external_ref_no or '')[:50],  # Max 50 chars in EOC
                         addl_text=log.addl_text or '',
                         addl_sub_text=log.addl_sub_text or '',
                         trn_dt=log.trn_dt,
-                        type=log.glType or '',
+                        type=log.glType or '',  # ACTB.glType -> EOC.type
                         category=log.category or '',
                         value_dt=log.value_dt,
                         financial_cycle=financial_cycle_value,
                         period_code=period_code_value,
-                        user_id=user_id_value,
+                        Maker_id=maker_id_value,
                         Maker_DT_Stamp=log.Maker_DT_Stamp,
-                        auth_id=auth_id_value,
+                        Checker_id=checker_id_value,
                         Checker_DT_Stamp=log.Checker_DT_Stamp,
                         Auth_Status=log.Auth_Status or 'U',
                         product=log.product or '',
@@ -6534,6 +6603,8 @@ def execute_bulk_journal(eod_function, user):
                     continue
                 except Exception as e:
                     logger.error(f"Error processing log ID {log.ac_entry_sr_no}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
                     continue
             
             if not eoc_logs:
@@ -6543,12 +6614,12 @@ def execute_bulk_journal(eod_function, user):
             created_records = STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
             
             # Update source records to prevent reprocessing
-            # Option 1: Mark as processed
+            # Mark as processed
             ACTB_DAIRY_LOG.objects.filter(
                 ac_entry_sr_no__in=processed_ids
             ).update(Auth_Status='P')  # P for Processed
             
-            # Option 2: Delete processed records (uncomment if needed)
+            # Alternative: Delete processed records (uncomment if needed)
             # ACTB_DAIRY_LOG.objects.filter(
             #     ac_entry_sr_no__in=processed_ids
             # ).delete()
@@ -6558,6 +6629,8 @@ def execute_bulk_journal(eod_function, user):
         
     except Exception as e:
         logger.error(f"Error in execute_bulk_journal: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False, f"ຂໍ້ຜິດພາດໃນການບັນທຶກ journal: {str(e)}"
 
 def execute_balance_calculation(eod_function, user):
