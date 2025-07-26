@@ -7469,8 +7469,12 @@ class FAAssetListDepreciationMainViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = FA_Asset_List_Depreciation_Main.objects.all().order_by('aldm_id')
         asset_list_id = self.request.query_params.get('asset_list_id')
+        aldm_month_id = self.request.query_params.get('aldm_month_id')
+
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
+        if aldm_month_id:
+            queryset = queryset.filter(aldm_month_id=aldm_month_id)
         return queryset
     
     def perform_create(self, serializer):
@@ -12180,7 +12184,6 @@ def trial_balance_view(request):
             "message": "Internal Server Error: " + str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -12199,7 +12202,7 @@ logger = logging.getLogger(__name__)
 @permission_classes([IsAuthenticated])
 def bulk_insert_dairy_report(request):
     """
-    Bulk insert trial balance data into Dairy_Report model
+    Clear existing data and bulk insert trial balance data into Dairy_Report model
     Expected payload:
     {
         "data": [
@@ -12240,8 +12243,26 @@ def bulk_insert_dairy_report(request):
 
         created_records = []
         failed_records = []
+        deleted_count = 0
         
         with transaction.atomic():
+            try:
+                # Step 1: Clear existing data from Dairy_Report
+                logger.info("Starting to clear existing Dairy_Report data")
+                deleted_count = Dairy_Report.objects.all().count()
+                Dairy_Report.objects.all().delete()
+                logger.info(f"Successfully cleared {deleted_count} existing records from Dairy_Report")
+                
+            except Exception as e:
+                logger.error(f"Error clearing Dairy_Report data: {str(e)}")
+                return Response({
+                    'status': 'error',
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Step 2: Insert new data
+            logger.info(f"Starting to insert {len(data_list)} new records")
+            
             for index, item in enumerate(data_list):
                 try:
                     # Get or create related objects
@@ -12255,7 +12276,7 @@ def bulk_insert_dairy_report(request):
                     fin_year_obj = None
                     if item.get('Fin_year'):
                         try:
-                            fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_year=item['Fin_year'])
+                            fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=item['Fin_year'])
                         except MTTB_Fin_Cycle.DoesNotExist:
                             logger.warning(f"Financial year {item['Fin_year']} not found for record {index}")
 
@@ -12284,7 +12305,7 @@ def bulk_insert_dairy_report(request):
 
                     # Create Dairy_Report record
                     dairy_report = Dairy_Report(
-                        acc_no=item.get('acc_no', ''),
+                        gl_code=item.get('gl_code', ''),
                         Desc=item.get('Desc', ''),
                         CCy_Code=ccy_obj,
                         Fin_year=fin_year_obj,
@@ -12309,7 +12330,7 @@ def bulk_insert_dairy_report(request):
                         MSegment=item.get('MSegment', '')
                     )
                     
-                    # Validate the model
+                    # Validate and save the model
                     dairy_report.full_clean()
                     dairy_report.save()
                     
@@ -12340,7 +12361,8 @@ def bulk_insert_dairy_report(request):
         # Prepare response
         response_data = {
             'status': 'success',
-            'message': f'ການນຳເຂົ້າສຳເລັດ (Import completed)',
+            'message': f'ການລຶບແລະນຳເຂົ້າຂໍ້ມູນສຳເລັດ (Clear and import completed successfully)',
+            'cleared_records': deleted_count,
             'total_records': len(data_list),
             'inserted_count': len(created_records),
             'failed_count': len(failed_records),
@@ -12350,6 +12372,8 @@ def bulk_insert_dairy_report(request):
         if failed_records:
             response_data['failed_records'] = failed_records
             response_data['message'] += f' - {len(failed_records)} ລາຍການຜິດພາດ (records failed)'
+            
+        logger.info(f"Bulk operation completed: {deleted_count} deleted, {len(created_records)} inserted, {len(failed_records)} failed")
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -12357,7 +12381,7 @@ def bulk_insert_dairy_report(request):
         logger.error(f"Bulk insert error: {str(e)}")
         return Response({
             'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການນຳເຂົ້າຂໍ້ມູນ: {str(e)}'
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
