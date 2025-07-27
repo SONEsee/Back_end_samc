@@ -89,7 +89,9 @@ from .views import (
     trial_balance_view,
     # DairyReportViewSet,
     bulk_insert_dairy_report,
+    trial_balance_view_allccy,
     bulk_delete,
+    bulk_insert_allcurrency,
     
 
 )
@@ -183,8 +185,10 @@ urlpatterns = [
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
     path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
+    path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
     path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
     path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
+    path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
 
     

@@ -11688,7 +11688,6 @@ def run_trial_balance_proc(ac_ccy_id: str, date_start: str, date_end: str):
         row = cursor.fetchone()
         return row[0] if row else None
 
-
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -11739,6 +11738,78 @@ def trial_balance_view(request):
             "status": "error",
             "message": "Internal Server Error: " + str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+from django.db import connection
+def run_trial_balance_allccy( date_start: str, date_end: str):
+    with connection.cursor() as cursor:
+        # Use parameterized SQL to prevent SQL injection
+        sql = """
+            DECLARE	@return_value int
+            EXEC	@return_value = dbo.Somtop_Trail_Balance_All_Currency_Temp_ACTB
+           
+                    @DateStart = %s,
+                    @DateEnd = %s
+            SELECT	'Return Value' = @return_value
+        """
+        cursor.execute(sql, [date_start, date_end])
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+import logging
+
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trial_balance_view_allccy(request):
+
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+
+    if not all([date_start, date_end]):
+        return Response({
+            "status": "error",
+            "message": "Missing required parameters:date_start, or date_end."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        logger.info(f"[TrialBalance] Executing stored procedure for ccy_id=all_currency from {date_start} to {date_end}")
+
+        with connection.cursor() as cursor:
+            query = """
+                EXEC dbo.Somtop_Trail_Balance_All_Currency_Temp_ACTB
+                    @DateStart = %s,
+                    @DateEnd = %s
+            """
+            cursor.execute(query, [date_start, date_end])
+            columns = [col[0] for col in cursor.description]
+            result = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        logger.info(f"[TrialBalance] Procedure completed successfully. Rows fetched: {len(result)}")
+
+        return Response({
+            "status": "success",
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.exception(f"[TrialBalance] Error executing stored procedure: {str(e)}")
+        return Response({
+            "status": "error",
+            "message": "Internal Server Error: " + str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -11861,6 +11932,7 @@ def bulk_insert_dairy_report(request):
 
                     # Create Dairy_Report record
                     dairy_report = Dairy_Report(
+                        DP_ID=index+1,
                         gl_code=item.get('gl_code', ''),
                         Desc=item.get('Desc', ''),
                         CCy_Code=ccy_obj,
@@ -11892,7 +11964,7 @@ def bulk_insert_dairy_report(request):
                     
                     created_records.append({
                         'index': index,
-                        'acc_no': dairy_report.acc_no,
+                        'gl_code': dairy_report.gl_code,
                         'id': dairy_report.DP_ID
                     })
                     
@@ -11901,7 +11973,7 @@ def bulk_insert_dairy_report(request):
                     logger.error(error_message)
                     failed_records.append({
                         'index': index,
-                        'acc_no': item.get('acc_no', 'Unknown'),
+                        'gl_code': item.get('gl_code', 'Unknown'),
                         'error': error_message
                     })
                     
@@ -11910,7 +11982,7 @@ def bulk_insert_dairy_report(request):
                     logger.error(error_message)
                     failed_records.append({
                         'index': index,
-                        'acc_no': item.get('acc_no', 'Unknown'),
+                        'gl_code': item.get('gl_code', 'Unknown'),
                         'error': error_message
                     })
 
@@ -11990,4 +12062,613 @@ def bulk_delete(request):
         return Response({
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# from rest_framework import status
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from django.db import transaction, connection
+# from django.core.exceptions import ValidationError
+# from datetime import datetime
+# import logging
+
+# from .models import Dairy_Report, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
+# from .serializers import DairyReportSerializer
+
+# logger = logging.getLogger(__name__)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def bulk_insert_allcurrency(request):
+#     """
+#     Execute stored procedure to get trial balance data for all currencies 
+#     and bulk insert into Dairy_Report model
+#     Expected payload:
+#     {
+#         "date_start": "2023-01-01",
+#         "date_end": "2025-07-24",
+#         "fin_year": "2025",
+#         "period_code": "202507",
+#         "category": "TRIAL_BALANCE"
+#     }
+#     """
+#     try:
+#         # Validate request data
+#         date_start = request.data.get("date_start")
+#         date_end = request.data.get("date_end")
+#         fin_year = request.data.get("fin_year", "2025")
+#         period_code = request.data.get("period_code", "")
+#         category = request.data.get("category", "TRIAL_BALANCE")
+
+#         if not all([date_start, date_end]):
+#             return Response({
+#                 'status': 'error',
+#                 'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
+#             }, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Step 1: Execute stored procedure to get trial balance data
+#         logger.info(f"[BulkInsertAllCurrency] Executing stored procedure from {date_start} to {date_end}")
+        
+#         try:
+#             with connection.cursor() as cursor:
+#                 query = """
+#                     EXEC dbo.Somtop_Trail_Balance_All_Currency_Temp_ACTB
+#                         @DateStart = %s,
+#                         @DateEnd = %s
+#                 """
+#                 cursor.execute(query, [date_start, date_end])
+#                 columns = [col[0] for col in cursor.description]
+#                 stored_proc_results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+#             logger.info(f"[BulkInsertAllCurrency] Stored procedure completed. Rows fetched: {len(stored_proc_results)}")
+
+#         except Exception as e:
+#             logger.error(f"[BulkInsertAllCurrency] Error executing stored procedure: {str(e)}")
+#             return Response({
+#                 'status': 'error',
+#                 'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ stored procedure: {str(e)} (Error executing stored procedure)'
+#             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#         if not stored_proc_results:
+#             return Response({
+#                 'status': 'warning',
+#                 'message': 'ບໍ່ມີຂໍ້ມູນຈາກ stored procedure (No data returned from stored procedure)',
+#                 'count': 0
+#             }, status=status.HTTP_200_OK)
+
+#         # Step 2: Transform and bulk insert data
+#         created_records = []
+#         failed_records = []
+#         deleted_count = 0
+        
+#         with transaction.atomic():
+#             try:
+#                 # Clear existing data from Dairy_Report
+#                 logger.info("Starting to clear existing Dairy_Report data")
+#                 deleted_count = Dairy_Report.objects.all().count()
+#                 Dairy_Report.objects.all().delete()
+#                 logger.info(f"Successfully cleared {deleted_count} existing records from Dairy_Report")
+                    
+#             except Exception as e:
+#                 logger.error(f"Error clearing Dairy_Report data: {str(e)}")
+#                 return Response({
+#                     'status': 'error',
+#                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
+#                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#             # Step 3: Insert new data from stored procedure results
+#             logger.info(f"Starting to insert {len(stored_proc_results)} new records")
+            
+#             for index, item in enumerate(stored_proc_results):
+#                 try:
+#                     # Get or create related objects
+#                     ccy_obj = None
+#                     if item.get('Currency') or item.get('ccy_code'):
+#                         ccy_code = item.get('Currency') or item.get('ccy_code')
+#                         try:
+#                             ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_code)
+#                         except MTTB_Ccy_DEFN.DoesNotExist:
+#                             logger.warning(f"Currency {ccy_code} not found for record {index}")
+
+#                     fin_year_obj = None
+#                     if fin_year:
+#                         try:
+#                             fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
+#                         except MTTB_Fin_Cycle.DoesNotExist:
+#                             logger.warning(f"Financial year {fin_year} not found for record {index}")
+
+#                     period_obj = None
+#                     if period_code:
+#                         try:
+#                             period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
+#                         except MTTB_Per_Code.DoesNotExist:
+#                             logger.warning(f"Period code {period_code} not found for record {index}")
+
+#                     # Parse dates
+#                     start_date = None
+#                     end_date = None
+                    
+#                     try:
+#                         start_date = datetime.strptime(date_start, '%Y-%m-%d').date()
+#                     except ValueError:
+#                         logger.warning(f"Invalid start date format: {date_start}")
+
+#                     try:
+#                         end_date = datetime.strptime(date_end, '%Y-%m-%d').date()
+#                     except ValueError:
+#                         logger.warning(f"Invalid end date format: {date_end}")
+
+#                     # Create Dairy_Report record
+#                     # Map stored procedure columns to model fields
+#                     # You may need to adjust these field mappings based on your stored procedure output
+#                     dairy_report = Dairy_Report(
+#                         DP_ID=index+1,
+#                         gl_code=item.get('GL') or item.get('gl_code', ''),
+#                         Desc=item.get('_Desc') or item.get('description', ''),
+#                         CCy_Code=ccy_obj,
+#                         Fin_year=fin_year_obj,
+#                         Period_code=period_obj,
+#                         StartDate=start_date,
+#                         EndDate=end_date,
+#                         Category=category,
+#                         OP_DR=float(item.get('Opening_Dr_FCY', 0) or 0),
+#                         OP_CR=float(item.get('Opening_Cr_FCY', 0) or 0),
+#                         Mo_DR=float(item.get('Flow_Dr_FCY', 0) or 0),
+#                         Mo_Cr=float(item.get('Flow_Cr_FCY', 0) or 0),
+#                         C1_DR=float(item.get('Closing_Dr_FCY', 0) or 0),
+#                         C1_CR=float(item.get('Closing_Cr_FCY', 0) or 0),
+#                         # Set LCY fields (Local Currency)
+#                         OP_DR_lcy=float(item.get('Opening_Dr_LCY', item.get('OP_DR', 0)) or 0),
+#                         OP_CR_lcy=float(item.get('Opening_Cr_LCY', item.get('OP_CR', 0)) or 0),
+#                         Mo_DR_lcy=float(item.get('Flow_Dr_LCY', item.get('Mo_DR', 0)) or 0),
+#                         Mo_Cr_lcy=float(item.get('Flow_Cr_LCY', item.get('Mo_Cr', 0)) or 0),
+#                         C1_DR_lcy=float(item.get('Closing_Dr_LCY', item.get('C1_DR', 0)) or 0),
+#                         C1_CR_lcy=float(item.get('Closing_Cr_LCY', item.get('C1_CR', 0)) or 0),
+#                         Maker_Id=request.user,
+#                         MSegment=item.get('MSegment', '')
+#                     )
+                    
+#                     # Validate and save the model
+#                     dairy_report.full_clean()
+#                     dairy_report.save()
+                    
+#                     created_records.append({
+#                         'index': index,
+#                         'gl_code': dairy_report.gl_code,
+#                         'id': dairy_report.DP_ID,
+#                         'ccy_code': item.get('CCy_Code') or item.get('ccy_code', ''),
+#                         'description': dairy_report.Desc
+#                     })
+                    
+#                 except ValidationError as ve:
+#                     error_message = f"Validation error for record {index}: {str(ve)}"
+#                     logger.error(error_message)
+#                     failed_records.append({
+#                         'index': index,
+#                         'gl_code': item.get('gl_code') or item.get('gl_code', 'Unknown'),
+#                         'ccy_code': item.get('CCy_Code') or item.get('ccy_code', ''),
+#                         'error': error_message
+#                     })
+                    
+#                 except Exception as e:
+#                     error_message = f"Error processing record {index}: {str(e)}"
+#                     logger.error(error_message)
+#                     failed_records.append({
+#                         'index': index,
+#                         'gl_code': item.get('acc_no') or item.get('gl_code', 'Unknown'),
+#                         'ccy_code': item.get('CCy_Code') or item.get('ccy_code', ''),
+#                         'error': error_message
+#                     })
+
+#         # Prepare response
+#         response_data = {
+#             'status': 'success',
+#             'message': f'ການດຳເນີນງານສຳເລັດ - ເອີ້ນ stored procedure ແລະ ນຳເຂົ້າຂໍ້ມູນ (Operation completed successfully - executed stored procedure and imported data)',
+#             'cleared_records': deleted_count,
+#             'fetched_from_procedure': len(stored_proc_results),
+#             'total_records': len(stored_proc_results),
+#             'inserted_count': len(created_records),
+#             'failed_count': len(failed_records),
+#             'date_range': f"{date_start} to {date_end}",
+#             'created_records': created_records[:10] if len(created_records) > 10 else created_records  # Limit response size
+#         }
+
+#         if failed_records:
+#             response_data['failed_records'] = failed_records[:10] if len(failed_records) > 10 else failed_records  # Limit response size
+#             response_data['message'] += f' - {len(failed_records)} ລາຍການຜິດພາດ (records failed)'
+            
+#         logger.info(f"Bulk AllCurrency operation completed: {deleted_count} deleted, {len(created_records)} inserted, {len(failed_records)} failed")
+
+#         return Response(response_data, status=status.HTTP_201_CREATED)
+
+#     except Exception as e:
+#         logger.error(f"Bulk insert all currency error: {str(e)}")
+#         return Response({
+#             'status': 'error',
+#             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db import transaction, connection
+from django.core.exceptions import ValidationError
+from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
+import logging
+
+from .models import Dairy_Report, MTTB_GLMaster, MTTB_GLSub, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
+
+logger = logging.getLogger(__name__)
+
+def safe_decimal_convert(value, default=0, decimal_places=2):
+    """
+    Safely convert value to decimal with specified decimal places
+    """
+    try:
+        if value is None or value == '' or value == 'None':
+            return Decimal(str(default)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+        str_value = str(value).strip()
+        if not str_value:
+            return Decimal(str(default)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            
+        decimal_value = Decimal(str_value)
+        quantized_value = decimal_value.quantize(
+            Decimal('0.' + '0' * decimal_places), 
+            rounding=ROUND_HALF_UP
+        )
+        return quantized_value
+        
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.warning(f"Error converting value '{value}' to decimal: {str(e)}. Using default: {default}")
+        return Decimal(str(default)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+def get_gltype_from_gl_code(gl_code):
+    """
+    Get glType with multiple lookup strategies and decimal handling
+    
+    Strategy 1: Direct GLMaster lookup by gl_code
+    Strategy 2: GLSub lookup: gl_code → GLSub.glsub_code → GLMaster.glType  
+    Strategy 3: If contains '.000', return '5'
+    """
+    try:
+        if not gl_code:
+            return None
+            
+        # Strategy 1: Direct lookup in GLMaster.gl_code
+        try:
+            glmaster_direct = MTTB_GLMaster.objects.filter(
+                gl_code=gl_code,
+                # Record_Status='C',
+                # Auth_Status='A'
+            ).first()
+            
+            if glmaster_direct and glmaster_direct.glType:
+                logger.debug(f"Found glType {glmaster_direct.glType} for {gl_code} via direct GLMaster lookup")
+                return glmaster_direct.glType
+        except Exception as e:
+            logger.debug(f"Direct GLMaster lookup failed for {gl_code}: {str(e)}")
+        
+        # Strategy 2: GLSub lookup
+        try:
+            glsub = MTTB_GLSub.objects.select_related('gl_code').filter(
+                glsub_code=gl_code,
+                # Record_Status='C',
+                # Auth_Status='A'
+            ).first()
+            
+            if glsub and glsub.gl_code and glsub.gl_code.glType:
+                logger.debug(f"Found glType {glsub.gl_code.glType} for {gl_code} via GLSub lookup")
+                return glsub.gl_code.glType
+        except Exception as e:
+            logger.debug(f"GLSub lookup failed for {gl_code}: {str(e)}")
+        
+        # Strategy 3: Decimal pattern handling
+        if '.000' in str(gl_code):
+            logger.info(f"GL code {gl_code} contains '.000', setting glType = 5")
+            return '5'
+            
+        logger.warning(f"No glType found for {gl_code}")
+        return None
+        
+    except Exception as e:
+        logger.warning(f"glType lookup failed for {gl_code}: {str(e)}")
+        # Still check decimal pattern on error
+        if '.000' in str(gl_code):
+            return '5'
+        return None
+
+def get_gltype_lookup_dict():
+    """
+    Create a comprehensive dictionary mapping gl_code to glType
+    Combines both direct GLMaster and GLSub lookups
+    """
+    try:
+        lookup_dict = {}
+        
+        # Method 1: Direct GLMaster lookup
+        glmaster_records = MTTB_GLMaster.objects.filter(
+            # Record_Status='C',
+            # Auth_Status='A',
+            gl_code__isnull=False
+        ).exclude(gl_code='')
+        
+        for glmaster in glmaster_records:
+            if glmaster.gl_code and glmaster.glType:
+                lookup_dict[glmaster.gl_code] = glmaster.glType
+                
+        logger.info(f"Added {len(lookup_dict)} direct GLMaster mappings")
+        
+        # Method 2: GLSub lookup (may override or add to above)
+        glsub_records = MTTB_GLSub.objects.select_related('gl_code').filter(
+            # Record_Status='C',
+            # Auth_Status='A',
+            # gl_code__Record_Status='C',
+            # gl_code__Auth_Status='A'
+        )
+        
+        glsub_count = 0
+        for glsub in glsub_records:
+            if glsub.glsub_code and glsub.gl_code and glsub.gl_code.glType:
+                lookup_dict[glsub.glsub_code] = glsub.gl_code.glType
+                glsub_count += 1
+                
+        logger.info(f"Added {glsub_count} GLSub mappings")
+        logger.info(f"Total glType lookup dictionary with {len(lookup_dict)} entries")
+        return lookup_dict
+        
+    except Exception as e:
+        logger.error(f"Error creating glType lookup dictionary: {str(e)}")
+        return {}
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_insert_allcurrency(request):
+    """
+    Execute stored procedure to get trial balance data for all currencies 
+    and bulk insert into Dairy_Report model with corrected glType lookup
+    """
+    try:
+        # Validate request data
+        date_start = request.data.get("date_start")
+        date_end = request.data.get("date_end")
+        fin_year = request.data.get("fin_year", "2025")
+        period_code = request.data.get("period_code", "")
+        default_category = request.data.get("category", "TRIAL_BALANCE")
+
+        if not all([date_start, date_end]):
+            return Response({
+                'status': 'error',
+                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Step 1: Execute stored procedure to get trial balance data
+        logger.info(f"[BulkInsertAllCurrency] Executing stored procedure from {date_start} to {date_end}")
+        
+        try:
+            with connection.cursor() as cursor:
+                query = """
+                    EXEC dbo.Somtop_Trail_Balance_All_Currency_Temp_ACTB
+                        @DateStart = %s,
+                        @DateEnd = %s
+                """
+                cursor.execute(query, [date_start, date_end])
+                columns = [col[0] for col in cursor.description]
+                stored_proc_results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+            logger.info(f"[BulkInsertAllCurrency] Stored procedure completed. Rows fetched: {len(stored_proc_results)}")
+
+        except Exception as e:
+            logger.error(f"[BulkInsertAllCurrency] Error executing stored procedure: {str(e)}")
+            return Response({
+                'status': 'error',
+                'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ stored procedure: {str(e)} (Error executing stored procedure)'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        if not stored_proc_results:
+            return Response({
+                'status': 'warning',
+                'message': 'ບໍ່ມີຂໍ້ມູນຈາກ stored procedure (No data returned from stored procedure)',
+                'count': 0
+            }, status=status.HTTP_200_OK)
+
+        # Step 2: Create glType lookup dictionary for better performance
+        logger.info("Creating comprehensive glType lookup dictionary...")
+        gltype_lookup = get_gltype_lookup_dict()
+        logger.info(f"glType lookup created with {len(gltype_lookup)} mappings")
+
+        # Clear and insert data
+        created_records = []
+        failed_records = []
+        deleted_count = 0
+        gltype_stats = {}  # Track glType usage
+        lookup_stats = {
+            'direct_lookup': 0,
+            'cache_lookup': 0, 
+            'decimal_pattern': 0,
+            'default_used': 0
+        }
+        
+        with transaction.atomic():
+            try:
+                # Clear existing data from Dairy_Report
+                logger.info("Starting to clear existing Dairy_Report data")
+                deleted_count = Dairy_Report.objects.all().count()
+                Dairy_Report.objects.all().delete()
+                logger.info(f"Successfully cleared {deleted_count} existing records from Dairy_Report")
+                    
+            except Exception as e:
+                logger.error(f"Error clearing Dairy_Report data: {str(e)}")
+                return Response({
+                    'status': 'error',
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Step 3: Insert new data from stored procedure results
+            logger.info(f"Starting to insert {len(stored_proc_results)} new records")
+            
+            for index, item in enumerate(stored_proc_results):
+                try:
+                    # Get gl_code from stored procedure result
+                    gl_code = item.get('GL') or item.get('gl_code', '')
+                    
+                    # Lookup glType with multiple strategies
+                    record_gltype = gltype_lookup.get(gl_code)
+                    gltype_source = 'cache_lookup'
+                    
+                    if not record_gltype:
+                        # Fallback to direct lookup if not in cache
+                        record_gltype = get_gltype_from_gl_code(gl_code)
+                        if record_gltype == '5' and '.000' in str(gl_code):
+                            gltype_source = 'decimal_pattern'
+                            lookup_stats['decimal_pattern'] += 1
+                        elif record_gltype:
+                            gltype_source = 'direct_lookup'
+                            lookup_stats['direct_lookup'] += 1
+                        else:
+                            gltype_source = 'default_used'
+                            lookup_stats['default_used'] += 1
+                    else:
+                        lookup_stats['cache_lookup'] += 1
+                    
+                    # Use the found glType or fall back to default category
+                    final_category = record_gltype if record_gltype else default_category
+                    
+                    # Track glType usage
+                    gltype_stats[final_category] = gltype_stats.get(final_category, 0) + 1
+                    
+                    # Get or create related objects
+                    ccy_obj = None
+                    if item.get('Currency') or item.get('ccy_code'):
+                        ccy_code = item.get('Currency') or item.get('ccy_code')
+                        try:
+                            ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_code)
+                        except MTTB_Ccy_DEFN.DoesNotExist:
+                            logger.warning(f"Currency {ccy_code} not found for record {index}")
+
+                    fin_year_obj = None
+                    if fin_year:
+                        try:
+                            fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
+                        except MTTB_Fin_Cycle.DoesNotExist:
+                            logger.warning(f"Financial year {fin_year} not found for record {index}")
+
+                    period_obj = None
+                    if period_code:
+                        try:
+                            period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
+                        except MTTB_Per_Code.DoesNotExist:
+                            logger.warning(f"Period code {period_code} not found for record {index}")
+
+                    # Parse dates
+                    start_date = None
+                    end_date = None
+                    
+                    try:
+                        start_date = datetime.strptime(date_start, '%Y-%m-%d').date()
+                    except ValueError:
+                        logger.warning(f"Invalid start date format: {date_start}")
+
+                    try:
+                        end_date = datetime.strptime(date_end, '%Y-%m-%d').date()
+                    except ValueError:
+                        logger.warning(f"Invalid end date format: {date_end}")
+
+                    # Create Dairy_Report record with safe decimal conversion
+                    dairy_report = Dairy_Report(
+                        DP_ID=index+1,
+                        gl_code=gl_code,
+                        Desc=item.get('_Desc') or item.get('description', ''),
+                        CCy_Code=ccy_obj,
+                        Fin_year=fin_year_obj,
+                        Period_code=period_obj,
+                        StartDate=start_date,
+                        EndDate=end_date,
+                        Category=final_category,  # This will now contain the correct glType
+                        # FCY fields with safe decimal conversion (2 decimal places)
+                        OP_DR=safe_decimal_convert(item.get('Opening_Dr_FCY', 0)),
+                        OP_CR=safe_decimal_convert(item.get('Opening_Cr_FCY', 0)),
+                        Mo_DR=safe_decimal_convert(item.get('Flow_Dr_FCY', 0)),
+                        Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_FCY', 0)),
+                        C1_DR=safe_decimal_convert(item.get('Closing_Dr_FCY', 0)),
+                        C1_CR=safe_decimal_convert(item.get('Closing_Cr_FCY', 0)),
+                        # LCY fields with safe decimal conversion (2 decimal places)
+                        OP_DR_lcy=safe_decimal_convert(item.get('Opening_Dr_LCY', item.get('OP_DR', 0))),
+                        OP_CR_lcy=safe_decimal_convert(item.get('Opening_Cr_LCY', item.get('OP_CR', 0))),
+                        Mo_DR_lcy=safe_decimal_convert(item.get('Flow_Dr_LCY', item.get('Mo_DR', 0))),
+                        Mo_Cr_lcy=safe_decimal_convert(item.get('Flow_Cr_LCY', item.get('Mo_Cr', 0))),
+                        C1_DR_lcy=safe_decimal_convert(item.get('Closing_Dr_LCY', item.get('C1_DR', 0))),
+                        C1_CR_lcy=safe_decimal_convert(item.get('Closing_Cr_LCY', item.get('C1_CR', 0))),
+                        Maker_Id=request.user,
+                        MSegment=item.get('MSegment', '')
+                    )
+                    
+                    # Validate and save the model
+                    dairy_report.full_clean()
+                    dairy_report.save()
+                    
+                    created_records.append({
+                        'index': index,
+                        'gl_code': dairy_report.gl_code,
+                        'id': dairy_report.DP_ID,
+                        'ccy_code': item.get('Currency') or item.get('ccy_code', ''),
+                        'description': dairy_report.Desc,
+                        'category': final_category,
+                        'category_source': gltype_source
+                    })
+                    
+                except ValidationError as ve:
+                    error_message = f"Validation error for record {index}: {str(ve)}"
+                    logger.error(error_message)
+                    failed_records.append({
+                        'index': index,
+                        'gl_code': item.get('GL') or item.get('gl_code', 'Unknown'),
+                        'ccy_code': item.get('Currency') or item.get('ccy_code', ''),
+                        'error': error_message
+                    })
+                    
+                except Exception as e:
+                    error_message = f"Error processing record {index}: {str(e)}"
+                    logger.error(error_message)
+                    failed_records.append({
+                        'index': index,
+                        'gl_code': item.get('GL') or item.get('gl_code', 'Unknown'),
+                        'ccy_code': item.get('Currency') or item.get('ccy_code', ''),
+                        'error': error_message
+                    })
+
+        # Prepare response with comprehensive statistics
+        response_data = {
+            'status': 'success',
+            'message': f'ການດຳເນີນງານສຳເລັດ - ເອີ້ນ stored procedure ແລະ ນຳເຂົ້າຂໍ້ມູນ (Operation completed successfully - executed stored procedure and imported data)',
+            'cleared_records': deleted_count,
+            'fetched_from_procedure': len(stored_proc_results),
+            'total_records': len(stored_proc_results),
+            'inserted_count': len(created_records),
+            'failed_count': len(failed_records),
+            'date_range': f"{date_start} to {date_end}",
+            'gltype_lookups_cached': len(gltype_lookup),
+            'lookup_statistics': lookup_stats,
+            'gltype_statistics': gltype_stats,
+            'created_records': created_records[:10] if len(created_records) > 10 else created_records  # Limit response size
+        }
+
+        if failed_records:
+            response_data['failed_records'] = failed_records[:10] if len(failed_records) > 10 else failed_records  # Limit response size
+            response_data['message'] += f' - {len(failed_records)} ລາຍການຜິດພາດ (records failed)'
+            
+        logger.info(f"Bulk AllCurrency operation completed: {deleted_count} deleted, {len(created_records)} inserted, {len(failed_records)} failed")
+        logger.info(f"glType statistics: {gltype_stats}")
+        logger.info(f"Lookup method statistics: {lookup_stats}")
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Bulk insert all currency error: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

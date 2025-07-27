@@ -1841,7 +1841,7 @@ class BranchInfo(models.Model):
         verbose_name_plural = 'BranchInfo'
 
 class Dairy_Report(models.Model):
-    DP_ID = models.IntegerField(primary_key=True, auto_created=True)
+    DP_ID = models.IntegerField(primary_key=True)
     # gl_code = models.ForeignKey(MTTB_GLMaster, null=True, blank=True, on_delete=models.CASCADE)
     # update tarm concept
     gl_code = models.CharField(max_length=100, null=True, blank=True)
