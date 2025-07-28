@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models 
 
 # Create your models here.    
 class STTB_ModulesInfo(models.Model):
@@ -220,8 +220,8 @@ class MTTB_Function_Desc(models.Model):
 #         return True
 
 
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
-from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager 
+from django.db import models 
 
 class MTTB_UserManager(BaseUserManager):
     def create_user(self, user_id, user_name, password=None, **extra_fields):
@@ -1288,6 +1288,8 @@ class FA_Asset_List_Depreciation_Main (models.Model):
     dpca_ac_date = models.DateField(null=True, blank=True)  
     dpca_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
     dpca_ac_by = models.IntegerField(null=True, blank=True) 
+    detail = models.TextField(null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list_depreciation_main')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
@@ -1311,6 +1313,8 @@ class FA_Asset_List_Depreciation (models.Model):
     dpca_date = models.DateField(null=True, blank=True)  
     dpca_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
     dpca_ac_by = models.IntegerField(null=True, blank=True) 
+    detail = models.TextField(null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list_depreciation')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
