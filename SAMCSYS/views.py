@@ -12065,6 +12065,7 @@ def bulk_delete(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+
 # from rest_framework import status
 # from rest_framework.decorators import api_view, permission_classes
 # from rest_framework.permissions import IsAuthenticated
@@ -12072,27 +12073,140 @@ def bulk_delete(request):
 # from django.db import transaction, connection
 # from django.core.exceptions import ValidationError
 # from datetime import datetime
+# from decimal import Decimal, ROUND_HALF_UP
 # import logging
 
-# from .models import Dairy_Report, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
-# from .serializers import DairyReportSerializer
+# from .models import Dairy_Report, MTTB_GLMaster, MTTB_GLSub, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
 
 # logger = logging.getLogger(__name__)
+
+# def safe_decimal_convert(value, default=0, decimal_places=2):
+#     """
+#     Safely convert value to decimal with specified decimal places
+#     """
+#     try:
+#         if value is None or value == '' or value == 'None':
+#             return Decimal(str(default)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+#         str_value = str(value).strip()
+#         if not str_value:
+#             return Decimal(str(default)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            
+#         decimal_value = Decimal(str_value)
+#         quantized_value = decimal_value.quantize(
+#             Decimal('0.' + '0' * decimal_places), 
+#             rounding=ROUND_HALF_UP
+#         )
+#         return quantized_value
+        
+#     except (ValueError, TypeError, AttributeError) as e:
+#         logger.warning(f"Error converting value '{value}' to decimal: {str(e)}. Using default: {default}")
+#         return Decimal(str(default)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+# def get_gltype_from_gl_code(gl_code):
+#     """
+#     Get glType with multiple lookup strategies and decimal handling
+    
+#     Strategy 1: Direct GLMaster lookup by gl_code
+#     Strategy 2: GLSub lookup: gl_code → GLSub.glsub_code → GLMaster.glType  
+#     Strategy 3: If contains '.000', return '6'
+#     """
+#     try:
+#         if not gl_code:
+#             return None
+            
+#         # Strategy 1: Direct lookup in GLMaster.gl_code
+#         try:
+#             glmaster_direct = MTTB_GLMaster.objects.filter(
+#                 gl_code=gl_code,
+#                 Record_Status='O',
+#                 Auth_Status='A'
+#             ).first()
+            
+#             if glmaster_direct and glmaster_direct.glType:
+#                 logger.debug(f"Found glType {glmaster_direct.glType} for {gl_code} via direct GLMaster lookup")
+#                 return glmaster_direct.glType
+#         except Exception as e:
+#             logger.debug(f"Direct GLMaster lookup failed for {gl_code}: {str(e)}")
+        
+#         # Strategy 2: GLSub lookup
+#         try:
+#             glsub = MTTB_GLSub.objects.select_related('gl_code').filter(
+#                 glsub_code=gl_code,
+#                 Record_Status='O',
+#                 Auth_Status='A'
+#             ).first()
+            
+#             if glsub and glsub.gl_code and glsub.gl_code.glType:
+#                 logger.debug(f"Found glType {glsub.gl_code.glType} for {gl_code} via GLSub lookup")
+#                 return glsub.gl_code.glType
+#         except Exception as e:
+#             logger.debug(f"GLSub lookup failed for {gl_code}: {str(e)}")
+        
+#         # Strategy 3: Decimal pattern handling
+#         if '.000' in str(gl_code):
+#             logger.info(f"GL code {gl_code} contains '.000', setting glType = 6")
+#             return '6'
+            
+#         logger.warning(f"No glType found for {gl_code}")
+#         return None
+        
+#     except Exception as e:
+#         logger.warning(f"glType lookup failed for {gl_code}: {str(e)}")
+#         # Still check decimal pattern on error
+#         if '.000' in str(gl_code):
+#             return '6'
+#         return None
+
+# def get_gltype_lookup_dict():
+#     """
+#     Create a comprehensive dictionary mapping gl_code to glType
+#     Combines both direct GLMaster and GLSub lookups
+#     """
+#     try:
+#         lookup_dict = {}
+        
+#         # Method 1: Direct GLMaster lookup
+#         glmaster_records = MTTB_GLMaster.objects.filter(
+#             Record_Status='C',
+#             Auth_Status='A',
+#             gl_code__isnull=False
+#         ).exclude(gl_code='')
+        
+#         for glmaster in glmaster_records:
+#             if glmaster.gl_code and glmaster.glType:
+#                 lookup_dict[glmaster.gl_code] = glmaster.glType
+                
+#         logger.info(f"Added {len(lookup_dict)} direct GLMaster mappings")
+        
+#         # Method 2: GLSub lookup (may override or add to above)
+#         glsub_records = MTTB_GLSub.objects.select_related('gl_code').filter(
+#             Record_Status='O',
+#             Auth_Status='A',
+#             gl_code__Record_Status='O',
+#             gl_code__Auth_Status='A'
+#         )
+        
+#         glsub_count = 0
+#         for glsub in glsub_records:
+#             if glsub.glsub_code and glsub.gl_code and glsub.gl_code.glType:
+#                 lookup_dict[glsub.glsub_code] = glsub.gl_code.glType
+#                 glsub_count += 1
+                
+#         logger.info(f"Added {glsub_count} GLSub mappings")
+#         logger.info(f"Total glType lookup dictionary with {len(lookup_dict)} entries")
+#         return lookup_dict
+        
+#     except Exception as e:
+#         logger.error(f"Error creating glType lookup dictionary: {str(e)}")
+#         return {}
 
 # @api_view(['POST'])
 # @permission_classes([IsAuthenticated])
 # def bulk_insert_allcurrency(request):
 #     """
 #     Execute stored procedure to get trial balance data for all currencies 
-#     and bulk insert into Dairy_Report model
-#     Expected payload:
-#     {
-#         "date_start": "2023-01-01",
-#         "date_end": "2025-07-24",
-#         "fin_year": "2025",
-#         "period_code": "202507",
-#         "category": "TRIAL_BALANCE"
-#     }
+#     and bulk insert into Dairy_Report model with corrected glType lookup
 #     """
 #     try:
 #         # Validate request data
@@ -12100,7 +12214,7 @@ def bulk_delete(request):
 #         date_end = request.data.get("date_end")
 #         fin_year = request.data.get("fin_year", "2025")
 #         period_code = request.data.get("period_code", "")
-#         category = request.data.get("category", "TRIAL_BALANCE")
+#         default_category = request.data.get("category", "TRIAL_BALANCE")
 
 #         if not all([date_start, date_end]):
 #             return Response({
@@ -12138,10 +12252,22 @@ def bulk_delete(request):
 #                 'count': 0
 #             }, status=status.HTTP_200_OK)
 
-#         # Step 2: Transform and bulk insert data
+#         # Step 2: Create glType lookup dictionary for better performance
+#         logger.info("Creating comprehensive glType lookup dictionary...")
+#         gltype_lookup = get_gltype_lookup_dict()
+#         logger.info(f"glType lookup created with {len(gltype_lookup)} mappings")
+
+#         # Clear and insert data
 #         created_records = []
 #         failed_records = []
 #         deleted_count = 0
+#         gltype_stats = {}  # Track glType usage
+#         lookup_stats = {
+#             'direct_lookup': 0,
+#             'cache_lookup': 0, 
+#             'decimal_pattern_6': 0,  # Updated stat name
+#             'default_used': 0
+#         }
         
 #         with transaction.atomic():
 #             try:
@@ -12163,6 +12289,34 @@ def bulk_delete(request):
             
 #             for index, item in enumerate(stored_proc_results):
 #                 try:
+#                     # Get gl_code from stored procedure result
+#                     gl_code = item.get('GL') or item.get('gl_code', '')
+                    
+#                     # Lookup glType with multiple strategies
+#                     record_gltype = gltype_lookup.get(gl_code)
+#                     gltype_source = 'cache_lookup'
+                    
+#                     if not record_gltype:
+#                         # Fallback to direct lookup if not in cache
+#                         record_gltype = get_gltype_from_gl_code(gl_code)
+#                         if record_gltype == '6' and '.000' in str(gl_code):
+#                             gltype_source = 'decimal_pattern_6'
+#                             lookup_stats['decimal_pattern_6'] += 1
+#                         elif record_gltype:
+#                             gltype_source = 'direct_lookup'
+#                             lookup_stats['direct_lookup'] += 1
+#                         else:
+#                             gltype_source = 'default_used'
+#                             lookup_stats['default_used'] += 1
+#                     else:
+#                         lookup_stats['cache_lookup'] += 1
+                    
+#                     # Use the found glType or fall back to default category
+#                     final_category = record_gltype if record_gltype else default_category
+                    
+#                     # Track glType usage
+#                     gltype_stats[final_category] = gltype_stats.get(final_category, 0) + 1
+                    
 #                     # Get or create related objects
 #                     ccy_obj = None
 #                     if item.get('Currency') or item.get('ccy_code'):
@@ -12200,32 +12354,31 @@ def bulk_delete(request):
 #                     except ValueError:
 #                         logger.warning(f"Invalid end date format: {date_end}")
 
-#                     # Create Dairy_Report record
-#                     # Map stored procedure columns to model fields
-#                     # You may need to adjust these field mappings based on your stored procedure output
+#                     # Create Dairy_Report record with safe decimal conversion
 #                     dairy_report = Dairy_Report(
 #                         DP_ID=index+1,
-#                         gl_code=item.get('GL') or item.get('gl_code', ''),
+#                         gl_code=gl_code,
 #                         Desc=item.get('_Desc') or item.get('description', ''),
 #                         CCy_Code=ccy_obj,
 #                         Fin_year=fin_year_obj,
 #                         Period_code=period_obj,
 #                         StartDate=start_date,
 #                         EndDate=end_date,
-#                         Category=category,
-#                         OP_DR=float(item.get('Opening_Dr_FCY', 0) or 0),
-#                         OP_CR=float(item.get('Opening_Cr_FCY', 0) or 0),
-#                         Mo_DR=float(item.get('Flow_Dr_FCY', 0) or 0),
-#                         Mo_Cr=float(item.get('Flow_Cr_FCY', 0) or 0),
-#                         C1_DR=float(item.get('Closing_Dr_FCY', 0) or 0),
-#                         C1_CR=float(item.get('Closing_Cr_FCY', 0) or 0),
-#                         # Set LCY fields (Local Currency)
-#                         OP_DR_lcy=float(item.get('Opening_Dr_LCY', item.get('OP_DR', 0)) or 0),
-#                         OP_CR_lcy=float(item.get('Opening_Cr_LCY', item.get('OP_CR', 0)) or 0),
-#                         Mo_DR_lcy=float(item.get('Flow_Dr_LCY', item.get('Mo_DR', 0)) or 0),
-#                         Mo_Cr_lcy=float(item.get('Flow_Cr_LCY', item.get('Mo_Cr', 0)) or 0),
-#                         C1_DR_lcy=float(item.get('Closing_Dr_LCY', item.get('C1_DR', 0)) or 0),
-#                         C1_CR_lcy=float(item.get('Closing_Cr_LCY', item.get('C1_CR', 0)) or 0),
+#                         Category=final_category,  # This will now contain the correct glType
+#                         # FCY fields with safe decimal conversion (2 decimal places)
+#                         OP_DR=safe_decimal_convert(item.get('Opening_Dr_FCY', 0)),
+#                         OP_CR=safe_decimal_convert(item.get('Opening_Cr_FCY', 0)),
+#                         Mo_DR=safe_decimal_convert(item.get('Flow_Dr_FCY', 0)),
+#                         Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_FCY', 0)),
+#                         C1_DR=safe_decimal_convert(item.get('Closing_Dr_FCY', 0)),
+#                         C1_CR=safe_decimal_convert(item.get('Closing_Cr_FCY', 0)),
+#                         # LCY fields with safe decimal conversion (2 decimal places)
+#                         OP_DR_lcy=safe_decimal_convert(item.get('Opening_Dr_LCY', item.get('OP_DR', 0))),
+#                         OP_CR_lcy=safe_decimal_convert(item.get('Opening_Cr_LCY', item.get('OP_CR', 0))),
+#                         Mo_DR_lcy=safe_decimal_convert(item.get('Flow_Dr_LCY', item.get('Mo_DR', 0))),
+#                         Mo_Cr_lcy=safe_decimal_convert(item.get('Flow_Cr_LCY', item.get('Mo_Cr', 0))),
+#                         C1_DR_lcy=safe_decimal_convert(item.get('Closing_Dr_LCY', item.get('C1_DR', 0))),
+#                         C1_CR_lcy=safe_decimal_convert(item.get('Closing_Cr_LCY', item.get('C1_CR', 0))),
 #                         Maker_Id=request.user,
 #                         MSegment=item.get('MSegment', '')
 #                     )
@@ -12238,8 +12391,10 @@ def bulk_delete(request):
 #                         'index': index,
 #                         'gl_code': dairy_report.gl_code,
 #                         'id': dairy_report.DP_ID,
-#                         'ccy_code': item.get('CCy_Code') or item.get('ccy_code', ''),
-#                         'description': dairy_report.Desc
+#                         'ccy_code': item.get('Currency') or item.get('ccy_code', ''),
+#                         'description': dairy_report.Desc,
+#                         'category': final_category,
+#                         'category_source': gltype_source
 #                     })
                     
 #                 except ValidationError as ve:
@@ -12247,8 +12402,8 @@ def bulk_delete(request):
 #                     logger.error(error_message)
 #                     failed_records.append({
 #                         'index': index,
-#                         'gl_code': item.get('gl_code') or item.get('gl_code', 'Unknown'),
-#                         'ccy_code': item.get('CCy_Code') or item.get('ccy_code', ''),
+#                         'gl_code': item.get('GL') or item.get('gl_code', 'Unknown'),
+#                         'ccy_code': item.get('Currency') or item.get('ccy_code', ''),
 #                         'error': error_message
 #                     })
                     
@@ -12257,12 +12412,12 @@ def bulk_delete(request):
 #                     logger.error(error_message)
 #                     failed_records.append({
 #                         'index': index,
-#                         'gl_code': item.get('acc_no') or item.get('gl_code', 'Unknown'),
-#                         'ccy_code': item.get('CCy_Code') or item.get('ccy_code', ''),
+#                         'gl_code': item.get('GL') or item.get('gl_code', 'Unknown'),
+#                         'ccy_code': item.get('Currency') or item.get('ccy_code', ''),
 #                         'error': error_message
 #                     })
 
-#         # Prepare response
+#         # Prepare response with comprehensive statistics
 #         response_data = {
 #             'status': 'success',
 #             'message': f'ການດຳເນີນງານສຳເລັດ - ເອີ້ນ stored procedure ແລະ ນຳເຂົ້າຂໍ້ມູນ (Operation completed successfully - executed stored procedure and imported data)',
@@ -12272,6 +12427,10 @@ def bulk_delete(request):
 #             'inserted_count': len(created_records),
 #             'failed_count': len(failed_records),
 #             'date_range': f"{date_start} to {date_end}",
+#             'gltype_lookups_cached': len(gltype_lookup),
+#             'decimal_pattern_gltype6_count': lookup_stats['decimal_pattern_6'],
+#             'lookup_statistics': lookup_stats,
+#             'gltype_statistics': gltype_stats,
 #             'created_records': created_records[:10] if len(created_records) > 10 else created_records  # Limit response size
 #         }
 
@@ -12280,6 +12439,8 @@ def bulk_delete(request):
 #             response_data['message'] += f' - {len(failed_records)} ລາຍການຜິດພາດ (records failed)'
             
 #         logger.info(f"Bulk AllCurrency operation completed: {deleted_count} deleted, {len(created_records)} inserted, {len(failed_records)} failed")
+#         logger.info(f"glType statistics: {gltype_stats}")
+#         logger.info(f"Decimal pattern (.000) assignments to glType=6: {lookup_stats['decimal_pattern_6']}")
 
 #         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -12289,6 +12450,8 @@ def bulk_delete(request):
 #             'status': 'error',
 #             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
 #         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -12298,6 +12461,7 @@ from django.core.exceptions import ValidationError
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 import logging
+import re
 
 from .models import Dairy_Report, MTTB_GLMaster, MTTB_GLSub, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
 
@@ -12330,19 +12494,25 @@ def get_gltype_from_gl_code(gl_code):
     """
     Get glType with multiple lookup strategies and decimal handling
     
-    Strategy 1: Direct GLMaster lookup by gl_code
-    Strategy 2: GLSub lookup: gl_code → GLSub.glsub_code → GLMaster.glType  
-    Strategy 3: If contains '.000', return '5'
+    Strategy 1: If gl_code contains a decimal part starting with '.0', return '6'
+    Strategy 2: Direct GLMaster lookup by gl_code
+    Strategy 3: GLSub lookup: gl_code → GLSub.glsub_code → GLMaster.glType
     """
     try:
         if not gl_code:
             return None
             
-        # Strategy 1: Direct lookup in GLMaster.gl_code
+        # Strategy 1: Check for decimal part starting with '.0'
+        str_gl_code = str(gl_code)
+        if re.search(r'\.0', str_gl_code):
+            logger.info(f"GL code {gl_code} contains decimal part starting with '.0', setting glType = 6")
+            return '6'
+            
+        # Strategy 2: Direct lookup in GLMaster.gl_code
         try:
             glmaster_direct = MTTB_GLMaster.objects.filter(
                 gl_code=gl_code,
-                # Record_Status='C',
+                # Record_Status='O',
                 # Auth_Status='A'
             ).first()
             
@@ -12352,11 +12522,11 @@ def get_gltype_from_gl_code(gl_code):
         except Exception as e:
             logger.debug(f"Direct GLMaster lookup failed for {gl_code}: {str(e)}")
         
-        # Strategy 2: GLSub lookup
+        # Strategy 3: GLSub lookup
         try:
             glsub = MTTB_GLSub.objects.select_related('gl_code').filter(
                 glsub_code=gl_code,
-                # Record_Status='C',
+                # Record_Status='O',
                 # Auth_Status='A'
             ).first()
             
@@ -12365,11 +12535,6 @@ def get_gltype_from_gl_code(gl_code):
                 return glsub.gl_code.glType
         except Exception as e:
             logger.debug(f"GLSub lookup failed for {gl_code}: {str(e)}")
-        
-        # Strategy 3: Decimal pattern handling
-        if '.000' in str(gl_code):
-            logger.info(f"GL code {gl_code} contains '.000', setting glType = 5")
-            return '5'
             
         logger.warning(f"No glType found for {gl_code}")
         return None
@@ -12377,8 +12542,8 @@ def get_gltype_from_gl_code(gl_code):
     except Exception as e:
         logger.warning(f"glType lookup failed for {gl_code}: {str(e)}")
         # Still check decimal pattern on error
-        if '.000' in str(gl_code):
-            return '5'
+        if re.search(r'\.0', str_gl_code):
+            return '6'
         return None
 
 def get_gltype_lookup_dict():
@@ -12391,7 +12556,7 @@ def get_gltype_lookup_dict():
         
         # Method 1: Direct GLMaster lookup
         glmaster_records = MTTB_GLMaster.objects.filter(
-            # Record_Status='C',
+            # Record_Status='O',
             # Auth_Status='A',
             gl_code__isnull=False
         ).exclude(gl_code='')
@@ -12404,9 +12569,9 @@ def get_gltype_lookup_dict():
         
         # Method 2: GLSub lookup (may override or add to above)
         glsub_records = MTTB_GLSub.objects.select_related('gl_code').filter(
-            # Record_Status='C',
+            # Record_Status='O',
             # Auth_Status='A',
-            # gl_code__Record_Status='C',
+            # gl_code__Record_Status='O',
             # gl_code__Auth_Status='A'
         )
         
@@ -12488,7 +12653,7 @@ def bulk_insert_allcurrency(request):
         lookup_stats = {
             'direct_lookup': 0,
             'cache_lookup': 0, 
-            'decimal_pattern': 0,
+            'decimal_pattern_6': 0,  # Track '.0' pattern assignments
             'default_used': 0
         }
         
@@ -12515,24 +12680,32 @@ def bulk_insert_allcurrency(request):
                     # Get gl_code from stored procedure result
                     gl_code = item.get('GL') or item.get('gl_code', '')
                     
-                    # Lookup glType with multiple strategies
-                    record_gltype = gltype_lookup.get(gl_code)
-                    gltype_source = 'cache_lookup'
+                    # PRIORITY CHECK: Check for decimal pattern '.0' FIRST
+                    record_gltype = None
+                    gltype_source = None
                     
-                    if not record_gltype:
-                        # Fallback to direct lookup if not in cache
-                        record_gltype = get_gltype_from_gl_code(gl_code)
-                        if record_gltype == '5' and '.000' in str(gl_code):
-                            gltype_source = 'decimal_pattern'
-                            lookup_stats['decimal_pattern'] += 1
-                        elif record_gltype:
-                            gltype_source = 'direct_lookup'
-                            lookup_stats['direct_lookup'] += 1
-                        else:
-                            gltype_source = 'default_used'
-                            lookup_stats['default_used'] += 1
+                    # Check if gl_code contains '.0' pattern (highest priority)
+                    if gl_code and re.search(r'\.0', str(gl_code)):
+                        record_gltype = '6'
+                        gltype_source = 'decimal_pattern_6'
+                        lookup_stats['decimal_pattern_6'] += 1
+                        logger.debug(f"GL code {gl_code} contains '.0' pattern, setting glType = 6")
                     else:
-                        lookup_stats['cache_lookup'] += 1
+                        # Fallback to cache lookup
+                        record_gltype = gltype_lookup.get(gl_code)
+                        gltype_source = 'cache_lookup'
+                        
+                        if record_gltype:
+                            lookup_stats['cache_lookup'] += 1
+                        else:
+                            # Final fallback to direct lookup
+                            record_gltype = get_gltype_from_gl_code(gl_code)
+                            if record_gltype:
+                                gltype_source = 'direct_lookup'
+                                lookup_stats['direct_lookup'] += 1
+                            else:
+                                gltype_source = 'default_used'
+                                lookup_stats['default_used'] += 1
                     
                     # Use the found glType or fall back to default category
                     final_category = record_gltype if record_gltype else default_category
@@ -12587,7 +12760,7 @@ def bulk_insert_allcurrency(request):
                         Period_code=period_obj,
                         StartDate=start_date,
                         EndDate=end_date,
-                        Category=final_category,  # This will now contain the correct glType
+                        Category=final_category,  # This will now contain the correct glType with .0 pattern priority
                         # FCY fields with safe decimal conversion (2 decimal places)
                         OP_DR=safe_decimal_convert(item.get('Opening_Dr_FCY', 0)),
                         OP_CR=safe_decimal_convert(item.get('Opening_Cr_FCY', 0)),
@@ -12651,6 +12824,7 @@ def bulk_insert_allcurrency(request):
             'failed_count': len(failed_records),
             'date_range': f"{date_start} to {date_end}",
             'gltype_lookups_cached': len(gltype_lookup),
+            'decimal_pattern_gltype6_count': lookup_stats['decimal_pattern_6'],
             'lookup_statistics': lookup_stats,
             'gltype_statistics': gltype_stats,
             'created_records': created_records[:10] if len(created_records) > 10 else created_records  # Limit response size
@@ -12662,7 +12836,7 @@ def bulk_insert_allcurrency(request):
             
         logger.info(f"Bulk AllCurrency operation completed: {deleted_count} deleted, {len(created_records)} inserted, {len(failed_records)} failed")
         logger.info(f"glType statistics: {gltype_stats}")
-        logger.info(f"Lookup method statistics: {lookup_stats}")
+        logger.info(f"Decimal pattern (.0) assignments to glType=6: {lookup_stats['decimal_pattern_6']}")
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
