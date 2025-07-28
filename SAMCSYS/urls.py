@@ -91,7 +91,11 @@ from .views import (
     bulk_insert_dairy_report,
     trial_balance_view_allccy,
     bulk_delete,
+<<<<<<< HEAD
     bulk_insert_allcurrency,
+=======
+    overdue_depreciation_api
+>>>>>>> 656d60a41bc4102de71cd10e8d653facfdc5823b
     
 
 )
@@ -206,6 +210,7 @@ urlpatterns = [
     path('journal/process-v2/', 
          JournalProcessV2ViewSet.as_view({'post': 'process_journal_data'}), 
          name='journal-process-v2'),
+    path('api/overdue/', overdue_depreciation_api, name='overdue_api'),
     path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
     path('api/depreciation/', calculate_depreciation_api),
     path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
