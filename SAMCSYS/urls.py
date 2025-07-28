@@ -91,11 +91,8 @@ from .views import (
     bulk_insert_dairy_report,
     trial_balance_view_allccy,
     bulk_delete,
-<<<<<<< HEAD
     bulk_insert_allcurrency,
-=======
-    overdue_depreciation_api
->>>>>>> 656d60a41bc4102de71cd10e8d653facfdc5823b
+    overdue_depreciation_api,
     
 
 )
