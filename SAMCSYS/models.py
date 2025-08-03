@@ -660,6 +660,17 @@ class DETB_JRNL_LOG_MASTER(models.Model):
     delete_stat = models.CharField(max_length=1, null=True, blank=True)
     class Meta:
         verbose_name_plural = 'DETB_JRNL_LOG_MASTER'
+        
+        # ADD THESE INDEXES
+        indexes = [
+            models.Index(fields=['Auth_Status'], name='idx_jrnl_auth_status'),
+            models.Index(fields=['Maker_Id'], name='idx_jrnl_maker_id'),
+            models.Index(fields=['Value_date'], name='idx_jrnl_value_date'),
+            models.Index(fields=['Reference_No'], name='idx_jrnl_reference_no'),
+            models.Index(fields=['delete_stat'], name='idx_jrnl_delete_stat'),
+            models.Index(fields=['Auth_Status', 'Maker_Id', 'delete_stat'], name='idx_jrnl_composite'),
+            models.Index(fields=['module_id', 'Ccy_cd'], name='idx_jrnl_module_ccy'),
+        ]
 
 class DETB_JRNL_LOG(models.Model):
     JRNLLog_id = models.AutoField(primary_key=True)

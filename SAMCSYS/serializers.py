@@ -659,6 +659,32 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
 
+from rest_framework import serializers
+from .models import DETB_JRNL_LOG_MASTER
+
+class DETB_JRNL_LOG_MASTER_ListSerializer(serializers.ModelSerializer):
+    """Optimized serializer for list view with only essential fields"""
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    module_name_la = serializers.CharField(source='module_id.module_name_la', read_only=True)
+    ccy_code = serializers.CharField(source='Ccy_cd.ccy_code', read_only=True)
+    
+    class Meta:
+        model = DETB_JRNL_LOG_MASTER
+        fields = [
+            'JRNLLog_id', 'Reference_No', 'Auth_Status', 'module_id',
+            'Ccy_cd', 'Fcy_Amount', 'Lcy_Amount', 'Txn_code', 
+            'Addl_text', 'Value_date', 'Maker_Id', 'maker_name',
+            'module_name_la', 'ccy_code'
+        ]
+
+class DETB_JRNL_LOG_MASTER_DetailSerializer(serializers.ModelSerializer):
+    """Full serializer for detail view"""
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
+    
+    class Meta:
+        model = DETB_JRNL_LOG_MASTER
+        fields = '__all__'
 #----------------------Asset---------------------------------------- 
 from rest_framework import serializers
 from .models import (FA_Asset_Type,FA_Chart_Of_Asset,FA_Suppliers,FA_Location,FA_Expense_Category,FA_Asset_Lists,FA_Asset_List_Depreciation_Main,
