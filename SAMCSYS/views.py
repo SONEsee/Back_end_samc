@@ -11873,6 +11873,88 @@ def find_gl_account(account_number):
 #             'success': False,
 #             'error': f"Create journal data error: {str(e)}"
 #         }
+# def create_journal_entry_data(asset, accounting_method, depreciation_amount, current_count, total_months):
+#     """
+#     ✅ ສ້າງຂໍ້ມູນສຳລັບ Journal Entry
+#     """
+#     try:
+#         current_date = timezone.now()
+        
+       
+#         today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
+#         today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+       
+#         daily_count = DETB_JRNL_LOG_MASTER.objects.filter(
+#             module_id="AS",
+#             Maker_DT_Stamp__range=[today_start, today_end]  
+#         ).count()
+        
+      
+#         sequence_number = daily_count + 1
+        
+       
+#         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
+        
+     
+#         debit_account_number = extract_account_number(accounting_method.debit_account_id)
+#         credit_account_number = extract_account_number(accounting_method.credit_account_id)
+        
+#         debit_glid = find_gl_account(debit_account_number)
+#         credit_glid = find_gl_account(credit_account_number)
+        
+      
+#         addl_sub_text = f"ຫັກຄ່າເສື່ອມລາຄາ {asset.asset_spec or 'N/A'} ຄັ້ງທີ່ {current_count} ຈາກ {total_months}"
+        
+      
+#         journal_data = {
+#             "Reference_No": reference_no,
+#             "Ccy_cd": asset.asset_currency or "", 
+#             "Txn_code": "ARD", 
+#             "Value_date": current_date.date().isoformat(),
+#             "Addl_text": "ຫັກຄ່າເສື່ອມລາຄາ",
+#             "fin_cycle": str(current_date.year),
+#             "module_id": "AS",
+#             "Period_code": current_date.strftime('%Y%m'),
+#             "entries": [
+#                 {
+#                     "Account": debit_glid,
+#                     "Account_no": str(accounting_method.debit_account_id),
+#                     "Amount": float(depreciation_amount),
+#                     "Dr_cr": "D",
+#                     "Addl_sub_text": addl_sub_text,
+#                     "Ac_relatives": str(asset.asset_list_id),
+#                 },
+#                 {
+#                     "Account": credit_glid,
+#                     "Account_no": str(accounting_method.credit_account_id),
+#                     "Amount": float(depreciation_amount),
+#                     "Dr_cr": "C",
+#                     "Addl_sub_text": addl_sub_text,
+#                     "Ac_relatives": str(asset.asset_list_id),
+#                 }
+#             ]
+#         }
+        
+#         return {
+#             'success': True,
+#             'journal_data': journal_data,
+#             'validation': {
+#                 'debit_account_number': debit_account_number,
+#                 'credit_account_number': credit_account_number,
+#                 'debit_glid': debit_glid,
+#                 'credit_glid': credit_glid,
+#                 'debit_found': debit_glid is not None,
+#                 'credit_found': credit_glid is not None,
+#                 'daily_sequence': sequence_number 
+#             }
+#         }
+        
+#     except Exception as e:
+#         return {
+#             'success': False,
+#             'error': f"Create journal data error: {str(e)}"
+#         }
 def create_journal_entry_data(asset, accounting_method, depreciation_amount, current_count, total_months):
     """
     ✅ ສ້າງຂໍ້ມູນສຳລັບ Journal Entry
@@ -11880,36 +11962,88 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
     try:
         current_date = timezone.now()
         
-       
+        # ✅ ນັບຈຳນວນ records ໃນມື້ດຽວກັນສຳລັບ module_id ດຽວກັນກ່ອນ
         today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         
-       
+        # ນັບຈຳນວນ records ທີ່ມີ module_id = "AS" ໃນມື້ນີ້
         daily_count = DETB_JRNL_LOG_MASTER.objects.filter(
             module_id="AS",
-            Maker_DT_Stamp__range=[today_start, today_end]  
+            Maker_DT_Stamp__range=[today_start, today_end]  # ໃຊ້ Maker_DT_Stamp ແທນ created_date
         ).count()
         
-      
+        # ເພີ່ມ 1 ສຳລັບ record ໃໝ່ນີ້
         sequence_number = daily_count + 1
         
-       
+        # ✅ ສ້າງ reference_no ຫຼັງຈາກກຳນົດ sequence_number ແລ້ວ
         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
         
-     
+        # ✅ Debug: ກວດສອບ data types
+        print(f"🔍 DEBUG asset.asset_list_id type: {type(asset.asset_list_id)}, value: {asset.asset_list_id}")
+        print(f"🔍 DEBUG asset.asset_spec type: {type(asset.asset_spec)}, value: {asset.asset_spec}")
+        print(f"🔍 DEBUG current_count type: {type(current_count)}, value: {current_count}")
+        print(f"🔍 DEBUG total_months type: {type(total_months)}, value: {total_months}")
+        
+        # ເອົາສ່ວນທີ່ເຫຼືອແບບເກົ່າ
         debit_account_number = extract_account_number(accounting_method.debit_account_id)
         credit_account_number = extract_account_number(accounting_method.credit_account_id)
         
         debit_glid = find_gl_account(debit_account_number)
         credit_glid = find_gl_account(credit_account_number)
         
-      
-        addl_sub_text = f"ຫັກຄ່າເສື່ອມລາຄາ {asset.asset_spec or 'N/A'} ຄັ້ງທີ່ {current_count} ຈາກ {total_months}"
+        # ✅ ຄິດໄລ່ Amount ຕາມເງື່ອນໄຂ
+        # ດຶງຂໍ້ມູນ asset ຈາກ FA_Asset_Lists
+        try:
+            asset_data = FA_Asset_Lists.objects.get(asset_list_id=asset.asset_list_id)
+            c_dpac = int(asset_data.C_dpac or 0)  # ✅ ບັງຄັບ convert ເປັນ int
+            asset_useful_life = int(asset_data.asset_useful_life or 0)  # ✅ ບັງຄັບ convert ເປັນ int
+            
+            # ຄຳນວນເດືອນທັງໝົດ
+            total_depreciation_months = asset_useful_life * 12
+            
+            # ກຳນົດ amount ຕາມເງື່ອນໄຂ
+            if c_dpac == 0:
+                # ເດືອນທຳອິດ
+                final_amount = float(getattr(accounting_method, 'amount_start', 0) or depreciation_amount)
+            elif (c_dpac + 1) >= total_depreciation_months:
+                # ເດືອນສຸດທ້າຍ
+                base_amount = float(getattr(accounting_method, 'amount', 0) or depreciation_amount)
+                end_amount = float(getattr(accounting_method, 'amount_end', 0) or 0)
+                final_amount = base_amount + end_amount
+            else:
+                # ເດືອນກາງໆ
+                final_amount = float(getattr(accounting_method, 'amount', 0) or depreciation_amount)
+                
+        except FA_Asset_Lists.DoesNotExist:
+            # ຖ້າບໍ່ເຈົາ asset ໃຫ້ໃຊ້ຄ່າເດີມ
+            final_amount = float(depreciation_amount)
+            c_dpac = 0
+            total_depreciation_months = 0
+        except Exception as calc_error:
+            # ຖ້າມີ error ໃນການຄິດໄລ່
+            print(f"❌ Calc error: {calc_error}")
+            final_amount = float(depreciation_amount)
+            c_dpac = 0
+            total_depreciation_months = 0
         
-      
+        # ✅ ແປງທຸກຄ່າເປັນ string ກ່ອນໃຊ້
+        asset_spec_str = str(asset.asset_spec) if asset.asset_spec is not None else 'N/A'
+        current_count_str = str(current_count) if current_count is not None else '0'
+        total_months_str = str(total_months) if total_months is not None else '0'
+        asset_list_id_str = str(asset.asset_list_id) if asset.asset_list_id is not None else ''
+        asset_currency_str = str(asset.asset_currency) if asset.asset_currency is not None else ''
+        debit_account_str = str(accounting_method.debit_account_id) if accounting_method.debit_account_id is not None else ''
+        credit_account_str = str(accounting_method.credit_account_id) if accounting_method.credit_account_id is not None else ''
+        
+        # ສ້າງ Additional Text
+        addl_sub_text = f"ຫັກຄ່າເສື່ອມລາຄາ {asset_spec_str} ຄັ້ງທີ່ {current_count_str} ຈາກ {total_months_str}"
+        
+        print(f"🔍 DEBUG addl_sub_text: {addl_sub_text}")
+        
+        # ສ້າງຂໍ້ມູນ Journal Entry
         journal_data = {
             "Reference_No": reference_no,
-            "Ccy_cd": asset.asset_currency or "", 
+            "Ccy_cd": asset_currency_str,  # ✅ ເອົາຈາກ FA_Asset_Lists.asset_currency
             "Txn_code": "ARD", 
             "Value_date": current_date.date().isoformat(),
             "Addl_text": "ຫັກຄ່າເສື່ອມລາຄາ",
@@ -11919,19 +12053,19 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
             "entries": [
                 {
                     "Account": debit_glid,
-                    "Account_no": str(accounting_method.debit_account_id),
-                    "Amount": float(depreciation_amount),
+                    "Account_no": debit_account_str,
+                    "Amount": final_amount,
                     "Dr_cr": "D",
                     "Addl_sub_text": addl_sub_text,
-                    "Ac_relatives": str(asset.asset_list_id),
+                    "Ac_relatives": asset_list_id_str,
                 },
                 {
                     "Account": credit_glid,
-                    "Account_no": str(accounting_method.credit_account_id),
-                    "Amount": float(depreciation_amount),
+                    "Account_no": credit_account_str,
+                    "Amount": final_amount,
                     "Dr_cr": "C",
                     "Addl_sub_text": addl_sub_text,
-                    "Ac_relatives": str(asset.asset_list_id),
+                    "Ac_relatives": asset_list_id_str,
                 }
             ]
         }
@@ -11946,7 +12080,11 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                 'credit_glid': credit_glid,
                 'debit_found': debit_glid is not None,
                 'credit_found': credit_glid is not None,
-                'daily_sequence': sequence_number 
+                'c_dpac': c_dpac if 'c_dpac' in locals() else 0,
+                'total_depreciation_months': total_depreciation_months if 'total_depreciation_months' in locals() else 0,
+                'amount_used': final_amount,
+                'amount_type': ('start' if 'c_dpac' in locals() and c_dpac == 0 else 
+                              ('final' if 'c_dpac' in locals() and 'total_depreciation_months' in locals() and (c_dpac + 1) >= total_depreciation_months else 'regular'))
             }
         }
         
@@ -14127,6 +14265,121 @@ def bulk_confirm_depreciation_enhanced(aldm_ids, status, reason=None, user_id=No
         
     except Exception as e:
         return {"error": f"Enhanced bulk confirm error: {str(e)}"}
+# def confirm_depreciation_with_daily_log(aldm_id, status, reason=None, user_id=None):
+#     """
+#     ✅ ENHANCED: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ສ້າງ Daily Log (ແບບ Journal System)
+#     """
+#     try:
+#         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+#         if not validated_user_id:
+#             return {"error": "ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ"}
+        
+#         if status not in ['A', 'R', 'P']:
+#             return {"error": "status ບໍ່ຖືກຕ້ອງ. ໃຊ້ 'A', 'R', ຫຼື 'P'"}
+        
+#         if status in ['R', 'P'] and not reason:
+#             return {"error": "ຕ້ອງລະບຸ reason ສຳລັບ Rejected ຫຼື Pending Revision"}
+        
+#         with transaction.atomic():
+#             main_record = FA_Asset_List_Depreciation_Main.objects.get(aldm_id=aldm_id)
+            
+#             if main_record.Auth_Status not in ['U', 'P']:
+#                 return {"error": f"ບໍ່ສາມາດປ່ຽນສະຖານະຂອງບັນທຶກທີ່ມີ Auth_Status = {main_record.Auth_Status}"}
+            
+#             current_time = timezone.now()
+            
+#             # ✅ ອັບເດດ Main Record
+#             main_record.Auth_Status = status
+#             main_record.detail = reason if status in ['R', 'P'] else None
+#             main_record.Checker_Id_id = validated_user_id
+#             main_record.Checker_DT_Stamp = current_time
+#             main_record.save()
+            
+#             # ✅ ອັບເດດ Detail Record
+#             FA_Asset_List_Depreciation.objects.filter(
+#                 asset_list_id=main_record.asset_list_id,
+#                 dpca_date=main_record.dpca_date,
+#                 dpca_value=main_record.dpca_value
+#             ).update(
+#                 Auth_Status=status,
+#                 detail=reason if status in ['R', 'P'] else None,
+#                 Checker_Id_id=validated_user_id,
+#                 Checker_DT_Stamp=current_time
+#             )
+            
+#             # ✅ ຖ້າຢືນຢັນ (A), ອັບເດດທຸກຢ່າງ + ສ້າງ Daily Log
+#             daily_log_result = None
+#             if status == 'A':
+#                 asset = main_record.asset_list_id
+                
+#                 # 1. ອັບເດດ FA_Asset_Lists
+#                 asset.C_dpac = str(int(asset.C_dpac or 0) + 1)
+#                 asset.asset_accu_dpca_value = Decimal(str(main_record.accumulated_dpca))
+#                 asset.asset_value_remain = Decimal(str(main_record.remaining_value))
+#                 asset.asset_latest_date_dpca = main_record.dpca_date
+#                 asset.save()
+#                 print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
+                
+#                 # 2. ອັບເດດ FA_Accounting_Method
+#                 try:
+#                     from django.db.models import Q
+#                     accounting_method = FA_Accounting_Method.objects.filter(
+#                         Q(asset_list_id=asset) | Q(ref_id=str(asset.asset_list_id))
+#                     ).first()
+                    
+#                     if accounting_method:
+#                         accounting_method.amount_end = main_record.remaining_value
+#                         accounting_method.amount = main_record.dpca_value
+#                         accounting_method.transaction_date = main_record.dpca_date
+#                         accounting_method.description = f"ອັບເດດຈາກການຢືນຢັນການຫັກຄ່າເສື່ອມ - {main_record.dpca_desc}"
+#                         accounting_method.Checker_Id_id = validated_user_id
+#                         accounting_method.Checker_DT_Stamp = current_time
+#                         accounting_method.save()
+#                         print(f"✅ ອັບເດດ FA_Accounting_Method ສຳເລັດ - Mapping ID: {accounting_method.mapping_id}")
+                        
+#                         accounting_method_updated = True
+#                         accounting_method_info = {
+#                             'mapping_id': accounting_method.mapping_id,
+#                             'amount_end_updated': float(accounting_method.amount_end),
+#                             'amount_updated': float(accounting_method.amount),
+#                             'transaction_date_updated': accounting_method.transaction_date.strftime('%d/%m/%Y')
+#                         }
+#                     else:
+#                         print(f"⚠️ ບໍ່ພົບ FA_Accounting_Method ສຳລັບ Asset ID: {asset.asset_list_id}")
+#                         accounting_method_updated = False
+#                         accounting_method_info = {'error': 'Accounting method not found'}
+                        
+#                 except Exception as acc_method_error:
+#                     print(f"❌ ອັບເດດ FA_Accounting_Method ຜິດພາດ: {str(acc_method_error)}")
+#                     accounting_method_updated = False
+#                     accounting_method_info = {'error': str(acc_method_error)}
+                
+#                 # ✅ 3. ສ້າງ Daily Log entries (ແບບ Journal System)
+#                 print(f"📊 ກຳລັງສ້າງ Daily Log entries...")
+#                 daily_log_result = create_depreciation_daily_log(main_record, validated_user_id)
+                
+#                 if daily_log_result['success']:
+#                     print(f"✅ ສ້າງ Daily Log ສຳເລັດ: {daily_log_result}")
+#                 else:
+#                     print(f"❌ ສ້າງ Daily Log ຜິດພາດ: {daily_log_result['error']}")
+#             else:
+#                 accounting_method_updated = False
+#                 accounting_method_info = {'skipped': f'Status is {status}, not approved'}
+            
+#             return {
+#                 'success': True,
+#                 'message': f"ບັນທຶກ {aldm_id} ອັບເດດເປັນ {status} ສຳເລັດ",
+#                 'user_id_used': validated_user_id,
+#                 'status_set': status,
+#                 'reason_set': reason if status in ['R', 'P'] else None,
+#                 'fa_asset_updated': status == 'A',
+#                 'fa_accounting_method_updated': accounting_method_updated if status == 'A' else False,
+#                 'accounting_method_info': accounting_method_info if status == 'A' else None,
+#                 'daily_log_created': daily_log_result if status == 'A' else None  # ✅ ເພີ່ມຂໍ້ມູນ Daily Log
+#             }
+        
+#     except Exception as e:
+#         return {"error": f"Enhanced confirm depreciation error: {str(e)}"}
 def confirm_depreciation_with_daily_log(aldm_id, status, reason=None, user_id=None):
     """
     ✅ ENHANCED: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ສ້າງ Daily Log (ແບບ Journal System)
@@ -14169,7 +14422,7 @@ def confirm_depreciation_with_daily_log(aldm_id, status, reason=None, user_id=No
                 Checker_DT_Stamp=current_time
             )
             
-            # ✅ ຖ້າຢືນຢັນ (A), ອັບເດດທຸກຢ່າງ + ສ້າງ Daily Log
+            # ✅ ຖ້າຢືນຢັນ (A), ອັບເດດ FA_Asset_Lists + ສ້າງ Daily Log
             daily_log_result = None
             if status == 'A':
                 asset = main_record.asset_list_id
@@ -14182,41 +14435,7 @@ def confirm_depreciation_with_daily_log(aldm_id, status, reason=None, user_id=No
                 asset.save()
                 print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
                 
-                # 2. ອັບເດດ FA_Accounting_Method
-                try:
-                    from django.db.models import Q
-                    accounting_method = FA_Accounting_Method.objects.filter(
-                        Q(asset_list_id=asset) | Q(ref_id=str(asset.asset_list_id))
-                    ).first()
-                    
-                    if accounting_method:
-                        accounting_method.amount_end = main_record.remaining_value
-                        accounting_method.amount = main_record.dpca_value
-                        accounting_method.transaction_date = main_record.dpca_date
-                        accounting_method.description = f"ອັບເດດຈາກການຢືນຢັນການຫັກຄ່າເສື່ອມ - {main_record.dpca_desc}"
-                        accounting_method.Checker_Id_id = validated_user_id
-                        accounting_method.Checker_DT_Stamp = current_time
-                        accounting_method.save()
-                        print(f"✅ ອັບເດດ FA_Accounting_Method ສຳເລັດ - Mapping ID: {accounting_method.mapping_id}")
-                        
-                        accounting_method_updated = True
-                        accounting_method_info = {
-                            'mapping_id': accounting_method.mapping_id,
-                            'amount_end_updated': float(accounting_method.amount_end),
-                            'amount_updated': float(accounting_method.amount),
-                            'transaction_date_updated': accounting_method.transaction_date.strftime('%d/%m/%Y')
-                        }
-                    else:
-                        print(f"⚠️ ບໍ່ພົບ FA_Accounting_Method ສຳລັບ Asset ID: {asset.asset_list_id}")
-                        accounting_method_updated = False
-                        accounting_method_info = {'error': 'Accounting method not found'}
-                        
-                except Exception as acc_method_error:
-                    print(f"❌ ອັບເດດ FA_Accounting_Method ຜິດພາດ: {str(acc_method_error)}")
-                    accounting_method_updated = False
-                    accounting_method_info = {'error': str(acc_method_error)}
-                
-                # ✅ 3. ສ້າງ Daily Log entries (ແບບ Journal System)
+                # ✅ 2. ສ້າງ Daily Log entries (ແບບ Journal System)
                 print(f"📊 ກຳລັງສ້າງ Daily Log entries...")
                 daily_log_result = create_depreciation_daily_log(main_record, validated_user_id)
                 
@@ -14224,9 +14443,6 @@ def confirm_depreciation_with_daily_log(aldm_id, status, reason=None, user_id=No
                     print(f"✅ ສ້າງ Daily Log ສຳເລັດ: {daily_log_result}")
                 else:
                     print(f"❌ ສ້າງ Daily Log ຜິດພາດ: {daily_log_result['error']}")
-            else:
-                accounting_method_updated = False
-                accounting_method_info = {'skipped': f'Status is {status}, not approved'}
             
             return {
                 'success': True,
@@ -14235,14 +14451,11 @@ def confirm_depreciation_with_daily_log(aldm_id, status, reason=None, user_id=No
                 'status_set': status,
                 'reason_set': reason if status in ['R', 'P'] else None,
                 'fa_asset_updated': status == 'A',
-                'fa_accounting_method_updated': accounting_method_updated if status == 'A' else False,
-                'accounting_method_info': accounting_method_info if status == 'A' else None,
                 'daily_log_created': daily_log_result if status == 'A' else None  # ✅ ເພີ່ມຂໍ້ມູນ Daily Log
             }
         
     except Exception as e:
         return {"error": f"Enhanced confirm depreciation error: {str(e)}"}
-
 def bulk_confirm_depreciation_with_daily_log(aldm_ids, status, reason=None, user_id=None):
     """
     ✅ ENHANCED: Bulk ຢືນຢັນ + ສ້າງ Daily Log ແບບ Journal System
@@ -15199,6 +15412,171 @@ def process_bulk_depreciation(mapping_ids, check_only=False, user_id=None):
     except Exception as e:
         return {"error": f"Bulk processing error: {str(e)}"}
 # ✅ NEW: ຟັງຊັນໃຫມ່ສຳລັບການຢືນຢັນ/ປະຕິເສດ
+# def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
+#     """
+#     ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug
+#     """
+#     try:
+#         print(f"🎯 [FORCE] confirm_depreciation called: aldm_id={aldm_id}, status={status}")
+        
+#         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+#         if not validated_user_id:
+#             return {"error": "ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ"}
+        
+#         if status not in ['A', 'R', 'P']:
+#             return {"error": "status ບໍ່ຖືກຕ້ອງ. ໃຊ້ 'A', 'R', ຫຼື 'P'"}
+        
+#         if status in ['R', 'P'] and not reason:
+#             return {"error": "ຕ້ອງລະບຸ reason ສຳລັບ Rejected ຫຼື Pending Revision"}
+        
+#         with transaction.atomic():
+#             main_record = FA_Asset_List_Depreciation_Main.objects.get(aldm_id=aldm_id)
+            
+#             if main_record.Auth_Status not in ['U', 'P']:
+#                 return {"error": f"ບໍ່ສາມາດປ່ຽນສະຖານະຂອງບັນທຶກທີ່ມີ Auth_Status = {main_record.Auth_Status}"}
+            
+#             current_time = timezone.now()
+            
+#             # ✅ 1. ອັບເດດ Main Record
+#             main_record.Auth_Status = status
+#             main_record.detail = reason if status in ['R', 'P'] else None
+#             main_record.Checker_Id_id = validated_user_id
+#             main_record.Checker_DT_Stamp = current_time
+#             main_record.save()
+#             print(f"✅ [FORCE] Updated main_record: {aldm_id}")
+            
+#             # ✅ 2. ອັບເດດ Detail Record
+#             FA_Asset_List_Depreciation.objects.filter(
+#                 asset_list_id=main_record.asset_list_id,
+#                 dpca_date=main_record.dpca_date,
+#                 dpca_value=main_record.dpca_value
+#             ).update(
+#                 Auth_Status=status,
+#                 detail=reason if status in ['R', 'P'] else None,
+#                 Checker_Id_id=validated_user_id,
+#                 Checker_DT_Stamp=current_time
+#             )
+#             print(f"✅ [FORCE] Updated detail records")
+            
+#             # ✅ 3. ຖ້າຢືນຢັນ (A), ອັບເດດທຸກຢ່າງ + Auto Approve Journals
+#             journal_auto_approval = None
+#             accounting_method_updated = False
+#             accounting_method_info = None
+            
+#             if status == 'A':
+#                 print(f"🔍 [FORCE] Status is A, proceeding...")
+#                 asset = main_record.asset_list_id
+#                 asset_list_id = asset.asset_list_id
+#                 print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+#                 # 3.1 ອັບເດດ FA_Asset_Lists
+#                 asset.C_dpac = str(int(asset.C_dpac or 0) + 1)
+#                 asset.asset_accu_dpca_value = Decimal(str(main_record.accumulated_dpca))
+#                 asset.asset_value_remain = Decimal(str(main_record.remaining_value))
+#                 asset.asset_latest_date_dpca = main_record.dpca_date
+#                 asset.save()
+#                 print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
+                
+#                 # 3.2 ອັບເດດ FA_Accounting_Method
+#                 try:
+#                     accounting_method = FA_Accounting_Method.objects.filter(
+#                         Q(asset_list_id=asset) | Q(ref_id=str(asset.asset_list_id))
+#                     ).first()
+                    
+#                     if accounting_method:
+#                         accounting_method.amount_end = main_record.remaining_value
+#                         accounting_method.amount = main_record.dpca_value
+#                         accounting_method.transaction_date = main_record.dpca_date
+#                         accounting_method.description = f"ອັບເດດຈາກການຢືນຢັນການຫັກຄ່າເສື່ອມ - {main_record.dpca_desc}"
+#                         accounting_method.Checker_Id_id = validated_user_id
+#                         accounting_method.Checker_DT_Stamp = current_time
+#                         accounting_method.save()
+                        
+#                         accounting_method_updated = True
+#                         accounting_method_info = {
+#                             'mapping_id': accounting_method.mapping_id,
+#                             'amount_end_updated': float(accounting_method.amount_end),
+#                             'amount_updated': float(accounting_method.amount),
+#                             'transaction_date_updated': accounting_method.transaction_date.strftime('%d/%m/%Y')
+#                         }
+#                         print(f"✅ ອັບເດດ FA_Accounting_Method ສຳເລັດ - Mapping ID: {accounting_method.mapping_id}")
+                        
+#                 except Exception as acc_error:
+#                     print(f"❌ ອັບເດດ FA_Accounting_Method ຜິດພາດ: {str(acc_error)}")
+#                     accounting_method_info = {'error': str(acc_error)}
+                
+#                 # ✅ 3.3 ບັງຄັບກວດສອບ journal entries ກ່ອນ
+#                 print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
+#                 check_result = check_journal_entries_for_asset(asset_list_id)
+#                 print(f"📊 [FORCE] Check result: {check_result}")
+                
+#                 # ✅ 3.4 ອັດຕະໂນມັດ approve journal entries
+#                 try:
+#                     print(f"🔍 [FORCE] About to call auto_approve_related_journals...")
+                    
+#                     # ✅ ບັງຄັບເອີ້ນ function
+#                     journal_auto_approval = auto_approve_related_journals(asset_list_id)
+                    
+#                     print(f"📊 [FORCE] auto_approve_related_journals result: {journal_auto_approval}")
+                    
+#                     if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+#                         print(f"✅ [FORCE] Auto approved {journal_auto_approval['approved_count']} journals")
+#                     else:
+#                         print(f"ℹ️ [FORCE] No journals approved or function failed")
+#                         # ✅ ບັງຄັບສ້າງ result ຖ້າເປັນ None
+#                         if journal_auto_approval is None:
+#                             journal_auto_approval = {
+#                                 'success': False,
+#                                 'message': 'auto_approve_related_journals returned None',
+#                                 'approved_count': 0,
+#                                 'reference_numbers': [],
+#                                 'debug_check': check_result
+#                             }
+                        
+#                 except Exception as journal_error:
+#                     print(f"⚠️ [FORCE] Journal auto approval error: {str(journal_error)}")
+#                     import traceback
+#                     traceback.print_exc()
+#                     journal_auto_approval = {
+#                         'success': False,
+#                         'error': f"Journal auto approval error: {str(journal_error)}",
+#                         'approved_count': 0,
+#                         'reference_numbers': [],
+#                         'debug_check': check_result
+#                     }
+#             else:
+#                 print(f"🔍 [FORCE] Status is {status}, skipping journal approval")
+#                 journal_auto_approval = {
+#                     'success': False,
+#                     'message': f'Skipped journal approval - status is {status}, not A',
+#                     'approved_count': 0,
+#                     'reference_numbers': []
+#                 }
+            
+#             # ✅ 4. ສ້າງ message ທີ່ລວມ journal approval
+#             base_message = f"ບັນທຶກ {aldm_id} ອັບເດດເປັນ {status} ສຳເລັດ"
+#             if status == 'A' and journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+#                 base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
+            
+#             print(f"✅ [FORCE] Final journal_auto_approval: {journal_auto_approval}")
+            
+#             return {
+#                 'success': True,
+#                 'message': base_message,
+#                 'user_id_used': validated_user_id,
+#                 'status_set': status,
+#                 'reason_set': reason if status in ['R', 'P'] else None,
+#                 'fa_asset_updated': status == 'A',
+#                 'fa_accounting_method_updated': accounting_method_updated,
+#                 'accounting_method_info': accounting_method_info,
+#                 'journal_auto_approval': journal_auto_approval  # ✅ ຈະບໍ່ເປັນ null ແລ້ວ
+#             }
+        
+#     except Exception as e:
+#         print(f"💥 [FORCE] Confirm depreciation error: {str(e)}")
+#         import traceback
+#         traceback.print_exc()
+#         return {"error": f"Confirm depreciation error: {str(e)}"}
 def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
     """
     ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug
@@ -15245,10 +15623,8 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
             )
             print(f"✅ [FORCE] Updated detail records")
             
-            # ✅ 3. ຖ້າຢືນຢັນ (A), ອັບເດດທຸກຢ່າງ + Auto Approve Journals
+            # ✅ 3. ຖ້າຢືນຢັນ (A), ອັບເດດ FA_Asset_Lists + Auto Approve Journals
             journal_auto_approval = None
-            accounting_method_updated = False
-            accounting_method_info = None
             
             if status == 'A':
                 print(f"🔍 [FORCE] Status is A, proceeding...")
@@ -15264,40 +15640,12 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                 asset.save()
                 print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
                 
-                # 3.2 ອັບເດດ FA_Accounting_Method
-                try:
-                    accounting_method = FA_Accounting_Method.objects.filter(
-                        Q(asset_list_id=asset) | Q(ref_id=str(asset.asset_list_id))
-                    ).first()
-                    
-                    if accounting_method:
-                        accounting_method.amount_end = main_record.remaining_value
-                        accounting_method.amount = main_record.dpca_value
-                        accounting_method.transaction_date = main_record.dpca_date
-                        accounting_method.description = f"ອັບເດດຈາກການຢືນຢັນການຫັກຄ່າເສື່ອມ - {main_record.dpca_desc}"
-                        accounting_method.Checker_Id_id = validated_user_id
-                        accounting_method.Checker_DT_Stamp = current_time
-                        accounting_method.save()
-                        
-                        accounting_method_updated = True
-                        accounting_method_info = {
-                            'mapping_id': accounting_method.mapping_id,
-                            'amount_end_updated': float(accounting_method.amount_end),
-                            'amount_updated': float(accounting_method.amount),
-                            'transaction_date_updated': accounting_method.transaction_date.strftime('%d/%m/%Y')
-                        }
-                        print(f"✅ ອັບເດດ FA_Accounting_Method ສຳເລັດ - Mapping ID: {accounting_method.mapping_id}")
-                        
-                except Exception as acc_error:
-                    print(f"❌ ອັບເດດ FA_Accounting_Method ຜິດພາດ: {str(acc_error)}")
-                    accounting_method_info = {'error': str(acc_error)}
-                
-                # ✅ 3.3 ບັງຄັບກວດສອບ journal entries ກ່ອນ
+                # ✅ 3.2 ບັງຄັບກວດສອບ journal entries ກ່ອນ
                 print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
                 check_result = check_journal_entries_for_asset(asset_list_id)
                 print(f"📊 [FORCE] Check result: {check_result}")
                 
-                # ✅ 3.4 ອັດຕະໂນມັດ approve journal entries
+                # ✅ 3.3 ອັດຕະໂນມັດ approve journal entries
                 try:
                     print(f"🔍 [FORCE] About to call auto_approve_related_journals...")
                     
@@ -15354,8 +15702,6 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                 'status_set': status,
                 'reason_set': reason if status in ['R', 'P'] else None,
                 'fa_asset_updated': status == 'A',
-                'fa_accounting_method_updated': accounting_method_updated,
-                'accounting_method_info': accounting_method_info,
                 'journal_auto_approval': journal_auto_approval  # ✅ ຈະບໍ່ເປັນ null ແລ້ວ
             }
         
@@ -15364,7 +15710,6 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
         import traceback
         traceback.print_exc()
         return {"error": f"Confirm depreciation error: {str(e)}"}
-
 @csrf_exempt  
 def calculate_depreciation_api_debug(request):
     """
