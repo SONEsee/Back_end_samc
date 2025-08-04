@@ -87,7 +87,20 @@ from .views import (
     calculate_depreciation_schedule,
     calculate_depreciation_api_with_journal,
     FAAssetListDepreciationInMonthViewSet,
+<<<<<<< HEAD
     overdue_depreciation_api,
+=======
+    trial_balance_view,
+    # DairyReportViewSet,
+    bulk_insert_dairy_report,
+    trial_balance_view_allccy,
+    bulk_delete,
+    bulk_insert_allcurrency,
+    check_journal_submission_available_test,
+    balance_sheet_view,
+
+    
+>>>>>>> 41649bdf7a1cced8ddedab08994611f2280f8f37
 
 )
 from rest_framework_simplejwt.views import (
@@ -174,11 +187,22 @@ urlpatterns = [
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
-    path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'),
-    path('api/end-of-day-journal/check/', check_journal_submission_available),
+    path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'), # <----- TIK Function Pid Bunsy nai mue
+    path('api/end-of-day-journal/check/', check_journal_submission_available), # <----- TIK Function Kuad karn pid bunsy
+    path('api/end-of-day-journal/check-test/', check_journal_submission_available_test),
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
+<<<<<<< HEAD
     path('api/depreciation-with-journal/', calculate_depreciation_api_with_journal, name='depreciation_with_journal'),
+=======
+    path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
+    path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
+    path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
+    path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
+    path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
+    path('api/balance-sheet/', balance_sheet_view, name='balance-sheet-view'),
+
+>>>>>>> 41649bdf7a1cced8ddedab08994611f2280f8f37
 
     
     
