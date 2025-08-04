@@ -14874,32 +14874,8 @@ def process_bulk_depreciation(mapping_ids, check_only=False, user_id=None):
         
     except Exception as e:
         return {"error": f"Bulk processing error: {str(e)}"}
-<<<<<<< HEAD
 # ✅ NEW: ຟັງຊັນໃຫມ່ສຳລັບການຢືນຢັນ/ປະຕິເສດ
 def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
-=======
-
-# =====================================
-# ✅ SQL ສຳລັບກວດສອບ/ສ້າງ Users:
-# =====================================
-"""
--- ກວດສອບວ່າມີ user ຫຍັງຢູ່ບ້າງ:
-SELECT user_id, user_name FROM SAMCSYS_mttb_users;
-
--- ຖ້າບໍ່ມີ user ໃດເລີຍ ໃຫ້ສ້າງ user ທົດລອງ:
-INSERT INTO SAMCSYS_mttb_users (user_id, user_name, password, email, is_active) 
-VALUES (1, 'admin', 'admin123', 'admin@example.com', 1);
-
--- ຫຼື ຫາ user_id ທີ່ມີຢູ່ແລ້ວ:
-SELECT MIN(user_id) as first_user_id FROM SAMCSYS_mttb_users WHERE is_active = 1;
-"""
-# =====================================
-# API ຄົບທຸກອັນໃນໂຕດຽວ - ເພີ່ມ History Management
-# =====================================
-
-@csrf_exempt
-def calculate_depreciation_api(request):
->>>>>>> 41649bdf7a1cced8ddedab08994611f2280f8f37
     """
     ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug
     """
