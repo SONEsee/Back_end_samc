@@ -213,7 +213,7 @@ urlpatterns = [
     path('journal/process-v2/', 
          JournalProcessV2ViewSet.as_view({'post': 'process_journal_data'}), 
          name='journal-process-v2'),
-    path('api/overdue/', overdue_depreciation_api, name='overdue_api'),
+    # path('api/overdue/', overdue_depreciation_api, name='overdue_api'),
     path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
     
     
