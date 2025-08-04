@@ -194,7 +194,7 @@ urlpatterns = [
     path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
     path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
     path('api/balance-sheet/', balance_sheet_view, name='balance-sheet-view'),
-
+    
 
     
     

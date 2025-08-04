@@ -1883,3 +1883,4 @@ class Dairy_Report(models.Model):
     UpdateDate = models.DateTimeField(auto_now=True, null=True, blank=True)
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_dairy_report')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
+
