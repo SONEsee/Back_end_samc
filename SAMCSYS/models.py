@@ -1298,7 +1298,8 @@ class FA_Asset_List_Depreciation_Main (models.Model):
     dpca_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N') 
     dpca_ac_date = models.DateField(null=True, blank=True)  
     dpca_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
-    dpca_ac_by = models.IntegerField(null=True, blank=True) 
+    dpca_ac_by = models.IntegerField(null=True, blank=True)
+    dpca_month_dedc = models.CharField(max_length=7, null=True, blank=True)
     detail = models.TextField(null=True, blank=True)
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
@@ -1883,3 +1884,56 @@ class Dairy_Report(models.Model):
     UpdateDate = models.DateTimeField(auto_now=True, null=True, blank=True)
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_dairy_report')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
+
+
+from django.core.validators import RegexValidator, MinLengthValidator, URLValidator, EmailValidator
+class CompanyProfileInfo(models.Model):
+    # Basic identity
+    name_la = models.CharField(max_length=255, unique=True)
+    name_en = models.CharField(max_length=255, blank=True, null=True)
+    registration_number = models.CharField(max_length=100, blank=True, null=True, help_text="Business/Company registration number")
+    tax_id = models.CharField(max_length=100, blank=True, null=True, help_text="Tax identification number")
+    industry_type = models.CharField(max_length=255, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+
+    # Contact info
+    website = models.URLField(blank=True, null=True, validators=[URLValidator()])
+    email = models.EmailField(blank=True, null=True, validators=[EmailValidator()])
+    telephone = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        validators=[RegexValidator(r'^\+?[0-9\s\-\(\)]+$', 'Enter a valid telephone number.')]
+    )
+    fax = models.CharField(max_length=50, blank=True, null=True)
+    
+    # Address
+    address_line1 = models.CharField(max_length=255, blank=True, null=True)
+    address_line2 = models.CharField(max_length=255, blank=True, null=True)
+    city = models.CharField(max_length=100, blank=True, null=True)
+    state_province = models.CharField(max_length=100, blank=True, null=True)
+    postal_code = models.CharField(max_length=50, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+
+    # Leadership
+    director_name = models.CharField(max_length=255, blank=True, null=True)
+
+    # Metadata
+    founded_date = models.DateField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+    logo = models.ImageField(upload_to='company_logos/', blank=True, null=True)
+    tagline = models.CharField(max_length=255, blank=True, null=True)
+    facebook = models.URLField(blank=True, null=True)
+    twitter = models.URLField(blank=True, null=True)
+    youtube = models.URLField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Company Profile"
+        verbose_name_plural = "Company Profiles"
+
+    def __str__(self):
+        return self.name
