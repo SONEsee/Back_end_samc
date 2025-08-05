@@ -85,8 +85,11 @@ from .views import (
     setup_default_eod_functions,
     calculate_depreciation_api,
     calculate_depreciation_schedule,
+    calculate_depreciation_api_with_journal,
     FAAssetListDepreciationInMonthViewSet,
 
+    overdue_depreciation_api,
+    # trial_balance_view,
     # DairyReportViewSet,
     bulk_insert_dairy_report,
     bulk_delete,
@@ -195,6 +198,9 @@ urlpatterns = [
     path('api/end-of-day-journal/check-test/', check_journal_submission_available_test),
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
+    path('api/depreciation-with-journal/', calculate_depreciation_api_with_journal, name='depreciation_with_journal'),
+    # path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
+    # path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
     path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
     path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
     # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
@@ -223,10 +229,13 @@ urlpatterns = [
     path('journal/process-v2/', 
          JournalProcessV2ViewSet.as_view({'post': 'process_journal_data'}), 
          name='journal-process-v2'),
-    # path('api/overdue/', overdue_depreciation_api, name='overdue_api'),
+    path('api/overdue/', overdue_depreciation_api, name='overdue_api'),
     path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
+    
+    
+    
     path('api/depreciation/', calculate_depreciation_api),
-    path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
+    
 
 
 
