@@ -1885,6 +1885,18 @@ class Dairy_Report(models.Model):
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_dairy_report')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
 
+# class Cashflow_Acc(models.Model):
+#     no = models.IntegerField(primary_key=True)
+#     report_number = models.CharField(max_length=10, null=True, blank=True)
+#     description = models.CharField(max_length=500, null=True, blank=True)
+#     formula = models.TextField(null=True, blank=True)
+#     Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
+#     Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
+#     category = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
+#     is_subtotal = models.BooleanField(default=False, null=True, blank=True)
+#     is_total = models.BooleanField(default=False)
+#     class Meta:
+#         verbose_name_plural = 'Cashflow_Acc'
 
 from django.core.validators import RegexValidator, MinLengthValidator, URLValidator, EmailValidator
 class CompanyProfileInfo(models.Model):
