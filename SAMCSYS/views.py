@@ -17776,46 +17776,362 @@ def trial_balance_consolidated_get_view(request):
 
 
 # BALANCE SHEET
-
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
+def run_balance_sheet_proc(segment: str, currency: str):
+    """
+    Execute the balance sheet stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC balancesheet_acc_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing balance sheet procedure: {str(e)}")
+        raise
+
+def validate_segment(segment: str) -> bool:
+    """
+    Validate segment parameter
+    
+    Args:
+        segment (str): Segment value to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not segment or not isinstance(segment, str):
+        return False
+    
+    valid_segments = ['FCY', 'LCY']
+    return segment.upper() in valid_segments
+
+def validate_currency_code(currency_code: str) -> bool:
+    """
+    Validate currency code format and allowed values
+    
+    Args:
+        currency_code (str): Currency code to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not currency_code or not isinstance(currency_code, str):
+        return False
+    
+    # Check length (should be 3-5 characters)
+    if len(currency_code) < 3 or len(currency_code) > 5:
+        return False
+    
+    # Common currency codes supported
+    allowed_currencies = ['LAK', 'USD', 'THB']
+    
+    return currency_code.upper() in allowed_currencies
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def balance_sheet_view(request):
+    """
+    API endpoint for balance sheet data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB|etc"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "count": number_of_records,
+        "data": [balance_sheet_records]
+    }
+    """
+    # Extract parameters from request
+    segment = request.data.get("segment")
+    currency = request.data.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate segment
+    if not validate_segment(segment):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
-        logger.info("[BalanceSheet] Executing stored procedure balancesheet_acc_All_Currency")
-
-        with connection.cursor() as cursor:
-            query = """
-                DECLARE @return_value INT;
-                EXEC @return_value = [dbo].[balancesheet_acc_All_Currency];
-                SELECT @return_value AS return_value;
-            """
-            cursor.execute(query)
-            columns = [col[0] for col in cursor.description]
-            result = [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-        logger.info(f"[BalanceSheet] Procedure completed successfully. Rows fetched: {len(result)}")
-
+        logger.info(f"[BalanceSheet] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_balance_sheet_proc(segment, currency)
+        
+        logger.info(f"[BalanceSheet] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        
+        # Determine display message based on segment
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
         return Response({
             "status": "success",
+            "message": f"ດຶງຂໍ້ມູນໃບສົມທົບສຳເລັດ - {display_currency} (Balance sheet data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "display_currency": display_currency,
             "count": len(result),
             "data": result
         }, status=status.HTTP_200_OK)
-
+        
     except Exception as e:
         logger.exception(f"[BalanceSheet] Error executing stored procedure: {str(e)}")
+        
         return Response({
             "status": "error",
-            "message": "Internal Server Error: " + str(e)
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ (Internal server error occurred while retrieving balance sheet data)",
+            "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def balance_sheet_get_view(request):
+    """
+    GET endpoint for balance sheet data (using query parameters)
+    
+    Query parameters:
+    - segment: FCY or LCY
+    - currency: Currency code (LAK, USD, THB, etc.)
+    """
+    # Extract parameters from query params
+    segment = request.query_params.get("segment")
+    currency = request.query_params.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີ query parameters ທີ່ຈຳເປັນ: segment ແລະ currency (Missing required query parameters: segment and currency)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate segment
+    if not validate_segment(segment):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code. Supported: LAK, USD, THB)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[BalanceSheet-GET] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_balance_sheet_proc(segment, currency)
+        
+        logger.info(f"[BalanceSheet-GET] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        
+        # Determine display message
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນໃບສົມທົບສຳເລັດ - {display_currency}",
+            "segment": segment,
+            "currency": currency,
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[BalanceSheet-GET] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Optional: ViewSet approach for more advanced functionality
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
+class BalanceSheetViewSet(viewsets.ViewSet):
+    """
+    ViewSet for Balance Sheet operations
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post', 'get'])
+    def get_data(self, request):
+        """
+        Get balance sheet data
+        
+        POST: Use request body
+        GET: Use query parameters
+        """
+        if request.method == 'POST':
+            return balance_sheet_view(request)
+        else:
+            return balance_sheet_get_view(request)
+    
+    @action(detail=False, methods=['get'])
+    def supported_segments(self, request):
+        """
+        Get list of supported segments and currencies
+        """
+        segments = [
+            {
+                'value': 'FCY',
+                'title': 'Foreign Currency (FCY)',
+                'description': 'ສະກຸນເງິນຕ່າງປະເທດ',
+                'currencies': ['LAK','USD', 'THB']
+            },
+            {
+                'value': 'LCY',
+                'title': 'Local Currency Equivalent (LCY)', 
+                'description': 'ທຽບເທົ່າກີບລາວ',
+                'currencies': ['LAK']
+            }
+        ]
+        
+        currencies = {
+            'LAK': 'ກີບລາວ (Lao Kip)',
+            'USD': 'ໂດລາສະຫະລັດ (US Dollar)', 
+            'THB': 'ບາດໄທ (Thai Baht)',
+        }
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນ segments ແລະສະກຸນເງິນທີ່ຮອງຮັບສຳເລັດ",
+            "count": len(segments),
+            "data": {
+                "segments": segments,
+                "currencies": currencies
+            }
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def compare_segments(self, request):
+        """
+        Compare FCY and LCY data for the same currency
+        
+        Expected payload:
+        {
+            "currency": "USD|THB|etc"
+        }
+        """
+        currency = request.data.get("currency")
+        
+        if not currency:
+            return Response({
+                "status": "error",
+                "message": "ບໍ່ມີຂໍ້ມູນສະກຸນເງິນ (Missing currency parameter)",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        currency = currency.upper()
+        
+        if not validate_currency_code(currency):
+            return Response({
+                "status": "error",
+                "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code)",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get both FCY and LCY data
+            fcy_result = run_balance_sheet_proc('FCY', currency)
+            lcy_result = run_balance_sheet_proc('LCY', currency)
+            
+            return Response({
+                "status": "success",
+                "message": f"ສົມທຽບຂໍ້ມູນ FCY ແລະ LCY ສຳລັບ {currency} ສຳເລັດ",
+                "currency": currency,
+                "data": {
+                    "fcy": fcy_result,
+                    "lcy": lcy_result,
+                    "fcy_count": len(fcy_result),
+                    "lcy_count": len(lcy_result)
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.exception(f"[BalanceSheet-Compare] Error comparing segments: {str(e)}")
+            
+            return Response({
+                "status": "error",
+                "message": "ເກີດຂໍ້ຜິດພາດໃນການສົມທຽບຂໍ້ມູນ",
+                "data": None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
 
 
 from rest_framework import status
@@ -19224,3 +19540,55 @@ def bulk_insert_dairy_reports(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
+from .models import CompanyProfileInfo
+from .serializers import CompanyProfileSerializer
+
+class CompanyProfileViewSet(viewsets.ModelViewSet):
+    queryset = CompanyProfileInfo.objects.all()
+    serializer_class = CompanyProfileSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_active', 'industry_type', 'country']
+    search_fields = ['name_la', 'name_en', 'description']
+    ordering_fields = ['name_la', 'created_at', 'updated_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        queryset = CompanyProfileInfo.objects.all()
+        is_active = self.request.query_params.get('is_active', None)
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        return queryset
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    @action(detail=True, methods=['patch'])
+    def toggle_active(self, request, pk=None):
+        company = self.get_object()
+        company.is_active = not company.is_active
+        company.save()
+        serializer = self.get_serializer(company)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def active_companies(self, request):
+        active_companies = self.get_queryset().filter(is_active=True)
+        serializer = self.get_serializer(active_companies, many=True)
+        return Response(serializer.data)
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def perform_update(self, serializer):
+        serializer.save()
