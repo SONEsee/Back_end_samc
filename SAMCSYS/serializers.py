@@ -980,3 +980,24 @@ class DairyReportSerializer(serializers.ModelSerializer):
                 })
         
         return data
+    
+
+from rest_framework import serializers
+from .models import CompanyProfileInfo
+
+class CompanyProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompanyProfileInfo
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+
+    def validate_name_la(self, value):
+        if not value or len(value.strip()) < 2:
+            raise serializers.ValidationError("ຊື່ບໍລິສັດເປັນພາສາລາວຕ້ອງມີຢ່າງນ້ອຍ 2 ຕົວອັກສອນ")
+        return value.strip()
+    
+
+    def validate_email(self, value):
+        if value and not value.strip():
+            return None
+        return value

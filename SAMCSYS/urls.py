@@ -104,6 +104,8 @@ from .views import (
     # trial_balance_fcy_currencies_view,
     TrialBalanceFCYViewSet,
     bulk_insert_dairy_reports,
+    CompanyProfileViewSet,
+    BalanceSheetViewSet
     
 
 )
@@ -165,6 +167,8 @@ router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
 router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
 router.register(r'trial-balance-fcy', TrialBalanceFCYViewSet, basename='trial-balance-fcy')
+router.register(r'companies', CompanyProfileViewSet, basename='company-profile')
+router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 # router.register(r'dairy-report', DairyReportViewSet)
 app_name = 'depreciation'
 
@@ -206,14 +210,19 @@ urlpatterns = [
     # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
 
-    # Store Procedure <---------->
-    path('api/balance-sheet/', balance_sheet_view, name='balance-sheet-view'),
+    # Store Procedure <---- Trail Balance ------>
     path('api/trial-balance/consolidated/', 
          trial_balance_consolidated_view, 
          name='trial_balance_consolidated'),
     path('api/trial-balance/fcy/', trial_balance_fcy_view, name='trial-balance-fcy-post'),
     path('api/trial-balance/fcy/get/', trial_balance_fcy_get_view, name='trial-balance-fcy-get'),
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
+
+    # Stroe Procedure <---- Balance Sheet ------>
+
+    path('api/balance-sheet/', balance_sheet_view, name='balance-sheet-post'),
+
+
     
     
     # Force logout endpoints (standalone)
