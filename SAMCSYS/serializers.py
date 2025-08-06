@@ -796,7 +796,7 @@ class FAExpenseCategorySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FAAssetListSerializer(serializers.ModelSerializer):
-    asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
+    asset_id_detail = ChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
     supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
     type_of_pay_detail = serializers.SerializerMethodField()
@@ -807,18 +807,56 @@ class FAAssetListSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_type_of_pay_detail(self, obj):
+        if hasattr(self, '_type_of_pay_cache') and obj.type_of_pay in self._type_of_pay_cache:
+            return self._type_of_pay_cache[obj.type_of_pay]
+
         from .models import MasterCode
         mc = MasterCode.objects.filter(MC_code=obj.type_of_pay).first()
-        if mc:
-            return MasterCodeDetail_Serializer(mc).data
-        return None
+        result = MasterCodeDetail_Serializer(mc).data if mc else None
+
+        if not hasattr(self, '_type_of_pay_cache'):
+            self._type_of_pay_cache = {}
+        self._type_of_pay_cache[obj.type_of_pay] = result
+        return result
 
     def get_asset_status_detail(self, obj):
+        if hasattr(self, '_asset_status_cache') and obj.asset_status in self._asset_status_cache:
+            return self._asset_status_cache[obj.asset_status]
+
         from .models import MasterCode
         mc = MasterCode.objects.filter(MC_code=obj.asset_status).first()
-        if mc:
-            return MasterCodeDetail_Serializer(mc).data
-        return None
+        result = MasterCodeDetail_Serializer(mc).data if mc else None
+
+        if not hasattr(self, '_asset_status_cache'):
+            self._asset_status_cache = {}
+        self._asset_status_cache[obj.asset_status] = result
+        return result
+
+
+# class FAAssetListSerializer(serializers.ModelSerializer):
+#     asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
+#     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
+#     supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
+#     type_of_pay_detail = serializers.SerializerMethodField()
+#     asset_status_detail = serializers.SerializerMethodField()
+
+#     class Meta:
+#         model = FA_Asset_Lists
+#         fields = '__all__'
+
+#     def get_type_of_pay_detail(self, obj):
+#         from .models import MasterCode
+#         mc = MasterCode.objects.filter(MC_code=obj.type_of_pay).first()
+#         if mc:
+#             return MasterCodeDetail_Serializer(mc).data
+#         return None
+
+#     def get_asset_status_detail(self, obj):
+#         from .models import MasterCode
+#         mc = MasterCode.objects.filter(MC_code=obj.asset_status).first()
+#         if mc:
+#             return MasterCodeDetail_Serializer(mc).data
+#         return None
 
 # class FADepreciationMainSerializer(serializers.ModelSerializer):
 #     class Meta:
@@ -866,6 +904,8 @@ class FAAssetPhotosSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FAMaintenanceLogsSerializer(serializers.ModelSerializer):
+    asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
+    supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
     class Meta:
         model = FA_Maintenance_Logs
         fields = '__all__'
@@ -925,19 +965,29 @@ from .serializers import AssetTypeDetailSerializer, MasterCodeSerializer
 class FAChartOfAssetSerializer(serializers.ModelSerializer):
     asset_type_detail = AssetTypeDetailSerializer(source='asset_type_id', read_only=True)
     tangible_detail = serializers.SerializerMethodField()
+
     class Meta:
         model = FA_Chart_Of_Asset
         fields = '__all__'
+
     def get_tangible_detail(self, obj):
+        if not obj.asset_type_id or not obj.asset_type_id.is_tangible:
+            return None
+
+        is_tangible = obj.asset_type_id.is_tangible
+        if not hasattr(self, '_master_code_cache'):
+            self._master_code_cache = {}
+
+        if is_tangible in self._master_code_cache:
+            return self._master_code_cache[is_tangible]
+
         try:
-            # Access is_tangible from the related FA_Asset_Type
-            is_tangible = obj.asset_type_id.is_tangible
-            # Fetch MasterCode where MC_code matches is_tangible and M_id_id = '1003'
             master_code = MasterCode.objects.get(MC_code=is_tangible, M_id_id='1003')
-            return MasterCodeSerializer(master_code).data
-        except (MasterCode.DoesNotExist, AttributeError):
-            return None  # Return None if no matching MasterCode or FA_Asset_Type is found
-        
+            result = MasterCodeSerializer(master_code).data
+            self._master_code_cache[is_tangible] = result
+            return result
+        except MasterCode.DoesNotExist:
+            return None
 
 class GLSubDisplaySerializer(serializers.ModelSerializer):
     outstanding = serializers.CharField(source='gl_code.outstanding', read_only=True)

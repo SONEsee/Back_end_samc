@@ -8376,17 +8376,19 @@ class FAChartOfAssetViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        
-        queryset = FA_Chart_Of_Asset.objects.all().order_by('coa_id')
+        queryset = FA_Chart_Of_Asset.objects.select_related('asset_type_id').all().order_by('coa_id')
+
         asset_code = self.request.query_params.get('asset_code')
         asset_type_id = self.request.query_params.get('asset_type_id')
         is_tangible = self.request.query_params.get('is_tangible')
+
         if asset_type_id:
             queryset = queryset.filter(asset_type_id=asset_type_id)
         if asset_code:
             queryset = queryset.filter(asset_code=asset_code)
         if is_tangible:
-            queryset = queryset.filter(is_tangible=is_tangible)
+            queryset = queryset.filter(asset_type_id__is_tangible=is_tangible)  # join by asset_type
+
         return queryset
     
     def perform_create(self, serializer):
@@ -8627,10 +8629,14 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = FA_Asset_Lists.objects.all().order_by('asset_list_id')
-        asset_type_id = self.request.query_params.get('asset_type_id')
-        if asset_type_id:
-            queryset = queryset.filter(asset_type_id=asset_type_id)
+        queryset = FA_Asset_Lists.objects.select_related(
+            'asset_type_id', 'asset_location_id', 'supplier_id'
+        ).all().order_by('asset_list_id')
+
+        asset_tag = self.request.query_params.get('asset_tag')
+        if asset_tag:
+            queryset = queryset.filter(asset_tag=asset_tag)
+
         return queryset
     
     def perform_create(self, serializer):
@@ -8782,7 +8788,7 @@ class FAAssetListDepreciationMainViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = FA_Asset_List_Depreciation_Main.objects.all().order_by('aldm_id')
+        queryset = FA_Asset_List_Depreciation_Main.objects.select_related('asset_list_id')
         asset_list_id = self.request.query_params.get('asset_list_id')
         aldm_month_id = self.request.query_params.get('aldm_month_id')
 
@@ -8790,6 +8796,8 @@ class FAAssetListDepreciationMainViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(asset_list_id=asset_list_id)
         if aldm_month_id:
             queryset = queryset.filter(aldm_month_id=aldm_month_id)
+
+        queryset = queryset.order_by('aldm_id')
         return queryset
     
     def perform_create(self, serializer):
@@ -9152,6 +9160,35 @@ class FAMaintenanceLogsViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O'"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
 # class FAAccountingMethodViewSet(viewsets.ModelViewSet):
 #     serializer_class = FAAccountingMethodSerializer
