@@ -19935,5 +19935,74 @@ class IncomeStatementViewSet(viewsets.ViewSet):
                 "data": None
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from .models import Annual_Asset_Audit
+from .serializers import AnnualAssetAuditSerializer
 
+class AnnualAssetAuditViewSet(viewsets.ModelViewSet):
+    serializer_class = AnnualAssetAuditSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Annual_Asset_Audit.objects.select_related(
+            'asset_list_id', 'department_id'
+        ).all().order_by('-audit_id')
+
+        # Optional filtering by asset_list_id or department_id
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        department_id = self.request.query_params.get('department_id')
+
+        if asset_list_id:
+            queryset = queryset.filter(asset_list_id=asset_list_id)
+
+        if department_id:
+            queryset = queryset.filter(department_id=department_id)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Maker_Id=user,
+            Maker_DT_Stamp=timezone.now()
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_open(self, request, pk=None):
+        """Set Record_Status = 'O' """
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
+        if obj.Record_Status == 'O':
+            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        obj.Record_Status = 'O'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Open.', 'entry': serializer.data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def set_close(self, request, pk=None):
+        """Set Record_Status = 'C' (Close)"""
+        obj = self.get_object()
+        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
+        if obj.Record_Status == 'C':
+            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+        obj.Record_Status = 'C'
+        obj.Checker_Id = user_obj
+        obj.Checker_DT_Stamp = timezone.now()
+        obj.save()
+        serializer = self.get_serializer(obj)
+        return Response({'message': 'Set to Close.', 'entry': serializer.data})
+    
+    
 

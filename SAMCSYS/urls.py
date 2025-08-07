@@ -114,7 +114,8 @@ from .views import (
     income_statement_acc_get_view,
     income_statement_mfi_get_view,
     income_statement_mfi_view,    
-    IncomeStatementViewSet
+    IncomeStatementViewSet,
+    AnnualAssetAuditViewSet
 
 )
 from rest_framework_simplejwt.views import (
@@ -179,6 +180,7 @@ router.register(r'companies', CompanyProfileViewSet, basename='company-profile')
 router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 router.register(r'main-trial-balance', MainTrialBalanceViewSet, basename='main-trial-balance')
 router.register(r'income-statement', IncomeStatementViewSet, basename='income-statement')
+router.register(r'AnnualAssetAudit', AnnualAssetAuditViewSet, basename='AnnualAssetAudit')
 # router.register(r'dairy-report', DairyReportViewSet)
 app_name = 'depreciation'
 

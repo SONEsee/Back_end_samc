@@ -1949,3 +1949,47 @@ class CompanyProfileInfo(models.Model):
 
     def __str__(self):
         return self.name
+
+class Annual_Asset_Audit(models.Model):
+    audit_id = models.AutoField(primary_key=True)
+    audit_year = models.CharField(max_length=4, null=True, blank=True)
+    audit_period = models.CharField(max_length=20, null=True, blank=True)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
+    audit_date = models.DateField(null=True, blank=True)
+    auditor_name = models.CharField(max_length=100, null=True, blank=True)
+    department_id = models.ForeignKey(MTTB_Divisions, null=True, blank=True, on_delete=models.CASCADE)
+    physical_status = models.CharField(max_length=20, null=True, blank=True)
+    condition_status = models.CharField(max_length=15, null=True, blank=True)
+    location_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    actual_location = models.CharField(max_length=200, null=True, blank=True)
+    book_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    estimated_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    depreciation_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    accumulated_depreciation = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    remaining_useful_life = models.IntegerField(null=True, blank=True)
+    serial_number_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    tag_number_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    insurance_coverage = models.CharField(max_length=1, null=True, blank=True, default='N')
+    maintenance_required = models.CharField(max_length=1, null=True, blank=True, default='N')
+    replacement_recommended = models.CharField(max_length=1, null=True, blank=True, default='N')
+    disposal_recommended = models.CharField(max_length=1, null=True, blank=True, default='N')
+    audit_findings = models.TextField(null=True, blank=True)
+    recommendations = models.TextField(null=True, blank=True)
+    photos_attached = models.CharField(max_length=1, null=True, blank=True, default='N')
+    documents_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    follow_up_required = models.CharField(max_length=1, null=True, blank=True, default='N')
+    follow_up_date = models.DateField(null=True, blank=True)
+    audit_status = models.CharField(max_length=20, null=True, blank=True)
+    reviewer_name = models.CharField(max_length=100, null=True, blank=True)
+    review_date = models.DateField(null=True, blank=True)
+    approver_name = models.CharField(max_length=100, null=True, blank=True)
+    approval_date = models.DateField(null=True, blank=True)
+    remarks = models.TextField(max_length=1000, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_annual_asset_audit')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_annual_asset_audit')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'Annual_Asset_Audit'

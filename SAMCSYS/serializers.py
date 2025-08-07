@@ -1051,3 +1051,14 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         if value and not value.strip():
             return None
         return value
+    
+from rest_framework import serializers
+from .models import Annual_Asset_Audit
+from .serializers import AssetListDetailsSerializer,DivisionSerializer
+
+class AnnualAssetAuditSerializer(serializers.ModelSerializer):
+    asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
+    division_id_detail = DivisionSerializer(source='department_id', read_only=True)
+    class Meta:
+        model = Annual_Asset_Audit
+        fields = '__all__'
