@@ -98,13 +98,13 @@ from .views import (
 
     #Store Procedure
     trial_balance_consolidated_view,
-    balance_sheet_view,
     trial_balance_fcy_view,
     trial_balance_fcy_get_view,
     # trial_balance_fcy_currencies_view,
     TrialBalanceFCYViewSet,
     bulk_insert_dairy_reports,
     CompanyProfileViewSet,
+
     BalanceSheetViewSet,
     MainTrialBalanceViewSet,
     main_trial_balance_all_currency_view,
@@ -114,7 +114,11 @@ from .views import (
     income_statement_acc_get_view,
     income_statement_mfi_get_view,
     income_statement_mfi_view,    
-    IncomeStatementViewSet
+    IncomeStatementViewSet,
+    balance_sheet_acc_view,
+    balance_sheet_mfi_view,
+    balance_sheet_acc_get_view,
+    balance_sheet_mfi_get_view,
 
 )
 from rest_framework_simplejwt.views import (
@@ -176,10 +180,10 @@ router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
 router.register(r'trial-balance-fcy', TrialBalanceFCYViewSet, basename='trial-balance-fcy')
 router.register(r'companies', CompanyProfileViewSet, basename='company-profile')
-router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 router.register(r'main-trial-balance', MainTrialBalanceViewSet, basename='main-trial-balance')
 router.register(r'income-statement', IncomeStatementViewSet, basename='income-statement')
 # router.register(r'dairy-report', DairyReportViewSet)
+router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 app_name = 'depreciation'
 
 urlpatterns = [
@@ -235,7 +239,10 @@ urlpatterns = [
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
 
     # Stroe Procedure <---- Balance Sheet ------>
-    path('api/balance-sheet/', balance_sheet_view, name='balance-sheet-post'),
+    path('api/balance-sheet/acc/', balance_sheet_acc_view, name='balance-sheet-acc'),
+    path('api/balance-sheet/mfi/', balance_sheet_mfi_view, name='balance-sheet-mfi'),
+    path('api/balance-sheet/acc/get/', balance_sheet_acc_get_view, name='balance-sheet-acc-get'),
+    path('api/balance-sheet/mfi/get/', balance_sheet_mfi_get_view, name='balance-sheet-mfi-get'),
 
     #Store Procedure <---- Income Statement ------>
     path('api/income-statement/acc/', income_statement_acc_view, name='income-statement-acc-post'),

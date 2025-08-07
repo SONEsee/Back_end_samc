@@ -17823,9 +17823,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_balance_sheet_proc(segment: str, currency: str):
+def run_balance_sheet_acc_proc(segment: str, currency: str):
     """
-    Execute the balance sheet stored procedure
+    Execute the balance sheet ACC stored procedure
     
     Args:
         segment (str): FCY or LCY
@@ -17838,7 +17838,7 @@ def run_balance_sheet_proc(segment: str, currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC balancesheet_acc_By_Currency_And_Consolidated
+                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated
                     @segment = %s,
                     @currency = %s
             """
@@ -17854,7 +17854,41 @@ def run_balance_sheet_proc(segment: str, currency: str):
             return results
             
     except Exception as e:
-        logger.error(f"Error executing balance sheet procedure: {str(e)}")
+        logger.error(f"Error executing balance sheet ACC procedure: {str(e)}")
+        raise
+
+def run_balance_sheet_mfi_proc(segment: str, currency: str):
+    """
+    Execute the balance sheet MFI stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing balance sheet MFI procedure: {str(e)}")
         raise
 
 def validate_segment(segment: str) -> bool:
@@ -17891,15 +17925,15 @@ def validate_currency_code(currency_code: str) -> bool:
         return False
     
     # Common currency codes supported
-    allowed_currencies = ['LAK', 'USD', 'THB']
+    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY', 'VND']
     
     return currency_code.upper() in allowed_currencies
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def balance_sheet_view(request):
+def balance_sheet_acc_view(request):
     """
-    API endpoint for balance sheet data
+    API endpoint for balance sheet ACC data
     
     Expected payload:
     {
@@ -17913,6 +17947,7 @@ def balance_sheet_view(request):
         "message": "Description",
         "segment": "segment_type",
         "currency": "currency_code",
+        "type": "ACC",
         "count": number_of_records,
         "data": [balance_sheet_records]
     }
@@ -17945,45 +17980,132 @@ def balance_sheet_view(request):
     if not validate_currency_code(currency):
         return Response({
             "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[BalanceSheet] Executing procedure for segment={segment}, currency={currency}")
+        logger.info(f"[BalanceSheet-ACC] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_balance_sheet_proc(segment, currency)
+        result = run_balance_sheet_acc_proc(segment, currency)
         
-        logger.info(f"[BalanceSheet] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        logger.info(f"[BalanceSheet-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
         
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນໃບສົມທົບສຳເລັດ - {display_currency} (Balance sheet data retrieved successfully - {display_currency})",
+            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet ACC data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
+            "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
             "data": result
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.exception(f"[BalanceSheet] Error executing stored procedure: {str(e)}")
+        logger.exception(f"[BalanceSheet-ACC] Error executing stored procedure: {str(e)}")
         
         return Response({
             "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ (Internal server error occurred while retrieving balance sheet data)",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC (Internal server error occurred while retrieving balance sheet ACC data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def balance_sheet_mfi_view(request):
+    """
+    API endpoint for balance sheet MFI data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB|etc"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "type": "MFI",
+        "count": number_of_records,
+        "data": [balance_sheet_records]
+    }
+    """
+    # Extract parameters from request
+    segment = request.data.get("segment")
+    currency = request.data.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate segment
+    if not validate_segment(segment):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[BalanceSheet-MFI] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_balance_sheet_mfi_proc(segment, currency)
+        
+        logger.info(f"[BalanceSheet-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        
+        # Determine display message based on segment
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet MFI data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "type": "MFI",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[BalanceSheet-MFI] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI (Internal server error occurred while retrieving balance sheet MFI data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def balance_sheet_get_view(request):
+def balance_sheet_acc_get_view(request):
     """
-    GET endpoint for balance sheet data (using query parameters)
+    GET endpoint for balance sheet ACC data (using query parameters)
     
     Query parameters:
     - segment: FCY or LCY
@@ -18005,49 +18127,105 @@ def balance_sheet_get_view(request):
     segment = segment.upper()
     currency = currency.upper()
     
-    # Validate segment
-    if not validate_segment(segment):
+    # Validate parameters
+    if not validate_segment(segment) or not validate_currency_code(currency):
         return Response({
             "status": "error",
-            "message": "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Validate currency code
-    if not validate_currency_code(currency):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code. Supported: LAK, USD, THB)",
+            "message": "ຄ່າ parameters ບໍ່ຖືກຕ້ອງ (Invalid parameters. Supported: segment=FCY/LCY, currency=LAK/USD/THB/etc)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[BalanceSheet-GET] Executing procedure for segment={segment}, currency={currency}")
+        logger.info(f"[BalanceSheet-ACC-GET] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_balance_sheet_proc(segment, currency)
+        result = run_balance_sheet_acc_proc(segment, currency)
         
-        logger.info(f"[BalanceSheet-GET] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        logger.info(f"[BalanceSheet-ACC-GET] Procedure completed successfully. Records: {len(result)}")
         
-        # Determine display message
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
         
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນໃບສົມທົບສຳເລັດ - {display_currency}",
+            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC ສຳລັບ {display_currency} ສຳເລັດ",
             "segment": segment,
             "currency": currency,
+            "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
             "data": result
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.exception(f"[BalanceSheet-GET] Error executing stored procedure: {str(e)}")
+        logger.exception(f"[BalanceSheet-ACC-GET] Error executing stored procedure: {str(e)}")
         
         return Response({
             "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def balance_sheet_mfi_get_view(request):
+    """
+    GET endpoint for balance sheet MFI data (using query parameters)
+    
+    Query parameters:
+    - segment: FCY or LCY
+    - currency: Currency code (LAK, USD, THB, etc.)
+    """
+    # Extract parameters from query params
+    segment = request.query_params.get("segment")
+    currency = request.query_params.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີ query parameters ທີ່ຈຳເປັນ: segment ແລະ currency (Missing required query parameters: segment and currency)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate parameters
+    if not validate_segment(segment) or not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ parameters ບໍ່ຖືກຕ້ອງ (Invalid parameters. Supported: segment=FCY/LCY, currency=LAK/USD/THB/etc)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[BalanceSheet-MFI-GET] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_balance_sheet_mfi_proc(segment, currency)
+        
+        logger.info(f"[BalanceSheet-MFI-GET] Procedure completed successfully. Records: {len(result)}")
+        
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI ສຳລັບ {display_currency} ສຳເລັດ",
+            "segment": segment,
+            "currency": currency,
+            "type": "MFI",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[BalanceSheet-MFI-GET] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -18062,29 +18240,42 @@ class BalanceSheetViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
     
     @action(detail=False, methods=['post', 'get'])
-    def get_data(self, request):
+    def acc_data(self, request):
         """
-        Get balance sheet data
+        Get balance sheet ACC data
         
         POST: Use request body
         GET: Use query parameters
         """
         if request.method == 'POST':
-            return balance_sheet_view(request)
+            return balance_sheet_acc_view(request)
         else:
-            return balance_sheet_get_view(request)
+            return balance_sheet_acc_get_view(request)
+    
+    @action(detail=False, methods=['post', 'get'])
+    def mfi_data(self, request):
+        """
+        Get balance sheet MFI data
+        
+        POST: Use request body
+        GET: Use query parameters
+        """
+        if request.method == 'POST':
+            return balance_sheet_mfi_view(request)
+        else:
+            return balance_sheet_mfi_get_view(request)
     
     @action(detail=False, methods=['get'])
-    def supported_segments(self, request):
+    def supported_options(self, request):
         """
-        Get list of supported segments and currencies
+        Get list of supported segments and currencies for balance sheet
         """
         segments = [
             {
                 'value': 'FCY',
                 'title': 'Foreign Currency (FCY)',
                 'description': 'ສະກຸນເງິນຕ່າງປະເທດ',
-                'currencies': ['LAK','USD', 'THB']
+                'currencies': ['USD', 'THB', 'EUR', 'JPY', 'CNY', 'VND', 'LAK']
             },
             {
                 'value': 'LCY',
@@ -18098,6 +18289,10 @@ class BalanceSheetViewSet(viewsets.ViewSet):
             'LAK': 'ກີບລາວ (Lao Kip)',
             'USD': 'ໂດລາສະຫະລັດ (US Dollar)', 
             'THB': 'ບາດໄທ (Thai Baht)',
+            'EUR': 'ເອີໂຣ (Euro)',
+            'JPY': 'ເຢນຍີ່ປຸ່ນ (Japanese Yen)',
+            'CNY': 'ຫຍວນຈີນ (Chinese Yuan)',
+            'VND': 'ດົງຫວຽດນາມ (Vietnamese Dong)'
         }
         
         return Response({
@@ -18106,68 +18301,91 @@ class BalanceSheetViewSet(viewsets.ViewSet):
             "count": len(segments),
             "data": {
                 "segments": segments,
-                "currencies": currencies
+                "currencies": currencies,
+                "types": ["ACC", "MFI"]
             }
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
-    def compare_segments(self, request):
+    def compare_acc_mfi(self, request):
         """
-        Compare FCY and LCY data for the same currency
+        Compare ACC and MFI balance sheet data for the same segment and currency
         
         Expected payload:
         {
+            "segment": "FCY|LCY",
             "currency": "USD|THB|etc"
         }
         """
+        segment = request.data.get("segment")
         currency = request.data.get("currency")
         
-        if not currency:
+        if not segment or not currency:
             return Response({
                 "status": "error",
-                "message": "ບໍ່ມີຂໍ້ມູນສະກຸນເງິນ (Missing currency parameter)",
+                "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ (Missing required parameters: segment and currency)",
                 "data": None
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        segment = segment.upper()
         currency = currency.upper()
         
-        if not validate_currency_code(currency):
+        if not validate_segment(segment) or not validate_currency_code(currency):
             return Response({
                 "status": "error",
-                "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code)",
+                "message": "ຄ່າ parameters ບໍ່ຖືກຕ້ອງ (Invalid parameters)",
                 "data": None
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Get both FCY and LCY data
-            fcy_result = run_balance_sheet_proc('FCY', currency)
-            lcy_result = run_balance_sheet_proc('LCY', currency)
+            # Get both ACC and MFI data
+            acc_result = run_balance_sheet_acc_proc(segment, currency)
+            mfi_result = run_balance_sheet_mfi_proc(segment, currency)
+            
+            display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+            
+            # Calculate totals for ACC
+            acc_total_debit = sum(float(item.get('debit_amount', 0)) for item in acc_result)
+            acc_total_credit = sum(float(item.get('credit_amount', 0)) for item in acc_result)
+            acc_total_net = sum(float(item.get('net_amount', 0)) for item in acc_result)
+            
+            # Calculate totals for MFI
+            mfi_total_debit = sum(float(item.get('debit_amount', 0)) for item in mfi_result)
+            mfi_total_credit = sum(float(item.get('credit_amount', 0)) for item in mfi_result)
+            mfi_total_net = sum(float(item.get('net_amount', 0)) for item in mfi_result)
             
             return Response({
                 "status": "success",
-                "message": f"ສົມທຽບຂໍ້ມູນ FCY ແລະ LCY ສຳລັບ {currency} ສຳເລັດ",
+                "message": f"ສົມທຽບຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC ແລະ MFI ສຳລັບ {display_currency} ສຳເລັດ",
+                "segment": segment,
                 "currency": currency,
+                "display_currency": display_currency,
                 "data": {
-                    "fcy": fcy_result,
-                    "lcy": lcy_result,
-                    "fcy_count": len(fcy_result),
-                    "lcy_count": len(lcy_result)
+                    "acc": {
+                        "count": len(acc_result),
+                        "totalDebit": acc_total_debit,
+                        "totalCredit": acc_total_credit,
+                        "totalNet": acc_total_net,
+                        "data": acc_result
+                    },
+                    "mfi": {
+                        "count": len(mfi_result),
+                        "totalDebit": mfi_total_debit,
+                        "totalCredit": mfi_total_credit,
+                        "totalNet": mfi_total_net,
+                        "data": mfi_result
+                    }
                 }
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
-            logger.exception(f"[BalanceSheet-Compare] Error comparing segments: {str(e)}")
+            logger.exception(f"[BalanceSheet-Compare] Error comparing ACC and MFI: {str(e)}")
             
             return Response({
                 "status": "error",
-                "message": "ເກີດຂໍ້ຜິດພາດໃນການສົມທຽບຂໍ້ມູນ",
+                "message": "ເກີດຂໍ້ຜິດພາດໃນການສົມທຽບຂໍ້ມູນ ACC ແລະ MFI",
                 "data": None
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-
-
 
 
 

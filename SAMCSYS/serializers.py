@@ -1051,3 +1051,5 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         if value and not value.strip():
             return None
         return value
+
+    
