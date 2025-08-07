@@ -19374,3 +19374,566 @@ class MainTrialBalanceViewSet(viewsets.ViewSet):
                 "data": None
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+# Store Procedure IncomeStatement ------> 
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+def run_income_statement_acc_proc(segment: str, currency: str):
+    """
+    Execute the income statement ACC stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing income statement ACC procedure: {str(e)}")
+        raise
+
+def run_income_statement_mfi_proc(segment: str, currency: str):
+    """
+    Execute the income statement MFI stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing income statement MFI procedure: {str(e)}")
+        raise
+
+def validate_segment(segment: str) -> bool:
+    """
+    Validate segment parameter
+    
+    Args:
+        segment (str): Segment value to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not segment or not isinstance(segment, str):
+        return False
+    
+    valid_segments = ['FCY', 'LCY']
+    return segment.upper() in valid_segments
+
+def validate_currency_code(currency_code: str) -> bool:
+    """
+    Validate currency code format and allowed values
+    
+    Args:
+        currency_code (str): Currency code to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not currency_code or not isinstance(currency_code, str):
+        return False
+    
+    # Check length (should be 3-5 characters)
+    if len(currency_code) < 3 or len(currency_code) > 5:
+        return False
+    
+    # Common currency codes supported
+    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY', 'VND']
+    
+    return currency_code.upper() in allowed_currencies
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def income_statement_acc_view(request):
+    """
+    API endpoint for income statement ACC data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB|etc"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "type": "ACC",
+        "count": number_of_records,
+        "data": [income_statement_records]
+    }
+    """
+    # Extract parameters from request
+    segment = request.data.get("segment")
+    currency = request.data.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate segment
+    if not validate_segment(segment):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[IncomeStatement-ACC] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_income_statement_acc_proc(segment, currency)
+        
+        logger.info(f"[IncomeStatement-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        
+        # Determine display message based on segment
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບ {display_currency} ສຳເລັດ (Income statement ACC data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "type": "ACC",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[IncomeStatement-ACC] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC (Internal server error occurred while retrieving income statement ACC data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def income_statement_mfi_view(request):
+    """
+    API endpoint for income statement MFI data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB|etc"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "type": "MFI",
+        "count": number_of_records,
+        "data": [income_statement_records]
+    }
+    """
+    # Extract parameters from request
+    segment = request.data.get("segment")
+    currency = request.data.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate segment
+    if not validate_segment(segment):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[IncomeStatement-MFI] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_income_statement_mfi_proc(segment, currency)
+        
+        logger.info(f"[IncomeStatement-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        
+        # Determine display message based on segment
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບ {display_currency} ສຳເລັດ (Income statement MFI data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "type": "MFI",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[IncomeStatement-MFI] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI (Internal server error occurred while retrieving income statement MFI data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def income_statement_acc_get_view(request):
+    """
+    GET endpoint for income statement ACC data (using query parameters)
+    
+    Query parameters:
+    - segment: FCY or LCY
+    - currency: Currency code (LAK, USD, THB, etc.)
+    """
+    # Extract parameters from query params
+    segment = request.query_params.get("segment")
+    currency = request.query_params.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີ query parameters ທີ່ຈຳເປັນ: segment ແລະ currency (Missing required query parameters: segment and currency)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate parameters
+    if not validate_segment(segment) or not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ parameters ບໍ່ຖືກຕ້ອງ (Invalid parameters. Supported: segment=FCY/LCY, currency=LAK/USD/THB/etc)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[IncomeStatement-ACC-GET] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_income_statement_acc_proc(segment, currency)
+        
+        logger.info(f"[IncomeStatement-ACC-GET] Procedure completed successfully. Records: {len(result)}")
+        
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບ {display_currency} ສຳເລັດ",
+            "segment": segment,
+            "currency": currency,
+            "type": "ACC",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[IncomeStatement-ACC-GET] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def income_statement_mfi_get_view(request):
+    """
+    GET endpoint for income statement MFI data (using query parameters)
+    
+    Query parameters:
+    - segment: FCY or LCY
+    - currency: Currency code (LAK, USD, THB, etc.)
+    """
+    # Extract parameters from query params
+    segment = request.query_params.get("segment")
+    currency = request.query_params.get("currency")
+    
+    # Validate required parameters
+    if not segment or not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີ query parameters ທີ່ຈຳເປັນ: segment ແລະ currency (Missing required query parameters: segment and currency)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    segment = segment.upper()
+    currency = currency.upper()
+    
+    # Validate parameters
+    if not validate_segment(segment) or not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ຄ່າ parameters ບໍ່ຖືກຕ້ອງ (Invalid parameters. Supported: segment=FCY/LCY, currency=LAK/USD/THB/etc)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[IncomeStatement-MFI-GET] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_income_statement_mfi_proc(segment, currency)
+        
+        logger.info(f"[IncomeStatement-MFI-GET] Procedure completed successfully. Records: {len(result)}")
+        
+        display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບ {display_currency} ສຳເລັດ",
+            "segment": segment,
+            "currency": currency,
+            "type": "MFI",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[IncomeStatement-MFI-GET] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Optional: ViewSet approach for more advanced functionality
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
+class IncomeStatementViewSet(viewsets.ViewSet):
+    """
+    ViewSet for Income Statement operations
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post', 'get'])
+    def acc_data(self, request):
+        """
+        Get income statement ACC data
+        
+        POST: Use request body
+        GET: Use query parameters
+        """
+        if request.method == 'POST':
+            return income_statement_acc_view(request)
+        else:
+            return income_statement_acc_get_view(request)
+    
+    @action(detail=False, methods=['post', 'get'])
+    def mfi_data(self, request):
+        """
+        Get income statement MFI data
+        
+        POST: Use request body
+        GET: Use query parameters
+        """
+        if request.method == 'POST':
+            return income_statement_mfi_view(request)
+        else:
+            return income_statement_mfi_get_view(request)
+    
+    @action(detail=False, methods=['get'])
+    def supported_options(self, request):
+        """
+        Get list of supported segments and currencies for income statement
+        """
+        segments = [
+            {
+                'value': 'FCY',
+                'title': 'Foreign Currency (FCY)',
+                'description': 'ສະກຸນເງິນຕ່າງປະເທດ',
+                'currencies': ['USD', 'THB', 'EUR', 'JPY', 'CNY', 'VND']
+            },
+            {
+                'value': 'LCY',
+                'title': 'Local Currency Equivalent (LCY)', 
+                'description': 'ທຽບເທົ່າກີບລາວ',
+                'currencies': ['LAK']
+            }
+        ]
+        
+        currencies = {
+            'LAK': 'ກີບລາວ (Lao Kip)',
+            'USD': 'ໂດລາສະຫະລັດ (US Dollar)', 
+            'THB': 'ບາດໄທ (Thai Baht)',
+            'EUR': 'ເອີໂຣ (Euro)',
+            'JPY': 'ເຢນຍີ່ປຸ່ນ (Japanese Yen)',
+            'CNY': 'ຫຍວນຈີນ (Chinese Yuan)',
+            'VND': 'ດົງຫວຽດນາມ (Vietnamese Dong)'
+        }
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນ segments ແລະສະກຸນເງິນທີ່ຮອງຮັບສຳເລັດ",
+            "count": len(segments),
+            "data": {
+                "segments": segments,
+                "currencies": currencies,
+                "types": ["ACC", "MFI"]
+            }
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def compare_acc_mfi(self, request):
+        """
+        Compare ACC and MFI income statement data for the same segment and currency
+        
+        Expected payload:
+        {
+            "segment": "FCY|LCY",
+            "currency": "USD|THB|etc"
+        }
+        """
+        segment = request.data.get("segment")
+        currency = request.data.get("currency")
+        
+        if not segment or not currency:
+            return Response({
+                "status": "error",
+                "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ (Missing required parameters: segment and currency)",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        segment = segment.upper()
+        currency = currency.upper()
+        
+        if not validate_segment(segment) or not validate_currency_code(currency):
+            return Response({
+                "status": "error",
+                "message": "ຄ່າ parameters ບໍ່ຖືກຕ້ອງ (Invalid parameters)",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get both ACC and MFI data
+            acc_result = run_income_statement_acc_proc(segment, currency)
+            mfi_result = run_income_statement_mfi_proc(segment, currency)
+            
+            display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
+            
+            return Response({
+                "status": "success",
+                "message": f"ສົມທຽບຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ແລະ MFI ສຳລັບ {display_currency} ສຳເລັດ",
+                "segment": segment,
+                "currency": currency,
+                "display_currency": display_currency,
+                "data": {
+                    "acc": {
+                        "count": len(acc_result),
+                        "data": acc_result
+                    },
+                    "mfi": {
+                        "count": len(mfi_result),
+                        "data": mfi_result
+                    }
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.exception(f"[IncomeStatement-Compare] Error comparing ACC and MFI: {str(e)}")
+            
+            return Response({
+                "status": "error",
+                "message": "ເກີດຂໍ້ຜິດພາດໃນການສົມທຽບຂໍ້ມູນ ACC ແລະ MFI",
+                "data": None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+

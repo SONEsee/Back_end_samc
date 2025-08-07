@@ -109,7 +109,12 @@ from .views import (
     MainTrialBalanceViewSet,
     main_trial_balance_all_currency_view,
     main_trial_balance_by_currency_view,
-    main_trial_balance_by_currency_get_view    
+    main_trial_balance_by_currency_get_view,
+    income_statement_acc_view,
+    income_statement_acc_get_view,
+    income_statement_mfi_get_view,
+    income_statement_mfi_view,    
+    IncomeStatementViewSet
 
 )
 from rest_framework_simplejwt.views import (
@@ -173,6 +178,7 @@ router.register(r'trial-balance-fcy', TrialBalanceFCYViewSet, basename='trial-ba
 router.register(r'companies', CompanyProfileViewSet, basename='company-profile')
 router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 router.register(r'main-trial-balance', MainTrialBalanceViewSet, basename='main-trial-balance')
+router.register(r'income-statement', IncomeStatementViewSet, basename='income-statement')
 # router.register(r'dairy-report', DairyReportViewSet)
 app_name = 'depreciation'
 
@@ -229,12 +235,14 @@ urlpatterns = [
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
 
     # Stroe Procedure <---- Balance Sheet ------>
-
     path('api/balance-sheet/', balance_sheet_view, name='balance-sheet-post'),
 
+    #Store Procedure <---- Income Statement ------>
+    path('api/income-statement/acc/', income_statement_acc_view, name='income-statement-acc-post'),
+    path('api/income-statement/acc/get/', income_statement_acc_get_view, name='income-statement-acc-get'),
+    path('api/income-statement/mfi/', income_statement_mfi_view, name='income-statement-mfi-post'),
+    path('api/income-statement/mfi/get/', income_statement_mfi_get_view, name='income-statement-mfi-get'),
 
-    
-    
     # Force logout endpoints (standalone)
     path('api/verify-token/',verify_token, name='verify-token'),
     path('api/force-logout/<str:user_id>/',force_logout_user, name='force-logout'),
