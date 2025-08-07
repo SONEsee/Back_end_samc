@@ -1975,7 +1975,7 @@ class Annual_Asset_Audit(models.Model):
     disposal_recommended = models.CharField(max_length=1, null=True, blank=True, default='N')
     audit_findings = models.TextField(null=True, blank=True)
     recommendations = models.TextField(null=True, blank=True)
-    photos_attached = models.CharField(max_length=1, null=True, blank=True, default='N')
+    photos_attached = models.ImageField(upload_to='audit_photos/',null=True,blank=True)
     documents_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
     follow_up_required = models.CharField(max_length=1, null=True, blank=True, default='N')
     follow_up_date = models.DateField(null=True, blank=True)
