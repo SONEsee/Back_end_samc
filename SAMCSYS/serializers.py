@@ -1051,6 +1051,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         if value and not value.strip():
             return None
         return value
+<<<<<<< HEAD
     
 from rest_framework import serializers
 from .models import Annual_Asset_Audit
@@ -1062,3 +1063,7 @@ class AnnualAssetAuditSerializer(serializers.ModelSerializer):
     class Meta:
         model = Annual_Asset_Audit
         fields = '__all__'
+=======
+
+    
+>>>>>>> 2cb676d0002a0e8abdfb4dda446e72db3a9f53dc
