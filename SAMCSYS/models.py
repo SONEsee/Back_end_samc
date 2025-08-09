@@ -890,7 +890,7 @@ class STTB_EOC_DAILY_LOG(models.Model):
     addl_text = models.CharField(max_length=255, null=True, blank=True)
     addl_sub_text = models.CharField(max_length=255, null=True, blank=True)
     trn_dt = models.DateField(null=True, blank=True)
-    glid_id = models.CharField(max_length=1, null=True, blank=True)
+    glid_id = models.CharField(max_length=50, null=True, blank=True)
     glType = models.CharField(max_length=1, null=True, blank=True)
     category = models.CharField(max_length=1, null=True, blank=True)
     value_dt = models.DateField(null=True, blank=True)
