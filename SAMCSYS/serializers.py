@@ -1052,6 +1052,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             return None
         return value
     
+# newww
 from rest_framework import serializers
 from .models import FA_Asset_Audit
 from .serializers import AssetListDetailsSerializer,DivisionSerializer
@@ -1060,7 +1061,7 @@ class FAAssetAuditSerializer(serializers.ModelSerializer):
     asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
     division_id_detail = DivisionSerializer(source='department_id', read_only=True)
     class Meta:
-        model = FA_Asset_Audit
+        model = FA_Asset_Audit 
         fields = '__all__'
 
     
