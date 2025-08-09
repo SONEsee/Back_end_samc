@@ -94,8 +94,6 @@ from .views import (
     bulk_insert_dairy_report,
     bulk_delete,
     # bulk_insert_allcurrency,
-    check_journal_submission_available_test,
-
     #Store Procedure
     trial_balance_consolidated_view,
     trial_balance_fcy_view,
@@ -104,7 +102,6 @@ from .views import (
     TrialBalanceFCYViewSet,
     bulk_insert_dairy_reports,
     CompanyProfileViewSet,
-
     BalanceSheetViewSet,
     MainTrialBalanceViewSet,
     main_trial_balance_all_currency_view,
@@ -215,7 +212,6 @@ urlpatterns = [
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
     path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'), # <----- TIK Function Pid Bunsy nai mue
     path('api/end-of-day-journal/check/', check_journal_submission_available), # <----- TIK Function Kuad karn pid bunsy
-    path('api/end-of-day-journal/check-test/', check_journal_submission_available_test),
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
     path('api/depreciation-with-journal/', calculate_depreciation_api_with_journal, name='depreciation_with_journal'),
