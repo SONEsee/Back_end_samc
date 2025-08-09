@@ -112,7 +112,7 @@ from .views import (
     income_statement_mfi_get_view,
     income_statement_mfi_view,    
     IncomeStatementViewSet,
-    AnnualAssetAuditViewSet,
+    FAAssetAuditViewSet,
     balance_sheet_acc_view,
     balance_sheet_mfi_view,
     balance_sheet_acc_get_view,
@@ -180,7 +180,7 @@ router.register(r'trial-balance-fcy', TrialBalanceFCYViewSet, basename='trial-ba
 router.register(r'companies', CompanyProfileViewSet, basename='company-profile')
 router.register(r'main-trial-balance', MainTrialBalanceViewSet, basename='main-trial-balance')
 router.register(r'income-statement', IncomeStatementViewSet, basename='income-statement')
-router.register(r'AnnualAssetAudit', AnnualAssetAuditViewSet, basename='AnnualAssetAudit')
+router.register(r'asset_audit', FAAssetAuditViewSet, basename='FAAssetAudit')
 # router.register(r'dairy-report', DairyReportViewSet)
 router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 app_name = 'depreciation'
