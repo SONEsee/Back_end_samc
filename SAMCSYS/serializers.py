@@ -1064,4 +1064,146 @@ class FAAssetAuditSerializer(serializers.ModelSerializer):
         model = FA_Asset_Audit 
         fields = '__all__'
 
+
+# IImplement End of Journal Validation
+
+from rest_framework import serializers
+from .models import (
+    STTB_Dates, MTTB_EOC_MAINTAIN, STTB_EOC_DAILY_LOG,
+    MTTB_Function_Desc, MTTB_LCL_Holiday
+)
+
+
+class EODDateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for STTB_Dates model
+    """
+    start_date_formatted = serializers.SerializerMethodField()
+    prev_working_day_formatted = serializers.SerializerMethodField()
+    next_working_day_formatted = serializers.SerializerMethodField()
+    eod_status = serializers.SerializerMethodField()
     
+    class Meta:
+        model = STTB_Dates
+        fields = [
+            'date_id', 'Start_Date', 'prev_Working_Day', 'next_working_Day',
+            'eod_time', 'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
+            'start_date_formatted', 'prev_working_day_formatted', 
+            'next_working_day_formatted', 'eod_status'
+        ]
+    
+    def get_start_date_formatted(self, obj):
+        return obj.Start_Date.strftime('%Y-%m-%d') if obj.Start_Date else None
+    
+    def get_prev_working_day_formatted(self, obj):
+        return obj.prev_Working_Day.strftime('%Y-%m-%d') if obj.prev_Working_Day else None
+    
+    def get_next_working_day_formatted(self, obj):
+        return obj.next_working_Day.strftime('%Y-%m-%d') if obj.next_working_Day else None
+    
+    def get_eod_status(self, obj):
+        return 'ສຳເລັດແລ້ວ' if obj.eod_time == 'Y' else 'ລໍຖ້າດຳເນີນການ'
+
+
+class EODFunctionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for EOD Functions
+    """
+    function_description = serializers.CharField(source='function_id.description_la', read_only=True)
+    module_name = serializers.CharField(source='module_id.module_id', read_only=True)
+    is_active = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MTTB_EOC_MAINTAIN
+        fields = [
+            'eoc_seq_no', 'function_id', 'function_description',
+            'module_id', 'module_name', 'Record_Status', 'Auth_Status',
+            'is_active'
+        ]
+    
+    def get_is_active(self, obj):
+        return obj.Record_Status == 'O'
+
+
+class EODExecutionLogSerializer(serializers.ModelSerializer):
+    """
+    Serializer for EOD Execution Logs
+    """
+    function_name = serializers.CharField(source='function_id.description_la', read_only=True)
+    status_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = STTB_EOC_DAILY_LOG
+        fields = [
+            'log_id', 'function_id', 'function_name', 'processing_date',
+            'execution_status', 'status_display', 'error_message',
+            'executed_by', 'execution_time'
+        ]
+    
+    def get_status_display(self, obj):
+        status_map = {
+            'SUCCESS': 'ສຳເລັດ',
+            'FAILED': 'ລົ້ມເຫລວ',
+            'ERROR': 'ຂໍ້ຜິດພາດ',
+            'PENDING': 'ລໍຖ້າ'
+        }
+        return status_map.get(obj.execution_status, obj.execution_status)
+
+
+class EODSubmissionSerializer(serializers.Serializer):
+    """
+    Serializer for EOD submission request
+    """
+    value_date = serializers.DateField(
+        required=False,
+        help_text='ວັນທີທີ່ຕ້ອງການປະມວນຜົນ EOD'
+    )
+    is_back_date = serializers.BooleanField(
+        default=False,
+        help_text='ກຳນົດວ່າເປັນການປະມວນຜົນຍ້ອນຫຼັງຫຼືບໍ່'
+    )
+    eod_id = serializers.IntegerField(
+        required=False,
+        help_text='EOD ID ສຳລັບການປະມວນຜົນຍ້ອນຫຼັງ'
+    )
+    
+    def validate(self, data):
+        """
+        Validate EOD submission data
+        """
+        if data.get('is_back_date') and not data.get('eod_id'):
+            raise serializers.ValidationError(
+                'ຕ້ອງລະບຸ eod_id ສຳລັບການປະມວນຜົນຍ້ອນຫຼັງ'
+            )
+        
+        if not data.get('is_back_date') and data.get('eod_id'):
+            raise serializers.ValidationError(
+                'eod_id ໃຊ້ສະເພາະການປະມວນຜົນຍ້ອນຫຼັງເທົ່ານັ້ນ'
+            )
+        
+        return data
+
+
+class HolidaySerializer(serializers.ModelSerializer):
+    """
+    Serializer for Holiday Calendar
+    """
+    working_days_count = serializers.SerializerMethodField()
+    holidays_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MTTB_LCL_Holiday
+        fields = [
+            'HYear', 'HMonth', 'Holiday_List',
+            'working_days_count', 'holidays_count'
+        ]
+    
+    def get_working_days_count(self, obj):
+        if obj.Holiday_List:
+            return obj.Holiday_List.count('W')
+        return 0
+    
+    def get_holidays_count(self, obj):
+        if obj.Holiday_List:
+            return obj.Holiday_List.count('H')
+        return 0

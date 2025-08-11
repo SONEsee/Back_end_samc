@@ -79,7 +79,7 @@ from .views import (
     force_logout_user_test,
     session_check,
     JournalProcessV2ViewSet,
-    end_of_day_journal_view,
+    # end_of_day_journal_view,
     check_journal_submission_available,
     validate_eod_prerequisites_view,
     setup_default_eod_functions,
@@ -117,6 +117,7 @@ from .views import (
     balance_sheet_mfi_view,
     balance_sheet_acc_get_view,
     balance_sheet_mfi_get_view,
+    end_of_day_journal_view
 
 )
 from rest_framework_simplejwt.views import (
@@ -210,7 +211,11 @@ urlpatterns = [
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
-    path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'), # <----- TIK Function Pid Bunsy nai mue
+
+    path('api/end-of-day-journal/', end_of_day_journal_view , name='end-of-day-journal'),
+
+    
+    # path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'), # <----- TIK Function Pid Bunsy nai mue
     path('api/end-of-day-journal/check/', check_journal_submission_available), # <----- TIK Function Kuad karn pid bunsy
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
