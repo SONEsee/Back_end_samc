@@ -4128,7 +4128,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 if not data.get('Reference_No'):
                     data['Reference_No'] = JournalEntryHelper.generate_reference_number(
                         module_id=data.get('module_id', 'GL'),
-                        txn_code=data['Txn_code'],
+                        Txn_code=data['Txn_code'],
                         date=data['Value_date'].date() if data.get('Value_date') else None
                     )
                 
@@ -4252,7 +4252,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     reference_no = first.Reference_No
                     module_id = first.module_id
                     ccy_cd = first.Ccy_cd
-                    txn_code = first.Txn_code
+                    Txn_code = first.Txn_code
                     value_date = first.Value_date
                     exch_rate = first.Exch_rate
                     fin_cycle = first.fin_cycle
@@ -4268,7 +4268,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Ccy_cd=ccy_cd,
                         Fcy_Amount=total_fcy,
                         Lcy_Amount=total_lcy,
-                        Txn_code=txn_code,
+                        Txn_code=Txn_code,
                         Value_date=value_date,
                         Exch_rate=exch_rate,
                         fin_cycle=fin_cycle,
@@ -5452,7 +5452,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         ).order_by('-total_amount')
         
         # By transaction code breakdown
-        by_txn_code = queryset.values('Txn_code__trn_code', 'Txn_code__trn_Desc_la').annotate(
+        by_Txn_code = queryset.values('Txn_code__trn_code', 'Txn_code__trn_Desc_la').annotate(
             entry_count=models.Count('JRNLLog_id'),
             total_amount=Sum('Lcy_Amount')
         ).order_by('-total_amount')
@@ -5464,7 +5464,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             },
             'summary': summary,
             'by_currency': list(by_currency),
-            'by_transaction_code': list(by_txn_code)
+            'by_transaction_code': list(by_Txn_code)
         })
 
     def get_exchange_rate(self, currency_code):
@@ -5491,11 +5491,11 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
     def generate_reference(self, request):
         """Generate a reference number without creating entries"""
         module_id = request.data.get('module_id', 'GL')
-        txn_code = request.data.get('txn_code')
+        Txn_code = request.data.get('Txn_code')
         value_date = request.data.get('value_date')
         
-        if not txn_code:
-            return Response({'error': 'txn_code is required'}, 
+        if not Txn_code:
+            return Response({'error': 'Txn_code is required'}, 
                           status=status.HTTP_400_BAD_REQUEST)
         
         # Parse date if provided
@@ -5509,14 +5509,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         
         reference_no = JournalEntryHelper.generate_reference_number(
             module_id=module_id,
-            txn_code=txn_code,
+            Txn_code=Txn_code,
             date=date
         )
         
         return Response({
             'reference_no': reference_no,
             'module_id': module_id,
-            'txn_code': txn_code,
+            'Txn_code': Txn_code,
             'date': date or timezone.now().date()
         })
 
@@ -5551,7 +5551,7 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
         
         # Base queryset - exclude deleted records
         base_queryset = DETB_JRNL_LOG_MASTER.objects.filter(
-            Q(delete_stat__isnull=True) | ~Q(delete_stat='D')
+            Q(delete_stat__isnull=True) | ~Q(delete_stat='D' | Q(Txn_code='ARD'))
         )
         
         # Get show_all parameter from request
@@ -5604,8 +5604,6 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             Q(delete_stat__isnull=True) | ~Q(delete_stat='D') | Q(Txn_code='ARD')
         )
         
-        
-        
         # Permission-based filtering
         show_all = self.request.query_params.get('show_all', 'false').lower()
         
@@ -5649,6 +5647,8 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             auth_status = request.query_params.get('Auth_Status')
             if auth_status:
                 queryset = queryset.filter(Auth_Status=auth_status)
+                
+
             
             # Search
             search = request.query_params.get('search')
@@ -5663,7 +5663,11 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             delete_stat_ne = request.query_params.get('delete_stat__ne')
             if delete_stat_ne:
                 queryset = queryset.exclude(delete_stat=delete_stat_ne)
-            
+
+            txn_code = request.query_params.get('Txn_code')
+            if txn_code:
+                queryset = queryset.exclude(Txn_code='txn_code')
+
             # Ordering
             ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
             valid_fields = [
@@ -5829,6 +5833,10 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             if delete_stat_ne:
                 queryset = queryset.exclude(delete_stat=delete_stat_ne)
                 print(f"DEBUG: Applied delete_stat filter: {delete_stat_ne}")
+            txn_code = request.query_params.get('Txn_code')
+            if txn_code:
+                queryset = queryset.exclude(Txn_code=txn_code)
+                print(f"DEBUG: Applied txn_code filter: {txn_code}")
             
             # Ordering
             ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
@@ -6284,7 +6292,7 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
                     delete_stat__isnull=True,
                     Value_date=target_date
                 ).exclude(
-                    Q(delete_stat='D') | Q(Auth_Status='D')
+                    Q(delete_stat='D') | Q(Auth_Status='D' | Q(Txn_code='ARD')) 
                 ).order_by('-Maker_DT_Stamp')
                 
                 target_serializer = self.get_serializer(target_queryset, many=True)
@@ -19714,6 +19722,600 @@ class FAAssetAuditViewSet(viewsets.ModelViewSet):
 
 
 # Get the End Validation
+# from datetime import datetime, timedelta, time
+# from django.utils import timezone
+# from django.db import transaction
+# import pytz
+# import logging
+# from .models import MTTB_LCL_Holiday, STTB_Dates, MTTB_EOC_MAINTAIN, MTTB_DATA_Entry, ACTB_DAIRY_LOG, DETB_JRNL_LOG, DETB_JRNL_LOG_MASTER
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from rest_framework import status
+
+# # Set up logging
+# logger = logging.getLogger(__name__)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def end_of_day_journal_view(request):
+#     """
+#     API endpoint for End of Day (EOD) journal processing with transaction support.
+#     Supports both normal and back-date EOD processing.
+#     """
+#     try:
+#         tz = pytz.timezone('Asia/Bangkok')
+#         target_date = request.data.get('target_date')
+#         eod_id = request.data.get('eod_id')
+        
+#         # Determine mode
+#         if target_date and eod_id:
+#             # Back-date mode
+#             if isinstance(target_date, str):
+#                 processing_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+#             else:
+#                 processing_date = target_date
+#             is_back_date = True
+#             logger.info(f"Starting BACK-DATE EOD process for date: {processing_date}, EOD ID: {eod_id}, User: {request.user}")
+#         else:
+#             # Normal mode
+#             value_date = request.data.get('value_date')
+#             if not value_date:
+#                 processing_date = timezone.now().astimezone(tz).date()
+#             elif isinstance(value_date, str):
+#                 processing_date = datetime.strptime(value_date, '%Y-%m-%d').date()
+#             else:
+#                 processing_date = value_date
+#             is_back_date = False
+#             eod_id = None
+#             logger.info(f"Starting NORMAL EOD process for date: {processing_date}, User: {request.user}")
+        
+#         with transaction.atomic():
+#             # Step 1: Validate EOD requirements
+#             if is_back_date:
+#                 validation_success, validation_message = validate_backdate_eod_requirements(processing_date, eod_id)
+#             else:
+#                 validation_success, validation_message = validate_normal_eod_requirements(processing_date)
+            
+#             if not validation_success:
+#                 logger.error(f"EOD validation failed: {validation_message}")
+#                 raise Exception(validation_message)
+            
+#             # Step 2: Validate all journals are approved
+#             journals_approved, journal_message = validate_journal_approvals(processing_date)
+#             if not journals_approved:
+#                 logger.error(f"Journal validation failed: {journal_message}")
+#                 raise Exception(journal_message)
+            
+#             # Step 3: Execute EOD functions
+#             eod_success, eod_message = execute_eod_process(request.user, processing_date, is_back_date)
+#             if not eod_success:
+#                 logger.error(f"EOD process failed: {eod_message}")
+#                 raise Exception(eod_message)
+            
+#             # Step 4: Clear EOD journal
+#             clear_success, clear_message = clear_eod_journal_with_transaction(processing_date)
+#             if not clear_success:
+#                 logger.error(f"EOD journal clear failed: {clear_message}")
+#                 raise Exception(clear_message)
+            
+#             # Step 5: Complete EOD and create next working day
+#             if is_back_date:
+#                 complete_success, complete_message = complete_backdate_eod_and_create_next(eod_id, request.user, processing_date)
+#             else:
+#                 complete_success, complete_message = complete_normal_eod_and_create_next(request.user, processing_date)
+            
+#             if not complete_success:
+#                 logger.error(f"EOD completion failed: {complete_message}")
+#                 raise Exception(complete_message)
+            
+#             # All steps successful
+#             mode_text = "back-date" if is_back_date else "normal"
+#             final_message = f"ການປະມວນຜົນ EOD {mode_text} ສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}"
+#             logger.info(f"{mode_text.upper()} EOD process successful for {processing_date}")
+
+#             return Response({
+#                 "message": final_message,
+#                 "success": True,
+#                 "is_back_date": is_back_date,
+#                 "processing_date": processing_date.isoformat(),
+#                 "details": {
+#                     "validation": validation_message,
+#                     "journal_validation": journal_message,
+#                     "eod_process": eod_message,
+#                     "clear_journal": clear_message,
+#                     "completion": complete_message
+#                 }
+#             }, status=status.HTTP_201_CREATED)
+
+#     except Exception as e:
+#         logger.error(f"EOD process failed for {processing_date if 'processing_date' in locals() else 'unknown date'}: {str(e)}")
+#         return Response({
+#             "error": f"ການປະມວນຜົນ EOD ລົ້ມເຫລວ: {str(e)}",
+#             "success": False
+#         }, status=status.HTTP_400_BAD_REQUEST)
+
+# def validate_normal_eod_requirements(processing_date):
+#     """
+#     Validates if normal EOD can be performed.
+#     """
+#     try:
+#         tz = pytz.timezone('Asia/Bangkok')
+#         year_str = str(processing_date.year)
+#         month_str = str(processing_date.month).zfill(2)
+        
+#         # Check MTTB_DATA_Entry for bypass settings
+#         data_entry = MTTB_DATA_Entry.objects.filter().first()
+#         mod_no_enabled = data_entry and data_entry.MOD_NO == 'Y'
+        
+#         if not mod_no_enabled:
+#             # Check if processing_date is a working day
+#             try:
+#                 holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+#                 holiday_list = holiday_record.Holiday_List
+#                 if len(holiday_list) != 31:
+#                     return False, "Invalid Holiday_List length. Must be 31 characters."
+#                 day_index = processing_date.day - 1
+#                 if holiday_list[day_index] != 'W':
+#                     return False, f"{processing_date} is not a working day."
+#             except MTTB_LCL_Holiday.DoesNotExist:
+#                 return False, f"No holiday record for {year_str}-{month_str}."
+        
+#         # Check the latest STTB_Dates row
+#         latest_eod = STTB_Dates.objects.latest('date_id')
+#         expected_start_date = latest_eod.Start_Date.astimezone(tz).date()
+#         if expected_start_date != processing_date:
+#             return False, f"Processing date ({processing_date}) does not match expected Start_Date ({expected_start_date})."
+        
+#         if latest_eod.eod_time == 'Y':
+#             return False, f"EOD already completed for {processing_date}."
+        
+#         return True, f"Normal EOD validation passed for {processing_date}"
+
+#     except STTB_Dates.DoesNotExist:
+#         return False, "No records found in STTB_Dates."
+#     except Exception as e:
+#         return False, f"Error in normal EOD validation: {str(e)}"
+
+# def validate_journal_approvals(processing_date):
+#     """
+#     Validate that all journals for the processing date are approved.
+#     """
+#     try:
+#         unapproved_journals = DETB_JRNL_LOG.objects.filter(
+#             Value_date=processing_date,
+#             Auth_Status__in=['U', 'P']
+#         ).count()
+
+#         if unapproved_journals > 0:
+#             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
+
+#         return True, f"All journals for {processing_date} are approved"
+
+#     except Exception as e:
+#         return False, f"Error validating journal approvals: {str(e)}"
+
+# def execute_eod_process(user, processing_date, is_back_date=False):
+#     """
+#     Execute all EOD functions in sequence for back-date processing.
+#     """
+#     try:
+#         with transaction.atomic():
+#             eod_functions = MTTB_EOC_MAINTAIN.objects.filter(
+#                 eoc_type='EOD',
+#                 Auth_Status='A',
+#                 Record_Status='O'
+#             ).select_related('function_id').order_by('eoc_seq_no')
+
+#             if not eod_functions:
+#                 return False, "No active EOD functions found"
+
+#             total_executed = 0
+#             execution_results = []
+
+#             for eod_function in eod_functions:
+#                 func_success, func_message = execute_eod_function(eod_function, user, processing_date)
+#                 if not func_success:
+#                     return False, f"Function {eod_function.function_id.description_la} failed: {func_message}"
+#                 total_executed += 1
+#                 execution_results.append({
+#                     'function': eod_function.function_id.description_la,
+#                     'status': 'success',
+#                     'message': func_message
+#                 })
+#                 logger.info(f"EOD Function {eod_function.function_id.function_id} executed successfully for {processing_date}")
+
+#             return True, f"Successfully executed {total_executed} EOD functions for {processing_date}"
+
+#     except Exception as e:
+#         return False, f"Error in EOD process execution: {str(e)}"
+
+# def execute_eod_function(eod_function, user, processing_date):
+#     """
+#     Execute a specific EOD function (placeholder for actual implementation).
+#     """
+#     function_id = eod_function.function_id.function_id
+#     logger.info(f"Executing function {function_id} for {processing_date}")
+#     try:
+#         # Placeholder for actual function execution
+#         return True, f"Function {function_id} executed successfully"
+#     except Exception as e:
+#         return False, f"Error executing function {function_id}: {str(e)}"
+
+# def complete_normal_eod_and_create_next(user, processing_date):
+#     """
+#     Mark current normal EOD as completed and create next working day entry.
+#     """
+#     try:
+#         utc_tz = pytz.UTC
+#         current_time = timezone.now().astimezone(utc_tz)
+        
+#         # Get current EOD record
+#         current_eod = STTB_Dates.objects.latest('date_id')
+#         current_eod.eod_time = 'Y'
+#         current_eod.Checker_Id = user.user_name
+#         current_eod.Checker_DT_Stamp = current_time
+#         current_eod.save()
+        
+#         # Create next working day entry
+#         start_date = current_eod.next_working_Day.astimezone(utc_tz).date()
+#         start_date_dt = utc_tz.localize(datetime.combine(start_date, time(0, 0, 0)))
+        
+#         prev_working_date = current_eod.Start_Date.astimezone(utc_tz).date()
+#         prev_working_day_dt = utc_tz.localize(datetime.combine(prev_working_date, time(0, 0, 0)))
+        
+#         next_working_date = calculate_next_working_day(start_date + timedelta(days=1))
+#         next_working_day_dt = utc_tz.localize(datetime.combine(next_working_date, time(0, 0, 0)))
+        
+#         new_eod = STTB_Dates.objects.create(
+#             Start_Date=start_date_dt,
+#             prev_Working_Day=prev_working_day_dt,
+#             next_working_Day=next_working_day_dt,
+#             eod_time='N'
+#         )
+        
+#         logger.info(f"Normal EOD completed. New EOD created: ID={new_eod.date_id}, Start={start_date_dt}, Prev={prev_working_day_dt}, Next={next_working_day_dt}")
+#         return True, f"Normal EOD completed and new EOD created for {start_date_dt.date()}"
+        
+#     except Exception as e:
+#         return False, f"Error completing normal EOD: {str(e)}"
+
+# def calculate_next_working_day(date):
+#     """
+#     Calculate the next working day based on holiday calendar.
+#     """
+#     try:
+#         current_date = date
+#         max_iterations = 10
+#         iteration = 0
+
+#         while iteration < max_iterations:
+#             year_str = str(current_date.year)
+#             month_str = str(current_date.month).zfill(2)
+
+#             try:
+#                 holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+#                 holiday_list = holiday_record.Holiday_List
+
+#                 if len(holiday_list) >= current_date.day:
+#                     day_index = current_date.day - 1
+#                     if holiday_list[day_index] == 'W':
+#                         return current_date
+
+#             except MTTB_LCL_Holiday.DoesNotExist:
+#                 return current_date
+
+#             current_date = current_date + timedelta(days=1)
+#             iteration += 1
+
+#         logger.warning(f"Could not find next working day after {max_iterations} iterations, using fallback")
+#         return date + timedelta(days=1)
+#     except Exception as e:
+#         logger.error(f"Error calculating next working day: {str(e)}")
+#         return date + timedelta(days=1)
+
+# def clear_eod_journal_with_transaction(value_date):
+#     """
+#     Clear EOD journal entries for the specified date within a transaction.
+#     """
+#     try:
+#         if isinstance(value_date, str):
+#             value_date = datetime.strptime(value_date, '%Y-%m-%d').date()
+
+#         with transaction.atomic():
+#             cleared_count = 0
+#             cleared_details = []
+
+#             # Clear ACTB_DAIRY_LOG
+#             actb_count = ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).count()
+#             if actb_count > 0:
+#                 ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).delete()
+#                 cleared_count += actb_count
+#                 cleared_details.append(f"ACTB_DAIRY_LOG: {actb_count}")
+
+#             # Clear DETB_JRNL_LOG
+#             jrnl_count = DETB_JRNL_LOG.objects.filter(Value_date=value_date).count()
+#             if jrnl_count > 0:
+#                 DETB_JRNL_LOG.objects.filter(Value_date=value_date).delete()
+#                 cleared_count += jrnl_count
+#                 cleared_details.append(f"DETB_JRNL_LOG: {jrnl_count}")
+
+#             # Clear DETB_JRNL_LOG_MASTER
+#             master_count = DETB_JRNL_LOG_MASTER.objects.filter(Value_date=value_date).count()
+#             if master_count > 0:
+#                 DETB_JRNL_LOG_MASTER.objects.filter(Value_date=value_date).delete()
+#                 cleared_count += master_count
+#                 cleared_details.append(f"DETB_JRNL_LOG_MASTER: {master_count}")
+
+#             if cleared_count > 0:
+#                 details_str = ", ".join(cleared_details)
+#                 message = f"ລຶບຂໍ້ມູນ EOD ສຳເລັດສຳລັບວັນທີ {value_date} (ດ້ວຍ Transaction). ລາຍການທີ່ລຶບ: {details_str}. ລວມ: {cleared_count} ລາຍການ"
+#                 logger.info(f"EOD journal cleared with transaction for date {value_date}. Total: {cleared_count}")
+#                 return True, message
+#             else:
+#                 message = f"ບໍ່ມີຂໍ້ມູນ EOD ໃຫ້ລຶບສຳລັບວັນທີ {value_date}"
+#                 logger.info(f"No EOD journal entries found for date {value_date}")
+#                 return True, message
+
+#     except Exception as e:
+#         error_message = f"ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ EOD ດ້ວຍ Transaction ສຳລັບວັນທີ {value_date}: {str(e)}"
+#         logger.error(error_message)
+#         return False, error_message
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def check_journal_submission_available(request):
+#     """
+#     Check if journal submission is available for normal or back-date EOD.
+#     - Start_Date: The date that needs EOD processing (target date when eod_time='N').
+#     - next_working_Day: The date after EOD completion for normal journal entry.
+#     - eod_time: 'N' means Start_Date EOD is not completed; 'Y' means completed.
+#     """
+#     try:
+#         tz = pytz.timezone('Asia/Bangkok')
+#         today = timezone.now().astimezone(tz).date()
+#         logger.info(f"Checking journal submission availability for {today}")
+
+#         # Get bypass settings
+#         try:
+#             data_entry = MTTB_DATA_Entry.objects.filter().first()
+#             bypass_eod_check = data_entry and data_entry.BACK_VALUE == 'Y'
+#             bypass_working_day = data_entry and data_entry.MOD_NO == 'Y'
+#         except Exception:
+#             bypass_eod_check = False
+#             bypass_working_day = False
+
+#         logger.info(f"BACK_VALUE enabled: {bypass_eod_check}, MOD_NO enabled: {bypass_working_day}")
+
+#         # Get latest EOD record
+#         try:
+#             latest_eod = STTB_Dates.objects.latest('date_id')
+#         except STTB_Dates.DoesNotExist:
+#             return Response({
+#                 "available": False,
+#                 "reason": "No EOD records found in STTB_Dates"
+#             }, status=status.HTTP_200_OK)
+
+#         # Extract dates in UTC for consistency with database
+#         utc_tz = pytz.UTC
+#         date_that_needs_eod_processing = latest_eod.Start_Date.astimezone(utc_tz).date()
+#         date_for_normal_journal_entry = latest_eod.next_working_Day.astimezone(utc_tz).date()
+#         is_eod_completed = latest_eod.eod_time == 'Y'
+
+#         logger.info(f"Latest EOD record: date_id={latest_eod.date_id}, Start_Date={date_that_needs_eod_processing}, "
+#                     f"next_working_Day={date_for_normal_journal_entry}, eod_time={latest_eod.eod_time}")
+
+#         # Decision logic
+#         if is_eod_completed:
+#             # EOD is completed for date_that_needs_eod_processing
+#             if date_for_normal_journal_entry == today and (bypass_working_day or is_working_day(today)):
+#                 return Response({
+#                     "available": True,
+#                     "reason": f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. EOD ວັນທີ {date_that_needs_eod_processing} ສຳເລັດແລ້ວ.",
+#                     "target_date": today.isoformat(),
+#                     "is_back_date": False,
+#                     "current_eod": {
+#                         "date_id": latest_eod.date_id,
+#                         "processed_date": date_that_needs_eod_processing.isoformat(),
+#                         "journal_entry_date": date_for_normal_journal_entry.isoformat(),
+#                         "eod_status": "Y"
+#                     }
+#                 }, status=status.HTTP_200_OK)
+#             else:
+#                 return Response({
+#                     "available": False,
+#                     "reason": f"EOD ວັນທີ {date_that_needs_eod_processing} ສຳເລັດແລ້ວ ແຕ່ວັນທີບໍ່ຕົງກັນ ຫຼືບໍ່ແມ່ນວັນເຮັດວຽກ."
+#                 }, status=status.HTTP_200_OK)
+#         else:
+#             # EOD is not completed for date_that_needs_eod_processing
+#             if bypass_eod_check:
+#                 target_date_for_back_processing = date_that_needs_eod_processing
+#                 is_back_date = target_date_for_back_processing < today
+
+#                 logger.info(f"Back-date processing: target_date={target_date_for_back_processing}, is_back_date={is_back_date}")
+
+#                 return Response({
+#                     "available": True,
+#                     "reason": f"ອະນຸຍາດໃຫ້ບັນທຶກຍ້ອນຫຼັງ. ກຳລັງປະມວນຜົນ EOD ວັນທີ ({target_date_for_back_processing})",
+#                     "target_date": target_date_for_back_processing.isoformat(),
+#                     "is_back_date": is_back_date,
+#                     "back_value_enabled": True,
+#                     "current_eod": {
+#                         "date_id": latest_eod.date_id,
+#                         "eod_process_date": target_date_for_back_processing.isoformat(),
+#                         "next_working_day": date_for_normal_journal_entry.isoformat(),
+#                         "eod_status": "N"
+#                     }
+#                 }, status=status.HTTP_200_OK)
+#             else:
+#                 return Response({
+#                     "available": False,
+#                     "reason": f"EOD ວັນທີ ({date_that_needs_eod_processing}) ຍັງບໍ່ສຳເລັດ. ກະລຸນາສຳເລັດ EOD ກ່ອນບັນທຶກບັນຊີ."
+#                 }, status=status.HTTP_200_OK)
+
+#     except Exception as e:
+#         logger.error(f"Error checking journal submission availability: {str(e)}")
+#         return Response({
+#             "available": False,
+#             "reason": f"Error: {str(e)}"
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# def is_working_day(date):
+#     """
+#     Check if the given date is a working day based on holiday calendar.
+#     """
+#     try:
+#         year_str = str(date.year)
+#         month_str = str(date.month).zfill(2)
+#         try:
+#             holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+#             holiday_list = holiday_record.Holiday_List
+#             if len(holiday_list) >= date.day:
+#                 day_index = date.day - 1
+#                 return holiday_list[day_index] == 'W'
+#         except MTTB_LCL_Holiday.DoesNotExist:
+#             return True  # Assume working day if no holiday record
+#         return False
+#     except Exception as e:
+#         logger.error(f"Error checking working day: {str(e)}")
+#         return False
+
+# from django.utils import timezone
+# import pytz
+# import logging
+# from .models import STTB_Dates, MTTB_DATA_Entry, MTTB_LCL_Holiday
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from rest_framework import status
+
+# # Set up logging
+# logger = logging.getLogger(__name__)
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def check_journal_submission_available(request):
+#     """
+#     Check if journal submission is available for normal or back-date.
+#     FIELD MEANINGS:
+#     - Start_Date = The date open for journal entry and EOD processing when eod_time='N'
+#     - next_working_Day = The date after current Start_Date
+#     - eod_time = N means Start_Date is open for journal entry, EOD not completed yet
+#     - eod_time = Y means EOD completed for Start_Date, day closed for journal entry
+#     """
+#     try:
+#         tz = pytz.timezone('Asia/Bangkok')
+#         today = timezone.now().astimezone(tz).date()
+
+#         # Get bypass settings
+#         try:
+#             data_entry = MTTB_DATA_Entry.objects.filter().first()
+#             back_value_enabled = data_entry and data_entry.BACK_VALUE == 'Y'
+#             mod_no_enabled = data_entry and data_entry.MOD_NO == 'Y'
+#         except Exception:
+#             back_value_enabled = False
+#             mod_no_enabled = False
+
+#         # Get latest EOD record
+#         try:
+#             latest_eod = STTB_Dates.objects.latest('date_id')
+#         except STTB_Dates.DoesNotExist:
+#             return Response({
+#                 "available": False,
+#                 "reason": "No EOD records found."
+#             }, status=status.HTTP_200_OK)
+
+#         # Extract dates
+#         current_start_date = latest_eod.Start_Date.astimezone(tz).date()
+#         next_working_date = latest_eod.next_working_Day.astimezone(tz).date()
+#         is_eod_completed = latest_eod.eod_time == 'Y'
+
+#         logger.info(f"Latest EOD record: date_id={latest_eod.date_id}, Start_Date={current_start_date}, "
+#                     f"next_working_Day={next_working_date}, eod_time={latest_eod.eod_time}")
+
+#         # Decision logic
+#         if is_eod_completed:
+#             # EOD completed, journal submission closed for Start_Date
+#             return Response({
+#                 "available": False,
+#                 "reason": f"EOD already completed for {current_start_date}. Journal submission closed.",
+#                 "current_eod": {
+#                     "date_id": latest_eod.date_id,
+#                     "processed_date": current_start_date.isoformat(),
+#                     "journal_entry_date": next_working_date.isoformat(),
+#                     "eod_status": "Y"
+#                 }
+#             }, status=status.HTTP_200_OK)
+#         else:
+#             # EOD not completed, check if open for journal
+#             if current_start_date == today:
+#                 # Normal day check
+#                 if mod_no_enabled or is_working_day(today):
+#                     return Response({
+#                         "available": True,
+#                         "reason": f"Journal submission available for today ({today}).",
+#                         "target_date": today.isoformat(),
+#                         "is_back_date": False,
+#                         "current_eod": {
+#                             "date_id": latest_eod.date_id,
+#                             "eod_process_date": current_start_date.isoformat(),
+#                             "next_working_day": next_working_date.isoformat(),
+#                             "eod_status": "N"
+#                         }
+#                     }, status=status.HTTP_200_OK)
+#                 else:
+#                     return Response({
+#                         "available": False,
+#                         "reason": f"Today ({today}) is not a working day."
+#                     }, status=status.HTTP_200_OK)
+#             elif back_value_enabled:
+#                 # Back-date allowed
+#                 is_back_date = current_start_date < today
+#                 return Response({
+#                     "available": True,
+#                     "reason": f"Back-date journal submission allowed for {current_start_date}.",
+#                     "target_date": current_start_date.isoformat(),
+#                     "is_back_date": is_back_date,
+#                     "back_value_enabled": True,
+#                     "current_eod": {
+#                         "date_id": latest_eod.date_id,
+#                         "eod_process_date": current_start_date.isoformat(),
+#                         "next_working_day": next_working_date.isoformat(),
+#                         "eod_status": "N"
+#                     }
+#                 }, status=status.HTTP_200_OK)
+#             else:
+#                 # Neither normal nor back-date allowed
+#                 return Response({
+#                     "available": False,
+#                     "reason": f"EOD for previous date ({current_start_date}) not completed, and back-date not enabled."
+#                 }, status=status.HTTP_200_OK)
+
+#     except Exception as e:
+#         logger.error(f"Error in check_journal_submission_available: {str(e)}")
+#         return Response({
+#             "available": False,
+#             "reason": f"Error: {str(e)}"
+#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# def is_working_day(date):
+#     """
+#     Check if the given date is a working day based on holiday calendar.
+#     """
+#     try:
+#         year_str = str(date.year)
+#         month_str = str(date.month).zfill(2)
+#         holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+#         holiday_list = holiday_record.Holiday_List
+#         if len(holiday_list) != 31:
+#             return False
+#         day_index = date.day - 1
+#         return holiday_list[day_index] == 'W'
+#     except MTTB_LCL_Holiday.DoesNotExist:
+#         return True  # Assume working day if no record
+#     except Exception as e:
+#         logger.error(f"Error checking if {date} is working day: {str(e)}")
+#         return False
 from datetime import datetime, timedelta, time
 from django.utils import timezone
 from django.db import transaction
@@ -19732,65 +20334,84 @@ logger = logging.getLogger(__name__)
 @permission_classes([IsAuthenticated])
 def end_of_day_journal_view(request):
     """
-    API endpoint for back-date End of Day (EOD) journal processing with transaction support.
-    Handles back-date EOD for a specified target date and EOD ID.
+    API endpoint for End of Day (EOD) journal processing with transaction support.
+    Supports both normal and back-date EOD processing.
     """
     try:
-        # Extract target_date and eod_id from request
+        tz = pytz.timezone('Asia/Bangkok')
         target_date = request.data.get('target_date')
         eod_id = request.data.get('eod_id')
-
-        if not (target_date and eod_id):
-            raise Exception("target_date and eod_id are required for back-date EOD")
-
-        # Convert target_date to date object
-        tz = pytz.timezone('Asia/Bangkok')
-        if isinstance(target_date, str):
-            processing_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        
+        # Determine mode
+        if target_date and eod_id:
+            # Back-date mode
+            if isinstance(target_date, str):
+                processing_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+            else:
+                processing_date = target_date
+            is_back_date = True
+            logger.info(f"Starting BACK-DATE EOD process for date: {processing_date}, EOD ID: {eod_id}, User: {request.user}")
         else:
-            processing_date = target_date
-
-        logger.info(f"Starting back-date EOD process for date: {processing_date}, EOD ID: {eod_id}, User: {request.user}")
-
+            # Normal mode
+            value_date = request.data.get('value_date')
+            if not value_date:
+                processing_date = timezone.now().astimezone(tz).date()
+            elif isinstance(value_date, str):
+                processing_date = datetime.strptime(value_date, '%Y-%m-%d').date()
+            else:
+                processing_date = value_date
+            is_back_date = False
+            eod_id = None
+            logger.info(f"Starting NORMAL EOD process for date: {processing_date}, User: {request.user}")
+        
         with transaction.atomic():
-            # Step 1: Validate back-date EOD requirements
-            validation_success, validation_message = validate_backdate_eod_requirements(processing_date, eod_id)
+            # Step 1: Validate EOD requirements
+            if is_back_date:
+                validation_success, validation_message = validate_backdate_eod_requirements(processing_date, eod_id)
+            else:
+                validation_success, validation_message = validate_normal_eod_requirements(processing_date)
+            
             if not validation_success:
-                logger.error(f"Back-date EOD validation failed: {validation_message}")
+                logger.error(f"EOD validation failed: {validation_message}")
                 raise Exception(validation_message)
-
+            
             # Step 2: Validate all journals are approved
             journals_approved, journal_message = validate_journal_approvals(processing_date)
             if not journals_approved:
                 logger.error(f"Journal validation failed: {journal_message}")
                 raise Exception(journal_message)
-
+            
             # Step 3: Execute EOD functions
-            eod_success, eod_message = execute_eod_process(request.user, processing_date, is_back_date=True)
+            eod_success, eod_message = execute_eod_process(request.user, processing_date, is_back_date)
             if not eod_success:
                 logger.error(f"EOD process failed: {eod_message}")
                 raise Exception(eod_message)
-
+            
             # Step 4: Clear EOD journal
             clear_success, clear_message = clear_eod_journal_with_transaction(processing_date)
             if not clear_success:
                 logger.error(f"EOD journal clear failed: {clear_message}")
                 raise Exception(clear_message)
-
-            # Step 5: Complete back-date EOD and create next working day
-            complete_success, complete_message = complete_backdate_eod_and_create_next(eod_id, request.user, processing_date)
+            
+            # Step 5: Complete EOD and create next working day
+            if is_back_date:
+                complete_success, complete_message = complete_backdate_eod_and_create_next(eod_id, request.user, processing_date)
+            else:
+                complete_success, complete_message = complete_normal_eod_and_create_next(request.user, processing_date)
+            
             if not complete_success:
-                logger.error(f"Back-date EOD completion failed: {complete_message}")
+                logger.error(f"EOD completion failed: {complete_message}")
                 raise Exception(complete_message)
-
+            
             # All steps successful
-            final_message = f"ການປະມວນຜົນ EOD ຍ້ອນຫຼັງສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}"
-            logger.info(f"Back-date EOD process successful for {processing_date}")
+            mode_text = "back-date" if is_back_date else "normal"
+            final_message = f"ການປະມວນຜົນ EOD {mode_text} ສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}. ມື້ນີ້ຖືກສົ່ງແລ້ວ."
+            logger.info(f"{mode_text.upper()} EOD process successful for {processing_date}")
 
             return Response({
                 "message": final_message,
                 "success": True,
-                "is_back_date": True,
+                "is_back_date": is_back_date,
                 "processing_date": processing_date.isoformat(),
                 "details": {
                     "validation": validation_message,
@@ -19802,11 +20423,55 @@ def end_of_day_journal_view(request):
             }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        logger.error(f"Back-date EOD process failed for {processing_date if 'processing_date' in locals() else 'unknown date'}: {str(e)}")
+        logger.error(f"EOD process failed for {processing_date if 'processing_date' in locals() else 'unknown date'}: {str(e)}")
         return Response({
-            "error": f"ການປະມວນຜົນ EOD ຍ້ອນຫຼັງລົ້ມເຫລວ: {str(e)}",
+            "error": f"ການປະມວນຜົນ EOD ລົ້ມເຫລວ: {str(e)}",
             "success": False
         }, status=status.HTTP_400_BAD_REQUEST)
+
+def validate_normal_eod_requirements(processing_date):
+    """
+    Validates if normal EOD can be performed.
+    """
+    try:
+        tz = pytz.timezone('Asia/Bangkok')
+        year_str = str(processing_date.year)
+        month_str = str(processing_date.month).zfill(2)
+        
+        # Check MTTB_DATA_Entry for bypass settings
+        data_entry = MTTB_DATA_Entry.objects.filter().first()
+        mod_no_enabled = data_entry and data_entry.MOD_NO == 'Y'
+        
+        if not mod_no_enabled:
+            # Check if processing_date is a working day
+            try:
+                holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+                holiday_list = holiday_record.Holiday_List
+                if len(holiday_list) != 31:
+                    return False, "Invalid Holiday_List length. Must be 31 characters."
+                day_index = processing_date.day - 1
+                if holiday_list[day_index] != 'W':
+                    return False, f"{processing_date} is not a working day."
+            except MTTB_LCL_Holiday.DoesNotExist:
+                return False, f"No holiday record for {year_str}-{month_str}."
+        
+        # Check the latest STTB_Dates row
+        try:
+            latest_eod = STTB_Dates.objects.latest('date_id')
+        except STTB_Dates.DoesNotExist:
+            return False, "No records found in STTB_Dates."
+        
+        expected_start_date = latest_eod.Start_Date.astimezone(tz).date()
+        if expected_start_date != processing_date:
+            return False, f"Processing date ({processing_date}) does not match expected Start_Date ({expected_start_date})."
+        
+        if latest_eod.eod_time == 'Y':
+            return False, f"EOD already completed for {processing_date}."
+        
+        return True, f"Normal EOD validation passed for {processing_date}"
+
+    except Exception as e:
+        return False, f"Error in normal EOD validation: {str(e)}"
 
 def validate_backdate_eod_requirements(target_date, eod_id):
     """
@@ -19867,7 +20532,7 @@ def validate_journal_approvals(processing_date):
 
 def execute_eod_process(user, processing_date, is_back_date=False):
     """
-    Execute all EOD functions in sequence for back-date processing.
+    Execute all EOD functions in sequence for back-date or normal processing.
     """
     try:
         with transaction.atomic():
@@ -19912,13 +20577,59 @@ def execute_eod_function(eod_function, user, processing_date):
     except Exception as e:
         return False, f"Error executing function {function_id}: {str(e)}"
 
+def complete_normal_eod_and_create_next(user, processing_date):
+    """
+    Mark current normal EOD as completed and create next working day entry.
+    Creates new STTB_Dates record with:
+    Start_Date = current record's next_working_Day (e.g., 2025-08-12), with dynamic submission time
+    prev_Working_Day = current record's Start_Date (e.g., 2025-08-11), with dynamic submission time
+    next_working_Day = next working day after Start_Date (e.g., 2025-08-13), with 00:00:00 time
+    eod_time = N
+    """
+    try:
+        utc_tz = pytz.UTC
+        current_time = timezone.now().astimezone(utc_tz)
+        current_time_time = current_time.time()
+        
+        # Mark current EOD as completed
+        current_eod = STTB_Dates.objects.latest('date_id')
+        current_eod.eod_time = 'Y'
+        current_eod.Checker_Id = user.user_name
+        current_eod.Checker_DT_Stamp = current_time
+        current_eod.save()
+        
+        # Create next working day entry
+        start_date = current_eod.next_working_Day.astimezone(utc_tz).date()
+        print(f"Creating next EOD for start date: {start_date}")
+        start_date_dt = utc_tz.localize(datetime.combine(start_date, current_time_time))
+        print(f"Start date with time: {start_date_dt}")
+        
+        prev_working_date = current_eod.Start_Date.astimezone(utc_tz).date()
+        prev_working_day_dt = utc_tz.localize(datetime.combine(prev_working_date, current_time_time))
+        
+        next_working_date = calculate_next_working_day(start_date + timedelta(days=1))
+        next_working_day_dt = utc_tz.localize(datetime.combine(next_working_date, time(0, 0, 0)))
+        
+        new_eod = STTB_Dates.objects.create(
+            Start_Date=start_date_dt,
+            prev_Working_Day=prev_working_day_dt,
+            next_working_Day=next_working_day_dt,
+            eod_time='N'
+        )
+        
+        logger.info(f"Normal EOD completed. New EOD created: ID={new_eod.date_id}, Start={start_date_dt}, Prev={prev_working_day_dt}, Next={next_working_day_dt}")
+        return True, f"Normal EOD completed and new EOD created for {start_date_dt.date()}"
+
+    except Exception as e:
+        return False, f"Error completing normal EOD and creating next day: {str(e)}"
+
 def complete_backdate_eod_and_create_next(eod_id, user, processing_date):
     """
     Mark the back-date EOD as completed and create the next working day entry.
     Creates new STTB_Dates record with:
-    Start_Date = current record's next_working_Day (2025-08-11 08:48:41.937654 +00:00),
-    prev_Working_Day = current record's Start_Date (2025-08-08 08:48:41.937682 +00:00),
-    next_working_Day = next working day after Start_Date (2025-08-12 00:02:17.608938 +00:00),
+    Start_Date = current record's next_working_Day,
+    prev_Working_Day = current record's Start_Date,
+    next_working_Day = next working day after Start_Date,
     eod_time = N
     """
     try:
@@ -19937,19 +20648,15 @@ def complete_backdate_eod_and_create_next(eod_id, user, processing_date):
         eod_record.save()
 
         # Create next working day entry
-        # Use the next_working_Day from the current record as the new Start_Date
         start_date = eod_record.next_working_Day.astimezone(utc_tz).date()
-        start_date_dt = utc_tz.localize(datetime.combine(start_date, time(8, 48, 41, 937654)))
+        start_date_dt = utc_tz.localize(datetime.combine(start_date, time(4, 21, 54, 46981)))
 
-        # Previous working day is the current record's Start_Date
         prev_working_date = eod_record.Start_Date.astimezone(utc_tz).date()
-        prev_working_day_dt = utc_tz.localize(datetime.combine(prev_working_date, time(8, 48, 41, 937682)))
+        prev_working_day_dt = utc_tz.localize(datetime.combine(prev_working_date, time(4, 21, 54, 47002)))
 
-        # Calculate next working day after start_date
         next_working_date = calculate_next_working_day(start_date + timedelta(days=1))
-        next_working_day_dt = utc_tz.localize(datetime.combine(next_working_date, time(0, 2, 17, 608938)))
+        next_working_day_dt = utc_tz.localize(datetime.combine(next_working_date, time(0, 0, 0)))
 
-        # Create new EOD record
         new_eod = STTB_Dates.objects.create(
             Start_Date=start_date_dt,
             prev_Working_Day=prev_working_day_dt,
@@ -20049,26 +20756,27 @@ def clear_eod_journal_with_transaction(value_date):
 @permission_classes([IsAuthenticated])
 def check_journal_submission_available(request):
     """
-    Check if journal submission is available for normal or back-date EOD.
-    - Start_Date: The date that needs EOD processing (target date when eod_time='N').
-    - next_working_Day: The date after EOD completion for normal journal entry.
-    - eod_time: 'N' means Start_Date EOD is not completed; 'Y' means completed.
+    Check if journal submission is available for normal or back-date.
+    FIELD MEANINGS:
+    - Start_Date = The date open for journal entry and EOD processing when eod_time='N'
+    - next_working_Day = The date after current Start_Date
+    - eod_time = N means Start_Date is open for journal entry, EOD not completed yet
+    - eod_time = Y means EOD completed for Start_Date, day closed for journal entry
     """
     try:
         tz = pytz.timezone('Asia/Bangkok')
         today = timezone.now().astimezone(tz).date()
-        logger.info(f"Checking journal submission availability for {today}")
 
         # Get bypass settings
         try:
             data_entry = MTTB_DATA_Entry.objects.filter().first()
-            bypass_eod_check = data_entry and data_entry.BACK_VALUE == 'Y'
-            bypass_working_day = data_entry and data_entry.MOD_NO == 'Y'
+            back_value_enabled = data_entry and data_entry.BACK_VALUE == 'Y'
+            mod_no_enabled = data_entry and data_entry.MOD_NO == 'Y'
         except Exception:
-            bypass_eod_check = False
-            bypass_working_day = False
+            back_value_enabled = False
+            mod_no_enabled = False
 
-        logger.info(f"BACK_VALUE enabled: {bypass_eod_check}, MOD_NO enabled: {bypass_working_day}")
+        logger.info(f"Checking journal submission availability for {today}, BACK_VALUE={back_value_enabled}, MOD_NO={mod_no_enabled}")
 
         # Get latest EOD record
         try:
@@ -20076,68 +20784,78 @@ def check_journal_submission_available(request):
         except STTB_Dates.DoesNotExist:
             return Response({
                 "available": False,
-                "reason": "No EOD records found in STTB_Dates"
+                "reason": "No EOD records found."
             }, status=status.HTTP_200_OK)
 
-        # Extract dates in UTC for consistency with database
+        # Extract dates
         utc_tz = pytz.UTC
-        date_that_needs_eod_processing = latest_eod.Start_Date.astimezone(utc_tz).date()
-        date_for_normal_journal_entry = latest_eod.next_working_Day.astimezone(utc_tz).date()
+        current_start_date = latest_eod.Start_Date.astimezone(utc_tz).date()
+        next_working_date = latest_eod.next_working_Day.astimezone(utc_tz).date()
         is_eod_completed = latest_eod.eod_time == 'Y'
 
-        logger.info(f"Latest EOD record: date_id={latest_eod.date_id}, Start_Date={date_that_needs_eod_processing}, "
-                    f"next_working_Day={date_for_normal_journal_entry}, eod_time={latest_eod.eod_time}")
+        logger.info(f"Latest EOD record: date_id={latest_eod.date_id}, Start_Date={current_start_date}, "
+                    f"next_working_Day={next_working_date}, eod_time={latest_eod.eod_time}")
 
         # Decision logic
         if is_eod_completed:
-            # EOD is completed for date_that_needs_eod_processing
-            if date_for_normal_journal_entry == today and (bypass_working_day or is_working_day(today)):
-                return Response({
-                    "available": True,
-                    "reason": f"ມື້ນີ້ວັນທີ ({today}) ສາມາດບັນທຶກບັນຊີໄດ້. EOD ວັນທີ {date_that_needs_eod_processing} ສຳເລັດແລ້ວ.",
-                    "target_date": today.isoformat(),
-                    "is_back_date": False,
-                    "current_eod": {
-                        "date_id": latest_eod.date_id,
-                        "processed_date": date_that_needs_eod_processing.isoformat(),
-                        "journal_entry_date": date_for_normal_journal_entry.isoformat(),
-                        "eod_status": "Y"
-                    }
-                }, status=status.HTTP_200_OK)
-            else:
-                return Response({
-                    "available": False,
-                    "reason": f"EOD ວັນທີ {date_that_needs_eod_processing} ສຳເລັດແລ້ວ ແຕ່ວັນທີບໍ່ຕົງກັນ ຫຼືບໍ່ແມ່ນວັນເຮັດວຽກ."
-                }, status=status.HTTP_200_OK)
+            # EOD completed, journal submission closed for Start_Date
+            return Response({
+                "available": False,
+                "reason": f"EOD already completed for {current_start_date}. Journal submission closed.",
+                "current_eod": {
+                    "date_id": latest_eod.date_id,
+                    "processed_date": current_start_date.isoformat(),
+                    "journal_entry_date": next_working_date.isoformat(),
+                    "eod_status": "Y"
+                }
+            }, status=status.HTTP_200_OK)
         else:
-            # EOD is not completed for date_that_needs_eod_processing
-            if bypass_eod_check:
-                target_date_for_back_processing = date_that_needs_eod_processing
-                is_back_date = target_date_for_back_processing < today
-
-                logger.info(f"Back-date processing: target_date={target_date_for_back_processing}, is_back_date={is_back_date}")
-
+            # EOD not completed, check if open for journal
+            if current_start_date == today:
+                # Normal day check
+                if mod_no_enabled or is_working_day(today):
+                    return Response({
+                        "available": True,
+                        "reason": f"Journal submission available for today ({today}).",
+                        "target_date": today.isoformat(),
+                        "is_back_date": False,
+                        "current_eod": {
+                            "date_id": latest_eod.date_id,
+                            "eod_process_date": current_start_date.isoformat(),
+                            "next_working_day": next_working_date.isoformat(),
+                            "eod_status": "N"
+                        }
+                    }, status=status.HTTP_200_OK)
+                else:
+                    return Response({
+                        "available": False,
+                        "reason": f"Today ({today}) is not a working day."
+                    }, status=status.HTTP_200_OK)
+            elif back_value_enabled:
+                # Back-date allowed
+                is_back_date = current_start_date < today
                 return Response({
                     "available": True,
-                    "reason": f"ອະນຸຍາດໃຫ້ບັນທຶກຍ້ອນຫຼັງ. ກຳລັງປະມວນຜົນ EOD ວັນທີ ({target_date_for_back_processing})",
-                    "target_date": target_date_for_back_processing.isoformat(),
+                    "reason": f"Back-date journal submission allowed for {current_start_date}.",
+                    "target_date": current_start_date.isoformat(),
                     "is_back_date": is_back_date,
                     "back_value_enabled": True,
                     "current_eod": {
                         "date_id": latest_eod.date_id,
-                        "eod_process_date": target_date_for_back_processing.isoformat(),
-                        "next_working_day": date_for_normal_journal_entry.isoformat(),
+                        "eod_process_date": current_start_date.isoformat(),
+                        "next_working_day": next_working_date.isoformat(),
                         "eod_status": "N"
                     }
                 }, status=status.HTTP_200_OK)
             else:
+                # Neither normal nor back-date allowed
                 return Response({
                     "available": False,
-                    "reason": f"EOD ວັນທີ ({date_that_needs_eod_processing}) ຍັງບໍ່ສຳເລັດ. ກະລຸນາສຳເລັດ EOD ກ່ອນບັນທຶກບັນຊີ."
+                    "reason": f"EOD for previous date ({current_start_date}) not completed, and back-date not enabled."
                 }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        logger.error(f"Error checking journal submission availability: {str(e)}")
+        logger.error(f"Error in check_journal_submission_available: {str(e)}")
         return Response({
             "available": False,
             "reason": f"Error: {str(e)}"
@@ -20153,13 +20871,15 @@ def is_working_day(date):
         try:
             holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
             holiday_list = holiday_record.Holiday_List
-            if len(holiday_list) >= date.day:
-                day_index = date.day - 1
-                return holiday_list[day_index] == 'W'
+            if len(holiday_list) != 31:
+                return False
+            day_index = date.day - 1
+            return holiday_list[day_index] == 'W'
         except MTTB_LCL_Holiday.DoesNotExist:
-            return True  # Assume working day if no holiday record
-        return False
+            return True  # Assume working day if no record
+        except Exception as e:
+            logger.error(f"Error checking if {date} is working day: {str(e)}")
+            return False
     except Exception as e:
-        logger.error(f"Error checking working day: {str(e)}")
-        return False
-
+        logger.error(f"Error in is_working_day function: {str(e)}")
+#     return False  # Default to not a working day if any error occurs

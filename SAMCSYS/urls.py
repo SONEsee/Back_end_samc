@@ -212,6 +212,7 @@ urlpatterns = [
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
 
+    # Pid Bunsy nai mue 
     path('api/end-of-day-journal/', end_of_day_journal_view , name='end-of-day-journal'),
 
     
