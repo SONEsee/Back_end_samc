@@ -87,17 +87,36 @@ from .views import (
     calculate_depreciation_schedule,
     calculate_depreciation_api_with_journal,
     FAAssetListDepreciationInMonthViewSet,
+
     overdue_depreciation_api,
-    trial_balance_view,
+    # trial_balance_view,
     # DairyReportViewSet,
     bulk_insert_dairy_report,
-    trial_balance_view_allccy,
     bulk_delete,
-    bulk_insert_allcurrency,
-    check_journal_submission_available_test,
-    balance_sheet_view,
-
-    
+    # bulk_insert_allcurrency,
+    #Store Procedure
+    trial_balance_consolidated_view,
+    trial_balance_fcy_view,
+    trial_balance_fcy_get_view,
+    # trial_balance_fcy_currencies_view,
+    TrialBalanceFCYViewSet,
+    bulk_insert_dairy_reports,
+    CompanyProfileViewSet,
+    BalanceSheetViewSet,
+    MainTrialBalanceViewSet,
+    main_trial_balance_all_currency_view,
+    main_trial_balance_by_currency_view,
+    main_trial_balance_by_currency_get_view,
+    income_statement_acc_view,
+    income_statement_acc_get_view,
+    income_statement_mfi_get_view,
+    income_statement_mfi_view,    
+    IncomeStatementViewSet,
+    FAAssetAuditViewSet,
+    balance_sheet_acc_view,
+    balance_sheet_mfi_view,
+    balance_sheet_acc_get_view,
+    balance_sheet_mfi_get_view,
 
 )
 from rest_framework_simplejwt.views import (
@@ -157,6 +176,13 @@ router.register(r'asset_list_dpca_inmain', FAAssetListDepreciationInMonthViewSet
 router.register(r'eoc-maintain', EOCMaintainViewSet, basename='eoc-maintain')
 router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
+router.register(r'trial-balance-fcy', TrialBalanceFCYViewSet, basename='trial-balance-fcy')
+router.register(r'companies', CompanyProfileViewSet, basename='company-profile')
+router.register(r'main-trial-balance', MainTrialBalanceViewSet, basename='main-trial-balance')
+router.register(r'income-statement', IncomeStatementViewSet, basename='income-statement')
+router.register(r'asset_audit', FAAssetAuditViewSet, basename='FAAssetAudit')
+# router.register(r'dairy-report', DairyReportViewSet)
+router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 app_name = 'depreciation'
 
 urlpatterns = [
@@ -186,20 +212,42 @@ urlpatterns = [
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
     path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'), # <----- TIK Function Pid Bunsy nai mue
     path('api/end-of-day-journal/check/', check_journal_submission_available), # <----- TIK Function Kuad karn pid bunsy
-    path('api/end-of-day-journal/check-test/', check_journal_submission_available_test),
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
     path('api/depreciation-with-journal/', calculate_depreciation_api_with_journal, name='depreciation_with_journal'),
-    path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
-    path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
+    # path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
+    # path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
     path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
     path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
-    path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
-    path('api/balance-sheet/', balance_sheet_view, name='balance-sheet-view'),
-    
+    # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
-    
-    
+
+    # Store Procedure <---- Main Trial Balance ------>
+    path('api/main-trial-balance/all-currencies/', main_trial_balance_all_currency_view, name='main-trial-balance-all'),
+    path('api/main-trial-balance/by-currency/', main_trial_balance_by_currency_view, name='main-trial-balance-by-currency-post'),
+    path('api/main-trial-balance/by-currency/get/', main_trial_balance_by_currency_get_view, name='main-trial-balance-by-currency-get'),
+
+
+    # Store Procedure <---- Sub Trail Balance ------>
+    path('api/trial-balance/consolidated/', 
+         trial_balance_consolidated_view, 
+         name='trial_balance_consolidated'),
+    path('api/trial-balance/fcy/', trial_balance_fcy_view, name='trial-balance-fcy-post'),
+    path('api/trial-balance/fcy/get/', trial_balance_fcy_get_view, name='trial-balance-fcy-get'),
+    path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
+
+    # Stroe Procedure <---- Balance Sheet ------>
+    path('api/balance-sheet/acc/', balance_sheet_acc_view, name='balance-sheet-acc'),
+    path('api/balance-sheet/mfi/', balance_sheet_mfi_view, name='balance-sheet-mfi'),
+    path('api/balance-sheet/acc/get/', balance_sheet_acc_get_view, name='balance-sheet-acc-get'),
+    path('api/balance-sheet/mfi/get/', balance_sheet_mfi_get_view, name='balance-sheet-mfi-get'),
+
+    #Store Procedure <---- Income Statement ------>
+    path('api/income-statement/acc/', income_statement_acc_view, name='income-statement-acc-post'),
+    path('api/income-statement/acc/get/', income_statement_acc_get_view, name='income-statement-acc-get'),
+    path('api/income-statement/mfi/', income_statement_mfi_view, name='income-statement-mfi-post'),
+    path('api/income-statement/mfi/get/', income_statement_mfi_get_view, name='income-statement-mfi-get'),
+
     # Force logout endpoints (standalone)
     path('api/verify-token/',verify_token, name='verify-token'),
     path('api/force-logout/<str:user_id>/',force_logout_user, name='force-logout'),

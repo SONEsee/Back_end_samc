@@ -868,17 +868,17 @@ class STTB_EOC_STATUS(models.Model):
 
 class STTB_EOC_DAILY_LOG(models.Model):
     ac_entry_sr_no = models.AutoField(primary_key=True)
-    module = models.CharField(max_length=2)
+    module_id = models.CharField(max_length=2)
     trn_ref_no = models.CharField(max_length=35)
     trn_ref_sub_no = models.CharField(max_length=35, null=True, blank=True)
     event_sr_no = models.IntegerField(null=True, blank=True)
     event = models.CharField(max_length=4, null=True, blank=True)
-    ac_no = models.CharField(max_length=50)
+    ac_no_id = models.CharField(max_length=50)
     ac_no_full = models.CharField(max_length=50, null=True, blank=True)
-    gl_acc_relative = models.CharField(max_length=100, null=True, blank=True)
-    ac_ccy = models.CharField(max_length=3)
+    ac_relative = models.CharField(max_length=100, null=True, blank=True)
+    ac_ccy_id = models.CharField(max_length=3)
     drcr_ind = models.CharField(max_length=1)
-    trn_code = models.CharField(max_length=3)
+    trn_code_id = models.CharField(max_length=3)
     fcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     fcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     lcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
@@ -890,18 +890,20 @@ class STTB_EOC_DAILY_LOG(models.Model):
     addl_text = models.CharField(max_length=255, null=True, blank=True)
     addl_sub_text = models.CharField(max_length=255, null=True, blank=True)
     trn_dt = models.DateField(null=True, blank=True)
-    type = models.CharField(max_length=1, null=True, blank=True)
+    glid_id = models.CharField(max_length=50, null=True, blank=True)
+    glType = models.CharField(max_length=1, null=True, blank=True)
     category = models.CharField(max_length=1, null=True, blank=True)
     value_dt = models.DateField(null=True, blank=True)
-    financial_cycle = models.CharField(max_length=9)
-    period_code = models.CharField(max_length=6)
-    Maker_id = models.CharField(max_length=12, null=True, blank=True)
+    financial_cycle_id = models.CharField(max_length=9)
+    period_code_id = models.CharField(max_length=6)
+    Maker_id_id = models.CharField(max_length=12, null=True, blank=True)
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_id = models.CharField(max_length=12, null=True, blank=True)
+    Checker_id_id = models.CharField(max_length=12, null=True, blank=True)
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     product = models.CharField(max_length=4, null=True, blank=True)
-    entry_seq_no = models.IntegerField(null=True, blank=True)       
+    entry_seq_no = models.IntegerField(null=True, blank=True)
+    delete_stat = models.CharField(max_length=1, null=True, blank=True)       
 
     class Meta:
         verbose_name_plural = 'EOC_DAILY_LOG'
@@ -1885,6 +1887,18 @@ class Dairy_Report(models.Model):
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_dairy_report')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
 
+class Cashflow_Acc(models.Model):
+    no = models.IntegerField(primary_key=True)
+    report_number = models.CharField(max_length=10, null=True, blank=True)
+    description = models.CharField(max_length=500, null=True, blank=True)
+    formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
+    Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
+    category = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
+    is_subtotal = models.BooleanField(default=False, null=True, blank=True)
+    is_total = models.BooleanField(default=False)
+    class Meta:
+        verbose_name_plural = 'Cashflow_Acc'
 
 from django.core.validators import RegexValidator, MinLengthValidator, URLValidator, EmailValidator
 class CompanyProfileInfo(models.Model):
@@ -1937,3 +1951,48 @@ class CompanyProfileInfo(models.Model):
 
     def __str__(self):
         return self.name
+
+#new asset audit model
+class FA_Asset_Audit(models.Model):
+    audit_id = models.AutoField(primary_key=True)
+    audit_year = models.CharField(max_length=4, null=True, blank=True)
+    audit_period = models.CharField(max_length=20, null=True, blank=True)
+    asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)
+    audit_date = models.DateField(null=True, blank=True)
+    auditor_name = models.CharField(max_length=100, null=True, blank=True)
+    department_id = models.ForeignKey(MTTB_Divisions, null=True, blank=True, on_delete=models.CASCADE)
+    physical_status = models.CharField(max_length=20, null=True, blank=True)
+    condition_status = models.CharField(max_length=15, null=True, blank=True)
+    location_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    actual_location = models.CharField(max_length=200, null=True, blank=True)
+    book_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    estimated_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    depreciation_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    accumulated_depreciation = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    remaining_useful_life = models.IntegerField(null=True, blank=True)
+    serial_number_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    tag_number_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    insurance_coverage = models.CharField(max_length=1, null=True, blank=True, default='N')
+    maintenance_required = models.CharField(max_length=1, null=True, blank=True, default='N')
+    replacement_recommended = models.CharField(max_length=1, null=True, blank=True, default='N')
+    disposal_recommended = models.CharField(max_length=1, null=True, blank=True, default='N')
+    audit_findings = models.TextField(null=True, blank=True)
+    recommendations = models.TextField(null=True, blank=True)
+    photos_attached = models.ImageField(upload_to='audit_photos/',null=True,blank=True)
+    documents_verified = models.CharField(max_length=1, null=True, blank=True, default='N')
+    follow_up_required = models.CharField(max_length=1, null=True, blank=True, default='N')
+    follow_up_date = models.DateField(null=True, blank=True)
+    audit_status = models.CharField(max_length=20, null=True, blank=True)
+    reviewer_name = models.CharField(max_length=100, null=True, blank=True)
+    review_date = models.DateField(null=True, blank=True)
+    approver_name = models.CharField(max_length=100, null=True, blank=True)
+    approval_date = models.DateField(null=True, blank=True)
+    remarks = models.TextField(max_length=1000, null=True, blank=True)
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_FA_asset_audit')
+    Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_FA_asset_audit')
+    Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'FA_Asset_Audit'
