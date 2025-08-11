@@ -868,17 +868,17 @@ class STTB_EOC_STATUS(models.Model):
 
 class STTB_EOC_DAILY_LOG(models.Model):
     ac_entry_sr_no = models.AutoField(primary_key=True)
-    module = models.CharField(max_length=2)
+    module_id = models.CharField(max_length=2)
     trn_ref_no = models.CharField(max_length=35)
     trn_ref_sub_no = models.CharField(max_length=35, null=True, blank=True)
     event_sr_no = models.IntegerField(null=True, blank=True)
     event = models.CharField(max_length=4, null=True, blank=True)
-    ac_no = models.CharField(max_length=50)
+    ac_no_id = models.CharField(max_length=50)
     ac_no_full = models.CharField(max_length=50, null=True, blank=True)
-    gl_acc_relative = models.CharField(max_length=100, null=True, blank=True)
-    ac_ccy = models.CharField(max_length=3)
+    ac_relative = models.CharField(max_length=100, null=True, blank=True)
+    ac_ccy_id = models.CharField(max_length=3)
     drcr_ind = models.CharField(max_length=1)
-    trn_code = models.CharField(max_length=3)
+    trn_code_id = models.CharField(max_length=3)
     fcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     fcy_cr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
     lcy_dr = models.DecimalField(max_digits=22, decimal_places=3, null=True, blank=True)
@@ -890,18 +890,20 @@ class STTB_EOC_DAILY_LOG(models.Model):
     addl_text = models.CharField(max_length=255, null=True, blank=True)
     addl_sub_text = models.CharField(max_length=255, null=True, blank=True)
     trn_dt = models.DateField(null=True, blank=True)
-    type = models.CharField(max_length=1, null=True, blank=True)
+    glid_id = models.CharField(max_length=50, null=True, blank=True)
+    glType = models.CharField(max_length=1, null=True, blank=True)
     category = models.CharField(max_length=1, null=True, blank=True)
     value_dt = models.DateField(null=True, blank=True)
-    financial_cycle = models.CharField(max_length=9)
-    period_code = models.CharField(max_length=6)
-    Maker_id = models.CharField(max_length=12, null=True, blank=True)
+    financial_cycle_id = models.CharField(max_length=9)
+    period_code_id = models.CharField(max_length=6)
+    Maker_id_id = models.CharField(max_length=12, null=True, blank=True)
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_id = models.CharField(max_length=12, null=True, blank=True)
+    Checker_id_id = models.CharField(max_length=12, null=True, blank=True)
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     product = models.CharField(max_length=4, null=True, blank=True)
-    entry_seq_no = models.IntegerField(null=True, blank=True)       
+    entry_seq_no = models.IntegerField(null=True, blank=True)
+    delete_stat = models.CharField(max_length=1, null=True, blank=True)       
 
     class Meta:
         verbose_name_plural = 'EOC_DAILY_LOG'
@@ -1950,7 +1952,8 @@ class CompanyProfileInfo(models.Model):
     def __str__(self):
         return self.name
 
-class Annual_Asset_Audit(models.Model):
+#new asset audit model
+class FA_Asset_Audit(models.Model):
     audit_id = models.AutoField(primary_key=True)
     audit_year = models.CharField(max_length=4, null=True, blank=True)
     audit_period = models.CharField(max_length=20, null=True, blank=True)
@@ -1986,10 +1989,10 @@ class Annual_Asset_Audit(models.Model):
     approval_date = models.DateField(null=True, blank=True)
     remarks = models.TextField(max_length=1000, null=True, blank=True)
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
-    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_annual_asset_audit')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_FA_asset_audit')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_annual_asset_audit')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_FA_asset_audit')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = 'Annual_Asset_Audit'
+        verbose_name_plural = 'FA_Asset_Audit'

@@ -19644,15 +19644,15 @@ class IncomeStatementViewSet(viewsets.ViewSet):
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from .models import Annual_Asset_Audit
-from .serializers import AnnualAssetAuditSerializer
+from .models import FA_Asset_Audit
+from .serializers import FAAssetAuditSerializer
 
-class AnnualAssetAuditViewSet(viewsets.ModelViewSet):
-    serializer_class = AnnualAssetAuditSerializer
+class FAAssetAuditViewSet(viewsets.ModelViewSet):
+    serializer_class = FAAssetAuditSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Annual_Asset_Audit.objects.select_related(
+        queryset = FA_Asset_Audit.objects.select_related(
             'asset_list_id', 'department_id'
         ).all().order_by('-audit_id')
 
