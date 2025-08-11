@@ -795,6 +795,7 @@ class FAExpenseCategorySerializer(serializers.ModelSerializer):
         model = FA_Expense_Category
         fields = '__all__'
 
+#change on chart serial
 class FAAssetListSerializer(serializers.ModelSerializer):
     asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
