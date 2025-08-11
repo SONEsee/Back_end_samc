@@ -171,7 +171,7 @@ DATABASES = {
     # }
    'default': {
         'ENGINE': 'mssql',                
-        'NAME': 'SAMCDB_Dev',          
+        'NAME': 'SAMCDB',          
         'USER': 'sa',            
         'PASSWORD': 'mess!Q@083@@',
         'HOST': '192.168.10.35',  

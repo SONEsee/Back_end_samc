@@ -14941,7 +14941,7 @@ def process_monthly_depreciation(mapping_id, user_id=None, date=None):
             new_remaining = asset_value - new_accumulated  # ໃຊ້ asset_value ໃນ safety check
             calculation_note += f" | ປັບປ່ຽນເພື່ອໃຫ້ accumulated = {depreciable_amount:,.0f}"
         
-        # ✅ ຜົນລັບແບບ Enhanced
+        
         return {
             'success': True,
             'depreciation_processed': {
