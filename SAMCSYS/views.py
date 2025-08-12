@@ -12300,6 +12300,522 @@ def calculate_depreciation_api_with_journal(request):
         }
         print("API with Journal Error Details:", error_details)
         return JsonResponse(error_details, status=500)
+    
+
+def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
+    """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດເດືອນປະຈຸບັນ"""
+    try:
+        # ກວດສອບສະຖານະກ່ອນ
+        calc_result = calculate_depreciation_schedule(mapping_id)
+        if 'error' in calc_result:
+            return calc_result
+        
+        # ດຶງຂໍ້ມູນ asset
+        accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+        if accounting_method.asset_list_id:
+            asset = accounting_method.asset_list_id
+        else:
+            asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+        
+        # ✅ ຂໍ້ມູນພື້ນຖານ
+        start_date = asset.dpca_start_date
+        useful_life = int(asset.asset_useful_life)
+        total_months = useful_life * 12
+        end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+        
+        # ກຳນົດ current_date
+        if current_date:
+            target_date = datetime.strptime(current_date, '%Y-%m-%d').date()
+        else:
+            target_date = datetime.now().date()
+        
+        # ✅ ຄິດໄລຍະເວລາທີ່ຕ້ອງຫັກ
+        actual_end_date = min(end_date, target_date)
+        
+        # ຄິດຈຳນວນເດືອນທີ່ຕ້ອງຫັກ
+        months_to_process = []
+        current_month_start = start_date
+        month_counter = 1
+        
+        while current_month_start <= actual_end_date:
+            # ວັນເລີ່ມຕົ້ນແລະສິ້ນສຸດຂອງເດືອນ
+            if month_counter == 1:
+                month_actual_start = start_date
+                month_end = datetime(start_date.year, start_date.month, 
+                                   get_last_day_of_month(start_date.year, start_date.month)).date()
+            else:
+                month_actual_start = datetime(current_month_start.year, current_month_start.month, 1).date()
+                month_end = datetime(current_month_start.year, current_month_start.month,
+                                   get_last_day_of_month(current_month_start.year, current_month_start.month)).date()
+            
+            if month_end > actual_end_date:
+                month_end = actual_end_date
+            
+            months_to_process.append({
+                'month_number': month_counter,
+                'start_date': month_actual_start,
+                'end_date': month_end,
+                'year_month': f"{current_month_start.year}-{current_month_start.month:02d}"
+            })
+            
+            current_month_start = current_month_start + relativedelta(months=1)
+            month_counter += 1
+            
+            if month_counter > total_months:
+                break
+        
+        # ✅ ຄິດຄ່າເສື່ອມ
+        asset_value = Decimal(str(asset.asset_value or 0))
+        salvage_value = Decimal(str(asset.asset_salvage_value or 0))
+        depreciable_amount = asset_value - salvage_value
+        old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
+        
+        annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+        monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+        # ຄິດຄ່າເສື່ອມແຕ່ລະເດືອນ
+        monthly_details = []
+        total_depreciation = Decimal('0')
+        is_asset_completed = actual_end_date >= end_date
+        
+        for i, month_data in enumerate(months_to_process):
+            month_num = month_data['month_number']
+            month_start = month_data['start_date']
+            month_end = month_data['end_date']
+            
+            days_in_period = (month_end - month_start + timedelta(days=1)).days
+            total_days_in_month = get_last_day_of_month(month_start.year, month_start.month)
+            
+            is_first_month = (month_num == 1)
+            is_last_month_of_asset = (month_num == total_months) and is_asset_completed
+            
+            # ✅ ຄິດຄ່າເສື່ອມຕາມປະເພດງວດ
+            if is_first_month:
+                month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+                                    Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                period_type = "ງວດທຳອິດ"
+                calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+                
+            elif is_last_month_of_asset:
+                remaining_to_depreciate = depreciable_amount - (old_accumulated + total_depreciation)
+                month_depreciation = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                period_type = "ງວດສຸດທ້າຍ (ຄົບອາຍຸ)"
+                calculation_note = f"ປັບໃຫ້ຄົບ {depreciable_amount:,.0f} ກີບ (ເຫຼືອ {remaining_to_depreciate:,.2f})"
+                
+            else:
+                if days_in_period == total_days_in_month:
+                    month_depreciation = monthly_depreciation
+                    period_type = "ງວດປົກກະຕິ (ເຕັມເດືອນ)"
+                    calculation_note = f"ເຕັມເດືອນ = {monthly_depreciation:,.2f}"
+                else:
+                    month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+                                        Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    period_type = "ງວດປົກກະຕິ (ບາງສ່ວນ)"
+                    calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+            
+            total_depreciation += month_depreciation
+            
+            monthly_details.append({
+                'month_number': month_num,
+                'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+                'month_year': f"{get_month_name_la(month_start.month)} {month_start.year}",
+                'days_count': days_in_period,
+                'total_days_in_month': total_days_in_month,
+                'period_type': period_type,
+                'monthly_depreciation': float(month_depreciation),
+                'calculation_note': calculation_note
+            })
+        
+        # ✅ ຄິດຜົນລວມ
+        new_accumulated = old_accumulated + total_depreciation
+        new_remaining = asset_value - new_accumulated
+        
+        if new_accumulated > depreciable_amount:
+            excess = new_accumulated - depreciable_amount
+            total_depreciation = total_depreciation - excess
+            new_accumulated = depreciable_amount
+            new_remaining = salvage_value
+        
+        months_processed = len(months_to_process)
+        is_fully_depreciated = new_accumulated >= depreciable_amount
+        
+        return {
+            'success': True,
+            'bulk_depreciation_processed': {
+                'processing_period': f"{start_date.strftime('%d/%m/%Y')} - {actual_end_date.strftime('%d/%m/%Y')}",
+                'months_processed': months_processed,
+                'total_depreciation': float(total_depreciation),
+                'old_accumulated': float(old_accumulated),
+                'new_accumulated': float(new_accumulated),
+                'remaining_value': float(new_remaining),
+                'is_asset_completed': is_asset_completed,
+                'is_fully_depreciated': is_fully_depreciated,
+                'monthly_breakdown': monthly_details,
+                'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ"
+            },
+            'updated_status': {
+                'C_dpac': months_processed,
+                'total_months': total_months,
+                'remaining_months': max(0, total_months - months_processed),
+                'is_completed': is_fully_depreciated or months_processed >= total_months,
+                'completion_status': "ຫັກຄົບແລ້ວ" if is_fully_depreciated else f"ຫັກແລ້ວ {months_processed}/{total_months} ເດືອນ"
+            }
+        }
+        
+    except Exception as e:
+        return {"error": f"Bulk depreciation catch-up error: {str(e)}"}
+
+
+# ✅ Helper function ສຳລັບທົດສອບ
+def test_bulk_depreciation():
+    """ຟັງຊັນທົດສອບ bulk depreciation"""
+    
+    # Test data
+    test_cases = [
+        {
+            'name': 'Case 1: ເລີ່ມ 2023, 3 ປີ, ຕອນນີ້ 2025',
+            'start_date': '2023-01-15',
+            'useful_life': 3,
+            'asset_value': 1000000,
+            'salvage_value': 100000,
+            'current_date': '2025-08-31'
+        },
+        {
+            'name': 'Case 2: ເລີ່ມ 2024, 5 ປີ, ຕອນນີ້ 2025', 
+            'start_date': '2024-03-01',
+            'useful_life': 5,
+            'asset_value': 2000000,
+            'salvage_value': 200000,
+            'current_date': '2025-08-31'
+        },
+        {
+            'name': 'Case 3: ເລີ່ມ 2022, 3 ປີ (ຄົບແລ້ວ)',
+            'start_date': '2022-06-15', 
+            'useful_life': 3,
+            'asset_value': 1500000,
+            'salvage_value': 150000,
+            'current_date': '2025-08-31'
+        }
+    ]
+    
+    print("🧪 ການທົດສອບ Bulk Depreciation Function")
+    print("=" * 60)
+    
+    for case in test_cases:
+        print(f"\n📋 {case['name']}")
+        print(f"   ເລີ່ມ: {case['start_date']}")
+        print(f"   ອາຍຸ: {case['useful_life']} ປີ") 
+        print(f"   ມູນຄ່າ: {case['asset_value']:,} ກີບ")
+        print(f"   Salvage: {case['salvage_value']:,} ກີບ")
+        print(f"   ປະຈຸບັນ: {case['current_date']}")
+        
+        # ຄິດໄລ່ຄ່າພຽງພະບົງ
+        depreciable = case['asset_value'] - case['salvage_value']
+        annual_dep = depreciable / case['useful_life']
+        monthly_dep = annual_dep / 12
+        
+        print(f"   → ຫັກໄດ້: {depreciable:,} ກີບ")
+        print(f"   → ຕໍ່ປີ: {annual_dep:,.0f} ກີບ")
+        print(f"   → ຕໍ່ເດືອນ: {monthly_dep:,.2f} ກີບ")
+        
+        # ຄິດເດືອນທີ່ຄວນຫັກ
+        from datetime import datetime
+        start = datetime.strptime(case['start_date'], '%Y-%m-%d').date()
+        current = datetime.strptime(case['current_date'], '%Y-%m-%d').date()
+        end_of_life = start + relativedelta(years=case['useful_life']) - timedelta(days=1)
+        
+        actual_end = min(end_of_life, current)
+        
+        print(f"   → ສິ້ນສຸດອາຍຸ: {end_of_life}")
+        print(f"   → ຫັກຮອດ: {actual_end}")
+        
+    return test_cases
+def process_bulk_depreciation_catch_up_with_journal(mapping_id, user_id=None, current_date=None, create_journal=False, request=None):
+    """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ ພ້ອມສ້າງ Journal Entry"""
+    try:
+        # ເອີ້ນຟັງຊັນຫັກຄ່າເສື່ອມ
+        result = process_bulk_depreciation_catch_up(mapping_id, user_id, current_date)
+        
+        if not result.get('success'):
+            return result
+        
+        # ຖ້າຕ້ອງການສ້າງ Journal Entry
+        if create_journal and result.get('success'):
+            depreciation_data = result['bulk_depreciation_processed']
+            total_depreciation = depreciation_data['total_depreciation']
+            
+            if total_depreciation > 0:
+                # ດຶງຂໍ້ມູນ asset ສຳລັບ Journal
+                accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+                if accounting_method.asset_list_id:
+                    asset = accounting_method.asset_list_id
+                else:
+                    asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+                
+                # ສ້າງ Journal Entry
+                journal_result = create_journal_entry_data(
+                    asset=asset,
+                    depreciation_amount=total_depreciation,
+                    period_info=f"Catch-up: {depreciation_data['processing_period']} ({depreciation_data['months_processed']} ເດືອນ)",
+                    user_id=user_id,
+                    request=request,
+                    is_bulk_entry=True
+                )
+                
+                # ເພີ່ມຂໍ້ມູນ Journal ເຂົ້າໃນ result
+                result['journal_entry'] = journal_result
+        
+        return result
+        
+    except Exception as e:
+        return {"error": f"Catch-up with journal error: {str(e)}"}
+
+
+def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
+    """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດເດືອນປະຈຸບັນ"""
+    try:
+        # ກວດສອບສະຖານະກ່ອນ
+        calc_result = calculate_depreciation_schedule(mapping_id)
+        if 'error' in calc_result:
+            return calc_result
+        
+        # ດຶງຂໍ້ມູນ asset
+        accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+        if accounting_method.asset_list_id:
+            asset = accounting_method.asset_list_id
+        else:
+            asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+        
+        # ✅ ຂໍ້ມູນພື້ນຖານ
+        start_date = asset.dpca_start_date
+        useful_life = int(asset.asset_useful_life)
+        total_months = useful_life * 12
+        end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+        
+        # ກຳນົດ current_date
+        if current_date:
+            target_date = datetime.strptime(current_date, '%Y-%m-%d').date()
+        else:
+            target_date = datetime.now().date()
+        
+        # ✅ ຄິດໄລຍະເວລາທີ່ຕ້ອງຫັກ
+        # ເລືອກວັນທີ່ທີ່ນ້ອຍກວ່າ: ວັນສິ້ນສຸດອາຍຸການໃຊ້ ຫຼື ວັນທີ່ປະຈຸບັນ
+        actual_end_date = min(end_date, target_date)
+        
+        # ຄິດຈຳນວນເດືອນທີ່ຕ້ອງຫັກ
+        months_to_process = []
+        current_month_start = start_date
+        month_counter = 1
+        
+        while current_month_start <= actual_end_date:
+            # ວັນເລີ່ມຕົ້ນແລະສິ້ນສຸດຂອງເດືອນ
+            if month_counter == 1:
+                # ງວດທຳອິດ: ເລີ່ມຈາກວັນທີ່ start_date
+                month_actual_start = start_date
+                month_end = datetime(start_date.year, start_date.month, 
+                                   get_last_day_of_month(start_date.year, start_date.month)).date()
+            else:
+                # ງວດອື່ນໆ: ເລີ່ມວັນທີ່ 1
+                month_actual_start = datetime(current_month_start.year, current_month_start.month, 1).date()
+                month_end = datetime(current_month_start.year, current_month_start.month,
+                                   get_last_day_of_month(current_month_start.year, current_month_start.month)).date()
+            
+            # ປັບ month_end ຖ້າເກີນ actual_end_date
+            if month_end > actual_end_date:
+                month_end = actual_end_date
+            
+            months_to_process.append({
+                'month_number': month_counter,
+                'start_date': month_actual_start,
+                'end_date': month_end,
+                'year_month': f"{current_month_start.year}-{current_month_start.month:02d}"
+            })
+            
+            # ເລື່ອນໄປເດືອນຕໍ່ໄປ
+            current_month_start = current_month_start + relativedelta(months=1)
+            month_counter += 1
+            
+            # ຢຸດຖ້າເກີນອາຍຸການໃຊ້
+            if month_counter > total_months:
+                break
+        
+        # ✅ ຄິດຄ່າເສື່ອມ
+        asset_value = Decimal(str(asset.asset_value or 0))
+        salvage_value = Decimal(str(asset.asset_salvage_value or 0))
+        depreciable_amount = asset_value - salvage_value
+        old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
+        
+        # ຄ່າເສື່ອມຕໍ່ປີ ແລະ ຕໍ່ເດືອນ
+        annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+        monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+        # ຄິດຄ່າເສື່ອມແຕ່ລະເດືອນ
+        monthly_details = []
+        total_depreciation = Decimal('0')
+        is_asset_completed = actual_end_date >= end_date
+        
+        for i, month_data in enumerate(months_to_process):
+            month_num = month_data['month_number']
+            month_start = month_data['start_date']
+            month_end = month_data['end_date']
+            
+            # ຄິດຈຳນວນວັນ
+            days_in_period = (month_end - month_start + timedelta(days=1)).days
+            total_days_in_month = get_last_day_of_month(month_start.year, month_start.month)
+            
+            # ກຳນົດປະເພດງວດ
+            is_first_month = (month_num == 1)
+            is_last_month_of_asset = (month_num == total_months) and is_asset_completed
+            is_current_final_month = (i == len(months_to_process) - 1) and not is_asset_completed
+            
+            # ✅ ຄິດຄ່າເສື່ອມຕາມປະເພດງວດ
+            if is_first_month:
+                # 🎯 ງວດທຳອິດ: pro-rated
+                month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+                                    Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                period_type = "ງວດທຳອິດ"
+                calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+                
+            elif is_last_month_of_asset:
+                # 🎯 ງວດສຸດທ້າຍຂອງຊັບສິນ: ປັບໃຫ້ຄົບ depreciable_amount
+                remaining_to_depreciate = depreciable_amount - (old_accumulated + total_depreciation)
+                month_depreciation = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                period_type = "ງວດສຸດທ້າຍ (ຄົບອາຍຸ)"
+                calculation_note = f"ປັບໃຫ້ຄົບ {depreciable_amount:,.0f} ກີບ (ເຫຼືອ {remaining_to_depreciate:,.2f})"
+                
+            else:
+                # 🎯 ງວດປົກກະຕິ: ຫັກຕາມວັນຈິງ
+                if days_in_period == total_days_in_month:
+                    # ເຕັມເດືອນ
+                    month_depreciation = monthly_depreciation
+                    period_type = "ງວດປົກກະຕິ (ເຕັມເດືອນ)"
+                    calculation_note = f"ເຕັມເດືອນ = {monthly_depreciation:,.2f}"
+                else:
+                    # ບໍ່ເຕັມເດືອນ (pro-rated)
+                    month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+                                        Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    period_type = "ງວດປົກກະຕິ (ບາງສ່ວນ)"
+                    calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+            
+            total_depreciation += month_depreciation
+            
+            monthly_details.append({
+                'month_number': month_num,
+                'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+                'month_year': f"{get_month_name_la(month_start.month)} {month_start.year}",
+                'days_count': days_in_period,
+                'total_days_in_month': total_days_in_month,
+                'period_type': period_type,
+                'monthly_depreciation': float(month_depreciation),
+                'calculation_note': calculation_note
+            })
+        
+        # ✅ ຄິດຜົນລວມ
+        new_accumulated = old_accumulated + total_depreciation
+        new_remaining = asset_value - new_accumulated
+        
+        # ກວດສອບບໍ່ໃຫ້ເກີນ depreciable_amount
+        if new_accumulated > depreciable_amount:
+            excess = new_accumulated - depreciable_amount
+            total_depreciation = total_depreciation - excess
+            new_accumulated = depreciable_amount
+            new_remaining = salvage_value
+        
+        # ✅ ກຳນົດສະຖານະໃໝ່
+        months_processed = len(months_to_process)
+        is_fully_depreciated = new_accumulated >= depreciable_amount
+        
+        return {
+            'success': True,
+            'bulk_depreciation_processed': {
+                'processing_period': f"{start_date.strftime('%d/%m/%Y')} - {actual_end_date.strftime('%d/%m/%Y')}",
+                'months_processed': months_processed,
+                'total_depreciation': float(total_depreciation),
+                'old_accumulated': float(old_accumulated),
+                'new_accumulated': float(new_accumulated),
+                'remaining_value': float(new_remaining),
+                'is_asset_completed': is_asset_completed,
+                'is_fully_depreciated': is_fully_depreciated,
+                'monthly_breakdown': monthly_details,
+                'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ"
+            },
+            'updated_status': {
+                'C_dpac': months_processed,
+                'total_months': total_months,
+                'remaining_months': max(0, total_months - months_processed),
+                'is_completed': is_fully_depreciated or months_processed >= total_months,
+                'completion_status': "ຫັກຄົບແລ້ວ" if is_fully_depreciated else f"ຫັກແລ້ວ {months_processed}/{total_months} ເດືອນ"
+            }
+        }
+        
+    except Exception as e:
+        return {"error": f"Bulk depreciation error: {str(e)}"}
+
+
+# ✅ Helper function ສຳລັບທົດສອບ
+def test_bulk_depreciation():
+    """ຟັງຊັນທົດສອບ bulk depreciation"""
+    
+    # Test data
+    test_cases = [
+        {
+            'name': 'Case 1: ເລີ່ມ 2023, 3 ປີ, ຕອນນີ້ 2025',
+            'start_date': '2023-01-15',
+            'useful_life': 3,
+            'asset_value': 1000000,
+            'salvage_value': 100000,
+            'current_date': '2025-08-31'
+        },
+        {
+            'name': 'Case 2: ເລີ່ມ 2024, 5 ປີ, ຕອນນີ້ 2025', 
+            'start_date': '2024-03-01',
+            'useful_life': 5,
+            'asset_value': 2000000,
+            'salvage_value': 200000,
+            'current_date': '2025-08-31'
+        },
+        {
+            'name': 'Case 3: ເລີ່ມ 2022, 3 ປີ (ຄົບແລ້ວ)',
+            'start_date': '2022-06-15', 
+            'useful_life': 3,
+            'asset_value': 1500000,
+            'salvage_value': 150000,
+            'current_date': '2025-08-31'
+        }
+    ]
+    
+    print("🧪 ການທົດສອບ Bulk Depreciation Function")
+    print("=" * 60)
+    
+    for case in test_cases:
+        print(f"\n📋 {case['name']}")
+        print(f"   ເລີ່ມ: {case['start_date']}")
+        print(f"   ອາຍຸ: {case['useful_life']} ປີ") 
+        print(f"   ມູນຄ່າ: {case['asset_value']:,} ກີບ")
+        print(f"   Salvage: {case['salvage_value']:,} ກີບ")
+        print(f"   ປະຈຸບັນ: {case['current_date']}")
+        
+        # ຄິດໄລ່ຄ່າພຽງພະບົງ
+        depreciable = case['asset_value'] - case['salvage_value']
+        annual_dep = depreciable / case['useful_life']
+        monthly_dep = annual_dep / 12
+        
+        print(f"   → ຫັກໄດ້: {depreciable:,} ກີບ")
+        print(f"   → ຕໍ່ປີ: {annual_dep:,.0f} ກີບ")
+        print(f"   → ຕໍ່ເດືອນ: {monthly_dep:,.2f} ກີບ")
+        
+        # ຄິດເດືອນທີ່ຄວນຫັກ
+        from datetime import datetime
+        start = datetime.strptime(case['start_date'], '%Y-%m-%d').date()
+        current = datetime.strptime(case['current_date'], '%Y-%m-%d').date()
+        end_of_life = start + relativedelta(years=case['useful_life']) - timedelta(days=1)
+        
+        actual_end = min(end_of_life, current)
+        
+        print(f"   → ສິ້ນສຸດອາຍຸ: {end_of_life}")
+        print(f"   → ຫັກຮອດ: {actual_end}")
+        
+    return test_cases
 def create_journal_entry_via_api(journal_data, request):
     """
     ✅ ສ້າງ Journal Entry ຜ່ານ process_journal_data (ແກ້ໄຂ GLSub Foreign Key)
@@ -15648,7 +16164,7 @@ def get_pending_depreciation(user_id=None):
 @csrf_exempt  
 def calculate_depreciation_api(request):
     """
-    ✅ ENHANCED: API ຫຼັກ - ເພີ່ມ auto journal approve ໃນ confirm actions
+    ✅ ENHANCED: API ຫຼັກ - ເພີ່ມ catch-up depreciation actions
     """
     try:
         # Initialize result
@@ -15702,11 +16218,11 @@ def calculate_depreciation_api(request):
 
         print(f"🔍 API called with action: {action}")
 
-        # Valid actions definition (เพิ่ม find_journals)
+        # Valid actions definition
         valid_actions = {
-            'need_mapping_id': ['calculate', 'process', 'status'],
-            'need_mapping_ids': ['bulk_check', 'bulk_process'],
-            'need_asset_list_id': ['get_history', 'find_journals'],  # ✅ ເພີ່ມ find_journals
+            'need_mapping_id': ['calculate', 'process', 'status', 'catch_up_process'],
+            'need_mapping_ids': ['bulk_check', 'bulk_process', 'catch_up_bulk_process'],
+            'need_asset_list_id': ['get_history', 'find_journals'],
             'need_aldm_id': ['mark_accounted', 'confirm_depreciation', 'cancel_depreciation'],
             'need_aldm_ids': ['bulk_confirm'],
             'need_status': ['bulk_confirm_all'],
@@ -15720,7 +16236,7 @@ def calculate_depreciation_api(request):
                 'valid_actions': list(all_actions)
             }, status=400)
 
-        # Process actions (ໃຊ້ໂຄດເກົ່າ + ເພີ່ມ find_journals)
+        # ✅ Process actions - ເພີ່ມ catch-up actions
         if action in valid_actions['need_mapping_id']:
             if not mapping_id:
                 return JsonResponse({'error': 'ໃສ່ mapping_id'}, status=400)
@@ -15738,6 +16254,9 @@ def calculate_depreciation_api(request):
                         'asset_info': calc_result['asset_info'],
                         'depreciation_status': calc_result['depreciation_status']
                     }
+            elif action == 'catch_up_process':  # ✅ ເພີ່ມ catch-up ລາຍການດຽວ
+                print(f"🎯 Processing catch-up for mapping_id: {mapping_id}")
+                result = process_bulk_depreciation_catch_up(mapping_id, user_id, date)
 
         elif action in valid_actions['need_mapping_ids']:
             if not mapping_ids:
@@ -15748,6 +16267,35 @@ def calculate_depreciation_api(request):
             elif action == 'bulk_process':
                 with transaction.atomic():
                     result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
+            elif action == 'catch_up_bulk_process':  # ✅ ເພີ່ມ catch-up ຫຼາຍລາຍການ
+                print(f"🎯 Processing bulk catch-up for {len(mapping_ids)} items")
+                results = []
+                success_count = 0
+                error_count = 0
+                
+                for mid in mapping_ids:
+                    print(f"   Processing mapping_id: {mid}")
+                    item_result = process_bulk_depreciation_catch_up(mid, user_id, date)
+                    
+                    if item_result.get('success'):
+                        success_count += 1
+                    else:
+                        error_count += 1
+                        
+                    results.append({
+                        'mapping_id': mid,
+                        'result': item_result
+                    })
+                
+                result = {
+                    'success': True,
+                    'summary': {
+                        'total_items': len(mapping_ids),
+                        'success_count': success_count,
+                        'error_count': error_count
+                    },
+                    'details': results
+                }
 
         elif action in valid_actions['need_asset_list_id']:
             if not asset_list_id:
@@ -15758,7 +16306,7 @@ def calculate_depreciation_api(request):
                 if limit:
                     limit = int(limit)
                 result = get_depreciation_history(asset_list_id, limit)
-            elif action == 'find_journals':  # ✅ ເພີ່ມ action ໃໝ່
+            elif action == 'find_journals':
                 result = find_related_journal_entries(asset_list_id)
 
         elif action in valid_actions['need_aldm_id']:
@@ -15770,7 +16318,6 @@ def calculate_depreciation_api(request):
             elif action == 'confirm_depreciation':
                 if not status:
                     return JsonResponse({'error': 'ໃສ່ status (A, R, ຫຼື P)'}, status=400)
-                # ✅ ໃຊ້ confirm_depreciation ທີ່ enhanced ແລ້ວ (ມີ auto journal approve)
                 result = confirm_depreciation(aldm_id, status, reason, user_id)
             elif action == 'cancel_depreciation':
                 result = cancel_depreciation(aldm_id, user_id)
@@ -15782,7 +16329,6 @@ def calculate_depreciation_api(request):
             if action == 'bulk_confirm':
                 if not status:
                     return JsonResponse({'error': 'ໃສ່ status (A, R, ຫຼື P)'}, status=400)
-                # ✅ ໃຊ້ bulk_confirm_depreciation ທີ່ enhanced ແລ້ວ (ມີ auto journal approve)
                 result = bulk_confirm_depreciation(aldm_ids, status, reason, user_id)
 
         elif action in valid_actions['need_status']:
@@ -15806,19 +16352,17 @@ def calculate_depreciation_api(request):
                             'details': []
                         }
                     else:
-                        # ✅ ໃຊ້ bulk_confirm_depreciation ທີ່ enhanced ແລ້ວ (ມີ auto journal approve)
                         result = bulk_confirm_depreciation(aldm_ids_for_bulk, status, reason, user_id)
                         if result.get('success'):
                             result['bulk_all_info'] = {
                                 'filter_status': filter_status,
                                 'found_pending': len(aldm_ids_for_bulk),
-                                'operation': 'confirm_all_pending_with_journal'  # ✅ ອັບເດດ operation name
+                                'operation': 'confirm_all_pending_with_journal'
                             }
                 except Exception as e:
                     result = {"error": f"bulk_confirm_all error: {str(e)}"}
 
         elif action in valid_actions['no_parameters']:
-            # ໃຊ້ໂຄດເກົ່າ
             if action == 'bulk_list':
                 result = get_depreciable_assets()
             elif action == 'bulk_process_all':
@@ -15840,17 +16384,26 @@ def calculate_depreciation_api(request):
                 result = get_pending_depreciation(user_id)
             elif action == 'get_pending_summary':
                 result = get_pending_summary(user_id)
+            elif action == 'get_monthly_due':
+                # ແປງເປັນ int ຖ້າມີ
+                if target_month:
+                    target_month = int(target_month)
+                if target_year:
+                    target_year = int(target_year)
+                result = get_depreciation_due_this_month(target_month, target_year)
             else:
                 result = {"error": f"Action {action} not fully implemented"}
         
-        # ກວດສອບວ່າ result ຖືກກຳນົດແລ້ວ
+        # ✅ ກວດສອບວ່າ result ຖືກກຳນົດແລ້ວ
         if result is None:
             result = {"error": f"No result generated for action: {action}"}
-            
-        print(f"✅ Result generated for action {action}: {type(result)}")
+            print(f"❌ No result for action: {action}")
+        else:
+            print(f"✅ Result generated for action {action}: {type(result)}")
 
         # ກວດສອບ error ໃນ result
         if isinstance(result, dict) and 'error' in result:
+            print(f"❌ Error in result: {result['error']}")
             return JsonResponse(result, status=400)
         
         return JsonResponse({
@@ -15860,7 +16413,8 @@ def calculate_depreciation_api(request):
             'timestamp': datetime.now().isoformat(),
             'enhanced_features': {
                 'auto_journal_approve': action in ['confirm_depreciation', 'bulk_confirm', 'bulk_confirm_all'],
-                'find_journals_available': True
+                'find_journals_available': True,
+                'catch_up_depreciation': action in ['catch_up_process', 'catch_up_bulk_process']  # ✅ ເພີ່ມ
             }
         })
         
