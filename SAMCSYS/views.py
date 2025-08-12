@@ -4128,7 +4128,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 if not data.get('Reference_No'):
                     data['Reference_No'] = JournalEntryHelper.generate_reference_number(
                         module_id=data.get('module_id', 'GL'),
-                        Txn_code=data['Txn_code'],
+                        txn_code=data['Txn_code'],
                         date=data['Value_date'].date() if data.get('Value_date') else None
                     )
                 
@@ -5491,7 +5491,12 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
     def generate_reference(self, request):
         """Generate a reference number without creating entries"""
         module_id = request.data.get('module_id', 'GL')
-        Txn_code = request.data.get('Txn_code')
+        # Txn_code = request.data.get('Txn_code')
+        Txn_code = (
+            request.data.get('Txn_code') or
+            request.data.get('txn_code') or
+            request.data.get('tcn')
+        )
         value_date = request.data.get('value_date')
         
         if not Txn_code:
@@ -5509,7 +5514,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         
         reference_no = JournalEntryHelper.generate_reference_number(
             module_id=module_id,
-            Txn_code=Txn_code,
+            txn_code=Txn_code,
             date=date
         )
         
@@ -5519,51 +5524,6 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             'Txn_code': Txn_code,
             'date': date or timezone.now().date()
         })
-
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db.models import Q
-from .models import DETB_JRNL_LOG_MASTER
-from .serializers import DETB_JRNL_LOG_MASTER_Serializer
-from django.utils.dateparse import parse_datetime, parse_date
-
-
-class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
-    queryset = DETB_JRNL_LOG_MASTER.objects.all()
-    serializer_class = DETB_JRNL_LOG_MASTER_Serializer
-    permission_classes = [IsAuthenticated]
-
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['Ccy_cd', 'Txn_code', 'fin_cycle', 'Auth_Status','Reference_No']  # Removed 'delete_stat' from filter
-    search_fields = ['Reference_No', 'Addl_text']
-    ordering_fields = ['-Auth_Status', 'Checker_Id','Maker_DT_Stamp', 'Value_date']
-
-    def get_queryset(self):
-        """
-        Filter queryset based on show_all parameter (from frontend canAuthorize permission)
-        - If show_all='true' (canAuthorize=1): Show all records (except deleted)
-        - If show_all='false' (canAuthorize=0): Show only records created by current user
-        """
-        user = self.request.user
-        
-        # Base queryset - exclude deleted records
-        base_queryset = DETB_JRNL_LOG_MASTER.objects.filter(
-            Q(delete_stat__isnull=True) | ~Q(delete_stat='D' | Q(Txn_code='ARD'))
-        )
-        
-        # Get show_all parameter from request
-        show_all = self.request.query_params.get('show_all', 'false').lower()
-        
-        # Apply permission-based filtering
-        if show_all == 'true':
-            # User has canAuthorize permission - show all records
-            return base_queryset
-        else:
-            # User doesn't have canAuthorize permission - show only their own records
-            return base_queryset.filter(Maker_Id=user)
 
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -5601,7 +5561,11 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             'Ccy_cd',
             'Txn_code'
         ).filter(
-            Q(delete_stat__isnull=True) | ~Q(delete_stat='D') | Q(Txn_code='ARD')
+            # Include only non-deleted records
+            Q(delete_stat__isnull=True) | ~Q(delete_stat='D')
+        ).exclude(
+            # Exclude ARD transaction codes
+            Txn_code='ARD'
         )
         
         # Permission-based filtering
@@ -5666,7 +5630,8 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
 
             txn_code = request.query_params.get('Txn_code')
             if txn_code:
-                queryset = queryset.exclude(Txn_code='txn_code')
+                queryset = queryset.exclude(Txn_code='ARD')
+                print("DEBUG: Applied ARD exclusion filter")
 
             # Ordering
             ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
@@ -5901,6 +5866,8 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
                     Q(Addl_text__icontains=search) |
                     Q(Txn_code__icontains=search)
                 )
+            queryset = queryset.exclude(Txn_code='ARD')
+            print("DEBUG: Applied ARD exclusion filter for summary")
             
             # Exclude soft deleted records
             delete_stat_ne = request.query_params.get('delete_stat__ne')
@@ -6100,11 +6067,12 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
             
             # Base queryset - filter by the processing date
             queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                ~Q(Txn_code='ARD'),
                 delete_stat__isnull=True,
                 Value_date=processing_date
             ).exclude(
                 # Q(delete_stat='D') | Q(Auth_Status='D')
-                 Q(delete_stat__isnull=True) | ~Q(delete_stat='D') | Q(Txn_code='ARD')
+                 Q(delete_stat='D') | Q(Txn_code='ARD')
             ).order_by('-Maker_DT_Stamp')
 
             # Apply additional filters if provided
