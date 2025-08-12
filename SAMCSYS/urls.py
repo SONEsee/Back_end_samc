@@ -117,7 +117,8 @@ from .views import (
     balance_sheet_mfi_view,
     balance_sheet_acc_get_view,
     balance_sheet_mfi_get_view,
-    end_of_day_journal_view
+    end_of_day_journal_view,
+    retroactive_depreciation_api
 
 )
 from rest_framework_simplejwt.views import (
@@ -212,6 +213,7 @@ urlpatterns = [
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
 
+
     # Pid Bunsy nai mue 
     path('api/end-of-day-journal/', end_of_day_journal_view , name='end-of-day-journal'),
 
@@ -267,6 +269,7 @@ urlpatterns = [
     path('journal/process-v2/', 
          JournalProcessV2ViewSet.as_view({'post': 'process_journal_data'}), 
          name='journal-process-v2'),
+    path('api/retroactive/', retroactive_depreciation_api, name='retroactive-depreciation-api'),
     path('api/overdue/', overdue_depreciation_api, name='overdue_api'),
     path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
     

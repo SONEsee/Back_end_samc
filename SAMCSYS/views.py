@@ -11545,7 +11545,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         # ສ້າງຂໍ້ມູນ Journal Entry
         journal_data = {
             "Reference_No": reference_no,
-            "Ccy_cd": asset_currency_str,  # ✅ ເອົາຈາກ FA_Asset_Lists.asset_currency
+            "Ccy_cd": asset_currency_str,  
             "Txn_code": "ARD", 
             "Value_date": current_date.date().isoformat(),
             "Addl_text": "ຫັກຄ່າເສື່ອມລາຄາ",
@@ -14612,7 +14612,7 @@ def update_related_journal_entries(depreciation_record, status, user_id=None):
             except Exception as log_error:
                 print(f"❌ ອັບເດດ Journal LOG ຜິດພາດ: {str(log_error)}")
             
-            # ✅ 2. ອັບເດດ SAMCSYS_detb_jrnl_batch
+           
             try:
                 batch_entries = SAMCSYS_detb_jrnl_batch.objects.filter(
                     Reference_No__startswith=ref_no_pattern
@@ -21600,3 +21600,988 @@ def is_working_day(date):
     except Exception as e:
         logger.error(f"Error in is_working_day function: {str(e)}")
 #     return False  # Default to not a working day if any error occurs
+
+import json
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+from decimal import Decimal, ROUND_HALF_UP
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.db import transaction
+from django.utils import timezone
+from django.db import models
+from django.db.models import Q
+
+from .models import (
+    FA_Accounting_Method, 
+    FA_Asset_Lists,
+    FA_Asset_List_Depreciation_Main,
+    FA_Asset_List_Depreciation,
+    FA_Asset_List_Depreciation_InMonth,
+    MTTB_Users,
+    MTTB_GLMaster 
+)
+
+def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
+    """
+    ✅ ຄຳນວນຍອດລວມທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ - ໃຊ້ Logic ແບບເກົ່າ
+    """
+    try:
+        # ✅ Validation ແບບເກົ່າ
+        try:
+            accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+        except FA_Accounting_Method.DoesNotExist:
+            return {"error": f"ບໍ່ພົບ mapping_id: {mapping_id}"}
+        
+        try:
+            if accounting_method.asset_list_id:
+                asset = accounting_method.asset_list_id
+            elif accounting_method.ref_id:
+                asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+            else:
+                return {"error": "ບໍ່ມີຂໍ້ມູນ asset_list_id ຫຼື ref_id"}
+        except FA_Asset_Lists.DoesNotExist:
+            return {"error": f"ບໍ່ພົບຊັບສິນ: {accounting_method.ref_id}"}
+        
+        if not asset.asset_value:
+            return {"error": "ບໍ່ມີມູນຄ່າຊັບສິນ"}
+        if not asset.asset_useful_life:
+            return {"error": "ບໍ່ມີອາຍຸການໃຊ້ງານ"}
+        if not asset.dpca_start_date:
+            return {"error": "ບໍ່ມີວັນທີ່ເລີ່ມຕົ້ນ"}
+        
+        # ✅ ໃຊ້ calculate_depreciation_schedule() ເກົ່າ
+        base_calc = calculate_depreciation_schedule(mapping_id)
+        if 'error' in base_calc:
+            return base_calc
+        
+        # ✅ ຂໍ້ມູນພື້ນຖານແບບເກົ່າ
+        current_count = int(asset.C_dpac or 0)
+        useful_life = int(asset.asset_useful_life)
+        total_months = useful_life * 12
+        start_date = asset.dpca_start_date
+        end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+        
+        # ✅ ກຳນົດວັນທີ່ເປົ້າໝາຍ
+        if target_date:
+            if isinstance(target_date, str):
+                target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        else:
+            target_date = timezone.now().date()
+        
+        print(f"🔍 Retroactive Calculation (using old logic):")
+        print(f"   - Asset: {asset.asset_list_id} ({asset.asset_spec})")
+        print(f"   - Current Count: {current_count}/{total_months}")
+        print(f"   - Target Date: {target_date}")
+        
+        # ✅ ກວດສອບສະຖານະແບບເກົ່າ
+        if not base_calc['depreciation_status']['can_depreciate']:
+            return {
+                "error": "ຊັບສິນນີ້ຫັກຄົບແລ້ວ - ບໍ່ສາມາດຫັກຍ້ອນຫຼັງໄດ້",
+                "current_status": base_calc['depreciation_status']
+            }
+        
+        # ✅ ກຳນົດຂອບເຂດການຫັກ (ເຫຍືອແບບເກົ່າ)
+        actual_target_date = min(target_date, end_date)
+        
+        # ✅ ຄຳນວນເດືອນທີ່ຄວນຈະຫັກຮອດ target_date
+        months_since_start = 0
+        temp_date = start_date
+        
+        while temp_date <= actual_target_date:
+            months_since_start += 1
+            if months_since_start >= total_months:
+                break
+            temp_date = start_date + relativedelta(months=months_since_start)
+            # ✅ ກວດສອບວ່າເດືອນນີ້ຄວນຫັກຫຼືບໍ່
+            month_end = datetime(temp_date.year, temp_date.month, 
+                               get_last_day_of_month(temp_date.year, temp_date.month)).date()
+            if month_end > actual_target_date:
+                break
+        
+        # ✅ ເດືອນທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ
+        months_to_process = min(months_since_start, total_months) - current_count
+        
+        if months_to_process <= 0:
+            return {
+                "error": "ບໍ່ມີເດືອນທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ - ຊັບສິນອັບເດດແລ້ວ",
+                "asset_info": {
+                    "asset_id": asset.asset_list_id,
+                    "current_count": current_count,
+                    "should_be": months_since_start,
+                    "is_up_to_date": True
+                }
+            }
+        
+        # ✅ ຄຳນວນຍອດລວມໂດຍໃຊ້ process_monthly_depreciation() ແບບເກົ່າ
+        total_retroactive_amount = Decimal('0.00')
+        processed_months = []
+        simulated_asset_count = current_count
+        
+        for i in range(months_to_process):
+            # ✅ Simulate monthly depreciation calculation
+            month_number = simulated_asset_count + 1
+            
+            # ✅ ໃຊ້ Vue.js method calculation logic
+            asset_value = Decimal(str(asset.asset_value or 0))
+            accu_dpca_value_total = Decimal(str(asset.accu_dpca_value_total))
+            salvage_value = Decimal(str(asset.asset_salvage_value or 0))
+            depreciable_amount = asset_value - salvage_value
+            
+            annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+            monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            
+            # ✅ ຄຳນວນວັນທີ່ສຳລັບເດືອນນີ້ (ແບບເກົ່າ)
+            month_start_date = start_date + relativedelta(months=month_number - 1)
+            
+            if month_number == 1:
+                month_actual_start = start_date
+                month_end = datetime(month_start_date.year, month_start_date.month,
+                                   get_last_day_of_month(month_start_date.year, month_start_date.month)).date()
+            else:
+                month_actual_start = datetime(month_start_date.year, month_start_date.month, 1).date()
+                month_end = datetime(month_start_date.year, month_start_date.month,
+                                   get_last_day_of_month(month_start_date.year, month_start_date.month)).date()
+            
+            if month_end > end_date:
+                month_end = end_date
+            
+            days_in_month = (month_end - month_actual_start + timedelta(days=1)).days
+            total_days_in_month = get_last_day_of_month(month_actual_start.year, month_actual_start.month)
+            
+            # ✅ ໃຊ້ Vue.js logic ເກົ່າ
+            is_last_month = (month_number == total_months)
+            
+            if month_number == 1:
+                # ງວດທຳອິດ: ມູນຄ່າຕົ້ນງວດ
+                setup_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                monthly_depreciation_value = setup_value
+                
+            elif is_last_month:
+                # ງວດສຸດທ້າຍ: ຫັກຄົບ depreciable_amount
+                current_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0)) + total_retroactive_amount
+                remaining_to_depreciate = depreciable_amount - current_accumulated
+                monthly_depreciation_value = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                
+            else:
+                # ງວດປົກກະຕິ: ຫັກຕາມວັນທີ່ແທ້ຈິງ
+                monthly_depreciation_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            
+            total_retroactive_amount += monthly_depreciation_value
+            simulated_asset_count += 1
+            
+            processed_months.append({
+                'month_number': month_number,
+                'month_year': f"{get_month_name_la(month_actual_start.month)} {month_actual_start.year}",
+                'period': f"{month_actual_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+                'days_count': days_in_month,
+                'depreciation_amount': float(monthly_depreciation_value),
+                'is_first_month': month_number == 1,
+                'is_last_month': is_last_month
+            })
+        
+        # ✅ ຄຳນວນສະຖານະໃໝ່
+        old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
+        new_accumulated = old_accumulated + total_retroactive_amount
+        new_remaining = accu_dpca_value_total - new_accumulated
+        new_count = current_count + months_to_process
+        
+        return {
+            'success': True,
+            'asset_info': base_calc['asset_info'],
+            'calculation_info': {
+                'start_date': start_date.strftime('%d/%m/%Y'),
+                'end_date': end_date.strftime('%d/%m/%Y'),
+                'target_date': target_date.strftime('%d/%m/%Y'),
+                'actual_target_date': actual_target_date.strftime('%d/%m/%Y'),
+                'limited_by_end_date': target_date > end_date,
+                'daily_depreciation': base_calc['calculation_info']['daily_depreciation']
+            },
+            'retroactive_summary': {
+                'current_month': current_count,
+                'target_month': months_since_start,
+                'months_to_process': months_to_process,
+                'total_retroactive_amount': float(total_retroactive_amount),
+                'can_process': months_to_process > 0
+            },
+            'new_status': {
+                'old_accumulated': float(old_accumulated),
+                'new_accumulated': float(new_accumulated),
+                'new_remaining': float(new_remaining),
+                'new_count': new_count,
+                'total_months': total_months,
+                'will_be_completed': new_count >= total_months
+            },
+            'processed_months': processed_months[:5],  # ສະແດງ 5 ເດືອນທຳອິດ
+            'total_months_detail': len(processed_months)
+        }
+        
+    except Exception as e:
+        return {"error": f"Retroactive calculation error: {str(e)}"}
+
+
+def process_retroactive_depreciation_with_journal(mapping_id, user_id=None, target_date=None, create_journal=False, request=None):
+    """
+    ✅ ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງ - ໃຊ້ Logic ແບບ process_monthly_depreciation_with_journal()
+    """
+    try:
+        print(f"🚀 Processing retroactive depreciation: mapping_id={mapping_id}, create_journal={create_journal}")
+        
+        # ✅ 1. ຄຳນວນກ່ອນ (ແບບເກົ່າ)
+        calc_result = calculate_retroactive_depreciation_schedule(mapping_id, target_date)
+        
+        if not calc_result.get('success'):
+            return calc_result
+        
+        if not calc_result['retroactive_summary']['can_process']:
+            return {
+                "error": "ບໍ່ສາມາດຫັກຍ້ອນຫຼັງໄດ້",
+                "reason": "ບໍ່ມີເດືອນທີ່ຕ້ອງຫັກ",
+                "current_status": calc_result['new_status']
+            }
+        
+        # ✅ 2. ດຶງຂໍ້ມູນແບບເກົ່າ
+        accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+        if accounting_method.asset_list_id:
+            asset = accounting_method.asset_list_id
+        else:
+            asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+        
+        validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+        current_time = timezone.now()
+        
+        # ✅ 3. ໃຊ້ transaction ແບບເກົ່າ
+        with transaction.atomic():
+            # ✅ 4. ສ້າງ History Records ແບບເກົ່າ
+            retroactive_summary = calc_result['retroactive_summary']
+            target_date_obj = datetime.strptime(calc_result['calculation_info']['actual_target_date'], '%d/%m/%Y').date()
+            
+            # ✅ ໃຊ້ create_depreciation_history logic
+            depreciation_data = {
+                'period_start': target_date_obj,
+                'monthly_depreciation': retroactive_summary['total_retroactive_amount'],
+                'remaining_value': calc_result['new_status']['new_remaining'],
+                'new_accumulated': calc_result['new_status']['new_accumulated'],
+                'month_number': calc_result['new_status']['new_count'],
+                'month_year': f"{get_month_name_la(target_date_obj.month)} {target_date_obj.year}",
+                'days_count': retroactive_summary['months_to_process'] * 30  # ປະມານ
+            }
+            
+            # ✅ ສ້າງ InMonth Record ແບບເກົ່າ
+            temp_result_data = {
+                'summary': {
+                    'total_items': 1,
+                    'success_count': 0,
+                    'error_count': 0,
+                    'check_only': False,
+                    'user_id_used': validated_user_id,
+                    'success': True
+                },
+                'details': [],
+                'timestamp': current_time.isoformat()
+            }
+            
+            in_month_result = create_depreciation_in_month_record(temp_result_data, validated_user_id)
+            in_month_record_id = in_month_result.get('in_month_record_id') if in_month_result['success'] else None
+            
+            # ✅ ໃຊ້ create_depreciation_history ແບບເກົ່າ
+            history_result = create_depreciation_history(
+                asset, depreciation_data, validated_user_id, in_month_record_id
+            )
+            
+            if not history_result['success']:
+                return {"error": f"History creation failed: {history_result['error']}"}
+            
+            print(f"✅ Created history records (Unauthorized): Main={history_result['main_record_id']}")
+            
+            # ✅ 5. ສ້າງ Journal Entry (ຖ້າຕ້ອງການ) - ໃຊ້ logic ແບບເກົ່າ
+            journal_result = {'success': False, 'message': 'Journal creation disabled'}
+            
+            if create_journal and request:
+                try:
+                    print(f"📝 Creating journal for retroactive depreciation...")
+                    
+                    # ✅ ໃຊ້ create_journal_entry_data ແບບເກົ່າ
+                    depreciation_amount = Decimal(str(retroactive_summary['total_retroactive_amount']))
+                    current_count = calc_result['new_status']['new_count']
+                    total_months = calc_result['new_status']['total_months']
+                    
+                    journal_data_result = create_journal_entry_data(
+                        asset, accounting_method, depreciation_amount, current_count, total_months
+                    )
+                    
+                    if journal_data_result['success']:
+                        validation = journal_data_result['validation']
+                        if validation['debit_found'] and validation['credit_found']:
+                            # ✅ ປັບແກ้ journal data ສຳລັບ retroactive
+                            journal_data = journal_data_result['journal_data']
+                            journal_data['Addl_text'] = f"ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງ - {asset.asset_spec}"
+                            
+                            # ✅ ໃຊ້ create_journal_entry_via_api ແບບເກົ່າ
+                            journal_result = create_journal_entry_via_api(journal_data, request)
+                            if journal_result['success']:
+                                print(f"🎉 Journal created successfully")
+                            else:
+                                print(f"❌ Journal creation failed")
+                                # ✅ Rollback ແບບເກົ່າ
+                                raise Exception(f"Journal creation failed: {journal_result['error']}")
+                        else:
+                            journal_result = {
+                                'success': False,
+                                'error': 'GL Account not found',
+                                'details': validation
+                            }
+                            # ✅ Rollback ແບບເກົ່າ
+                            raise Exception(f"GL Account not found: {validation}")
+                    else:
+                        journal_result = journal_data_result
+                        # ✅ Rollback ແບບເກົ່າ
+                        raise Exception(f"Journal data creation failed: {journal_data_result['error']}")
+                        
+                except Exception as journal_error:
+                    print(f"💥 Journal error: {str(journal_error)}")
+                    journal_result = {
+                        'success': False,
+                        'error': f"Journal creation error: {str(journal_error)}"
+                    }
+                    # ✅ Re-raise ເພື່ອ rollback transaction ແບບເກົ່າ
+                    raise journal_error
+            elif create_journal and not request:
+                journal_result = {
+                    'success': False,
+                    'error': 'Request object required for journal creation'
+                }
+                # ✅ Rollback ແບບເກົ່າ
+                if create_journal:
+                    raise Exception("Request object required for journal creation")
+            
+            # ✅ 6. ຜົນລັບແບບເກົ່າ
+            result = {
+                'success': True,
+                'message': f"ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງສຳເລັດ - {retroactive_summary['months_to_process']} ເດືອນ",
+                'asset_info': calc_result['asset_info'],
+                'retroactive_processed': {
+                    'months_processed': retroactive_summary['months_to_process'],
+                    'total_amount': retroactive_summary['total_retroactive_amount'],
+                    'target_date': target_date_obj.strftime('%d/%m/%Y'),
+                    'description': f"ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງ {retroactive_summary['months_to_process']} ເດືອນ",
+                    'calculation_note': f"ໃຊ้ Vue.js method - ຄຳນວນຈາກເດືອນທີ່ {calc_result['retroactive_summary']['current_month']+1} ຮອດ {calc_result['new_status']['new_count']}"
+                },
+                'new_status': calc_result['new_status'],
+                'history_records': history_result,
+                'journal_entry': journal_result,
+                'user_id_used': validated_user_id
+            }
+            
+            print(f"🎯 Retroactive depreciation completed successfully")
+            return result
+        
+    except Exception as e:
+        print(f"💥 Retroactive processing error: {str(e)}")
+        return {"error": f"Retroactive processing error: {str(e)}"}
+
+
+def process_bulk_retroactive_depreciation_with_journal(mapping_ids, user_id=None, target_date=None, create_journal=False, request=None):
+    """
+    ✅ Bulk ຫັກຍ້ອນຫຼັງ - ໃຊ້ Logic ແບບ process_bulk_depreciation_with_journal()
+    """
+    try:
+        print(f"🚀 Bulk retroactive processing: {len(mapping_ids)} items, create_journal: {create_journal}")
+        
+        if not mapping_ids or not isinstance(mapping_ids, list):
+            return {"error": "ໃສ່ mapping_ids ເປັນ array"}
+        
+        results = []
+        success_count = 0
+        error_count = 0
+        journal_success_count = 0
+        journal_error_count = 0
+        
+        validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+        
+        # ✅ ສ້າງ InMonth Record ລວມແບບເກົ່າ
+        current_time = timezone.now()
+        
+        temp_result_data = {
+            'summary': {
+                'total_items': len(mapping_ids),
+                'success_count': 0,
+                'error_count': 0,
+                'check_only': False,
+                'user_id_used': validated_user_id,
+                'success': True
+            },
+            'details': [],
+            'timestamp': current_time.isoformat()
+        }
+        
+        in_month_result = create_depreciation_in_month_record(temp_result_data, validated_user_id)
+        if in_month_result['success']:
+            in_month_record_id = in_month_result['in_month_record_id']
+            print(f"📋 Created bulk InMonth record: {in_month_record_id}")
+        else:
+            in_month_record_id = None
+        
+        # ✅ ປະມວນຜົນແຕ່ລະລາຍການ - ໃຊ້ pattern ແບບເກົ່າ
+        for i, mapping_id in enumerate(mapping_ids, 1):
+            print(f"\n🔄 Processing item {i}/{len(mapping_ids)}: mapping_id={mapping_id}")
+            
+            try:
+                # ✅ ໃຊ້ transaction.atomic() ແບບເກົ່າ
+                with transaction.atomic():
+                    # ✅ ໃຊ້ process_retroactive_depreciation_with_journal
+                    process_result = process_retroactive_depreciation_with_journal(
+                        mapping_id, validated_user_id, target_date, create_journal, request
+                    )
+                    
+                    if process_result.get('success'):
+                        results.append({
+                            'mapping_id': mapping_id,
+                            'status': 'success',
+                            'message': process_result['message'],
+                            'retroactive_processed': process_result['retroactive_processed'],
+                            'history_records': process_result.get('history_records', {}),
+                            'journal_entry': process_result.get('journal_entry', {})
+                        })
+                        success_count += 1
+                        
+                        # ✅ ນັບ Journal success ແບບເກົ່າ
+                        if process_result.get('journal_entry', {}).get('success'):
+                            journal_success_count += 1
+                        elif create_journal:
+                            journal_error_count += 1
+                        
+                        print(f"✅ Success for mapping_id {mapping_id}")
+                    else:
+                        results.append({
+                            'mapping_id': mapping_id,
+                            'status': 'error',
+                            'message': process_result.get('error', 'Unknown error'),
+                            'journal_entry': {'success': False, 'error': 'Processing failed'}
+                        })
+                        error_count += 1
+                        journal_error_count += 1 if create_journal else 0
+                        print(f"❌ Error for mapping_id {mapping_id}: {process_result.get('error')}")
+                        
+            except Exception as e:
+                # ✅ Transaction rollback ແບບເກົ່າ
+                print(f"💥 Transaction rolled back for mapping_id {mapping_id}: {str(e)}")
+                results.append({
+                    'mapping_id': mapping_id,
+                    'status': 'error',
+                    'message': f"Processing error (rolled back): {str(e)}",
+                    'journal_entry': {'success': False, 'error': 'Transaction rolled back'}
+                })
+                error_count += 1
+                journal_error_count += 1 if create_journal else 0
+        
+        # ✅ ອັບເດດ InMonth Record ແບບເກົ່າ
+        if in_month_record_id:
+            try:
+                in_month_record = FA_Asset_List_Depreciation_InMonth.objects.get(aldim_id=in_month_record_id)
+                
+                total_depreciation = Decimal('0.00')
+                for detail in results:
+                    if detail['status'] == 'success' and 'retroactive_processed' in detail:
+                        total_depreciation += Decimal(str(detail['retroactive_processed']['total_amount']))
+                
+                in_month_record.C_dpca = str(success_count)
+                in_month_record.dpca_value = total_depreciation.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                in_month_record.dpca_status = 'SUCCESS' if error_count == 0 else 'PARTIAL' if success_count > 0 else 'FAILED'
+                in_month_record.save()
+                
+                print(f"📋 Updated InMonth record: {in_month_record_id}")
+                
+            except Exception as e:
+                print(f"⚠️ Warning: ອັບເດດ InMonth record ຜິດພາດ: {str(e)}")
+        
+        # ✅ Final result ແບບເກົ່າ
+        final_result = {
+            'summary': {
+                'total_items': len(mapping_ids),
+                'success_count': success_count,
+                'error_count': error_count,
+                'user_id_used': validated_user_id,
+                'in_month_record_id': in_month_record_id,
+                'journal_enabled': create_journal,
+                'journal_success_count': journal_success_count,
+                'journal_error_count': journal_error_count,
+                'success_rate': f"{(success_count/len(mapping_ids)*100):.1f}%" if mapping_ids else "0%",
+                'journal_success_rate': f"{(journal_success_count/success_count*100):.1f}%" if success_count > 0 else "0%",
+                'operation_type': 'bulk_retroactive_depreciation'
+            },
+            'details': results,
+            'in_month_record': {
+                'success': True,
+                'in_month_record_id': in_month_record_id,
+                'user_id_used': validated_user_id
+            } if in_month_record_id else None
+        }
+        
+        print(f"🏁 Bulk retroactive processing complete: {success_count}/{len(mapping_ids)} success, {journal_success_count} journals created")
+        return final_result
+        
+    except Exception as e:
+        print(f"💥 Bulk retroactive processing fatal error: {str(e)}")
+        return {"error": f"Bulk retroactive processing error: {str(e)}"}
+
+
+def get_retroactive_candidates(target_date=None):
+    """
+    ✅ ຫາລາຍການຊັບສິນທີ່ສາມາດຫັກຍ້ອນຫຼັງໄດ້ - ໃຊ້ Logic ແບບ get_depreciable_assets()
+    """
+    try:
+        if not target_date:
+            target_date = timezone.now().date()
+        elif isinstance(target_date, str):
+            target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        
+        print(f"🔍 Scanning for retroactive candidates (target: {target_date})")
+        
+        # ✅ ໃຊ້ pattern ແບບ get_depreciable_assets()
+        accounting_methods = FA_Accounting_Method.objects.all()
+        retroactive_candidates = []
+        cannot_process = []
+        
+        for method in accounting_methods:
+            try:
+                # ✅ ດຶງຂໍ້ມູນຊັບສິນແບບເກົ່າ
+                if method.asset_list_id:
+                    asset = method.asset_list_id
+                elif method.ref_id:
+                    asset = FA_Asset_Lists.objects.get(asset_list_id=method.ref_id)
+                else:
+                    continue
+                
+                # ✅ ກວດສອບຂໍ້ມູນພື້ນຖານແບບເກົ່າ
+                if not (asset.asset_value and asset.asset_useful_life and asset.dpca_start_date):
+                    continue
+                
+                # ✅ ໃຊ້ calculate_depreciation_schedule ແບບເກົ່າ
+                calc_result = calculate_depreciation_schedule(method.mapping_id)
+                if 'error' in calc_result:
+                    continue
+                
+                current_count = int(asset.C_dpac or 0)
+                useful_life = int(asset.asset_useful_life)
+                total_months = useful_life * 12
+                start_date = asset.dpca_start_date
+                end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+                
+                # ✅ ຂ້າມຖ້າຫັກຄົບແລ້ວ (ແບບເກົ່າ)
+                if not calc_result['depreciation_status']['can_depreciate']:
+                    cannot_process.append({
+                        'mapping_id': method.mapping_id,
+                        'asset_id': asset.asset_list_id,
+                        'asset_name': asset.asset_spec or 'N/A',
+                        'reason': 'ຫັກຄົບແລ້ວ',
+                        'current_count': current_count,
+                        'total_months': total_months
+                    })
+                    continue
+                
+                # ✅ ຄຳນວນວ່າຄວນຈະອຍູ່ເດືອນທີ່ເທົ່າໃດ ณ target_date (ແບບເກົ່າ)
+                actual_target_date = min(target_date, end_date)
+                
+                months_since_start = 0
+                temp_date = start_date
+                
+                while temp_date <= actual_target_date:
+                    months_since_start += 1
+                    if months_since_start >= total_months:
+                        break
+                    temp_date = start_date + relativedelta(months=months_since_start)
+                    month_end = datetime(temp_date.year, temp_date.month, 
+                                       get_last_day_of_month(temp_date.year, temp_date.month)).date()
+                    if month_end > actual_target_date:
+                        break
+                
+                # ✅ ຈຳນວນເດືອນທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ
+                months_to_process = min(months_since_start, total_months) - current_count
+                
+                if months_to_process <= 0:
+                    cannot_process.append({
+                        'mapping_id': method.mapping_id,
+                        'asset_id': asset.asset_list_id,
+                        'asset_name': asset.asset_spec or 'N/A',
+                        'reason': 'ອັບເດດແລ້ວ',
+                        'current_count': current_count,
+                        'should_be': months_since_start
+                    })
+                    continue
+                
+                # ✅ ຄຳນວນຍອດເບື້ອງຕົ້ນແບບເກົ່າ
+                daily_depreciation = calc_result['calculation_info']['daily_depreciation']
+                estimated_amount = daily_depreciation * months_to_process * 30  # ປະມານ
+                
+                # ✅ ເພີ່ມໃນລາຍການຜູ້ສະໝັກ
+                retroactive_candidates.append({
+                    'mapping_id': method.mapping_id,
+                    'asset_id': asset.asset_list_id,
+                    'asset_name': asset.asset_spec or 'N/A',
+                    'asset_value': float(asset.asset_value),
+                    'current_count': current_count,
+                    'should_be_count': months_since_start,
+                    'months_to_process': months_to_process,
+                    'total_months': total_months,
+                    'estimated_amount': round(estimated_amount, 2),
+                    'start_date': start_date.strftime('%d/%m/%Y'),
+                    'end_date': end_date.strftime('%d/%m/%Y'),
+                    'target_date': actual_target_date.strftime('%d/%m/%Y'),
+                    'limited_by_end_date': target_date > end_date,
+                    'completion_percentage': round((current_count / total_months) * 100, 2),
+                    'urgency_level': 'high' if months_to_process > 12 else 'medium' if months_to_process > 6 else 'low'
+                })
+                
+            except Exception as e:
+                print(f"Error processing mapping_id {method.mapping_id}: {str(e)}")
+                continue
+        
+        # ✅ ຈັດເລີງຕາມຄວາມເຮັງດ່ວນແບບເກົ່າ
+        retroactive_candidates.sort(key=lambda x: x['months_to_process'], reverse=True)
+        
+        # ✅ ສະຖິຕິແບບເກົ່າ
+        high_urgency = len([x for x in retroactive_candidates if x['urgency_level'] == 'high'])
+        medium_urgency = len([x for x in retroactive_candidates if x['urgency_level'] == 'medium'])
+        low_urgency = len([x for x in retroactive_candidates if x['urgency_level'] == 'low'])
+        
+        total_estimated_amount = sum([item['estimated_amount'] for item in retroactive_candidates])
+        
+        return {
+            'success': True,
+            'target_date': target_date.strftime('%d/%m/%Y'),
+            'summary': {
+                'total_candidates': len(retroactive_candidates),
+                'cannot_process': len(cannot_process),
+                'total_estimated_amount': round(total_estimated_amount, 2),
+                'urgency_breakdown': {
+                    'high': high_urgency,    # > 12 ເດືອນ
+                    'medium': medium_urgency, # 6-12 ເດືອນ
+                    'low': low_urgency       # < 6 ເດືອນ
+                }
+            },
+            'retroactive_candidates': retroactive_candidates,
+            'cannot_process_items': cannot_process[:10],  # ສະແດງ 10 ລາຍການທຳອິດ
+            'recommended_mapping_ids': [item['mapping_id'] for item in retroactive_candidates]
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Get retroactive candidates error: {str(e)}"
+        }
+
+
+def process_all_retroactive_depreciation_with_journal(target_date=None, urgency_levels=None, user_id=None, create_journal=False, request=None):
+    """
+    ✅ ຫັກຍ້ອນຫຼັງທັງໝົດ - ໃຊ້ Logic ແບບ process_all_depreciation()
+    """
+    try:
+        print(f"🎯 Processing all retroactive depreciation (create_journal: {create_journal})")
+        
+        # ✅ ຫາຜູ້ສະໝັກແບບເກົ່າ
+        candidates_result = get_retroactive_candidates(target_date)
+        
+        if not candidates_result['success']:
+            return candidates_result
+        
+        # ✅ ເລືອກລາຍການຕາມລະດັບແບບເກົ່າ
+        items_to_process = []
+        
+        if urgency_levels:
+            # ເລືອກເຉພາະລະດັບທີ່ຕ້ອງການ
+            for item in candidates_result['retroactive_candidates']:
+                if item['urgency_level'] in urgency_levels:
+                    items_to_process.append(item)
+        else:
+            # ທັງໝົດ
+            items_to_process = candidates_result['retroactive_candidates']
+        
+        if not items_to_process:
+            return {
+                'success': True,
+                'message': f"ບໍ່ມີລາຍການທີ່ຕ້ອງການປະມວນຜົນ",
+                'target_date': candidates_result['target_date'],
+                'summary': {
+                    'total_items': 0,
+                    'success_count': 0,
+                    'error_count': 0
+                },
+                'details': []
+            }
+        
+        # ✅ ດຶງ mapping_ids ແບບເກົ່າ
+        mapping_ids = [item['mapping_id'] for item in items_to_process]
+        
+        print(f"📋 Found {len(mapping_ids)} items to process")
+        
+        # ✅ ໃຊ້ bulk processing ແບບເກົ່າ
+        process_result = process_bulk_retroactive_depreciation_with_journal(
+            mapping_ids, user_id, target_date, create_journal, request
+        )
+        
+        # ✅ ເພີ່ມຂໍ້ມູນເສີມແບບເກົ່າ
+        if process_result.get('summary'):
+            process_result['retroactive_all_info'] = {
+                'target_date': candidates_result['target_date'],
+                'urgency_levels_processed': urgency_levels or 'all',
+                'total_candidates': len(candidates_result['retroactive_candidates']),
+                'processed_items': len(items_to_process),
+                'skipped_items': len(candidates_result['retroactive_candidates']) - len(items_to_process),
+                'operation': 'process_all_retroactive_with_journal'
+            }
+        
+        return process_result
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Process all retroactive error: {str(e)}"
+        }
+
+
+def validate_retroactive_depreciation(mapping_id, target_date=None):
+    """
+    ✅ ກວດສອບວ່າສາມາດຫັກຍ້ອນຫຼັງໄດ້ບໍ່ - ໃຊ້ Logic ແບບເກົ່າ
+    """
+    try:
+        # ✅ ໃຊ້ calculate_depreciation_schedule ແບບເກົ່າ
+        base_calc = calculate_depreciation_schedule(mapping_id)
+        if 'error' in base_calc:
+            return {
+                'can_process': False,
+                'reason': base_calc['error'],
+                'details': base_calc
+            }
+        
+        # ✅ ໃຊ້ ຟັງຊັນຄຳນວນ
+        calc_result = calculate_retroactive_depreciation_schedule(mapping_id, target_date)
+        
+        if not calc_result.get('success'):
+            return {
+                'can_process': False,
+                'reason': calc_result.get('error', 'Unknown error'),
+                'details': calc_result
+            }
+        
+        can_process = calc_result['retroactive_summary']['can_process']
+        months_to_process = calc_result['retroactive_summary']['months_to_process']
+        
+        validation_result = {
+            'can_process': can_process,
+            'mapping_id': mapping_id,
+            'asset_info': calc_result['asset_info'],
+            'months_to_process': months_to_process,
+            'estimated_amount': calc_result['retroactive_summary']['total_retroactive_amount']
+        }
+        
+        if not can_process:
+            validation_result['reason'] = 'ບໍ່ມີເດືອນທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ'
+        else:
+            # ✅ ເພີ່ມຂໍ້ມູນການແນະນຳແບບເກົ່າ
+            if months_to_process > 12:
+                validation_result['recommendation'] = 'ຄວນດຳເນີນການໃນເວລາທີ່ເໝາະສົມ - ມີຈຳນວນເດືອນຫຼາຍ'
+                validation_result['urgency'] = 'high'
+            elif months_to_process > 6:
+                validation_result['recommendation'] = 'ສາມາດດຳເນີນການໄດ້'
+                validation_result['urgency'] = 'medium'
+            else:
+                validation_result['recommendation'] = 'ສາມາດດຳເນີນການໄດ້ງ່າຍ'
+                validation_result['urgency'] = 'low'
+        
+        return validation_result
+        
+    except Exception as e:
+        return {
+            'can_process': False,
+            'reason': f"Validation error: {str(e)}",
+            'details': {}
+        }
+
+
+@csrf_exempt
+def retroactive_depreciation_api(request):
+    """
+    ✅ API ເຉພາະສຳລັບ Retroactive Depreciation - ໃຊ້ Logic ແບບ calculate_depreciation_api_with_journal()
+    
+    Actions ທີ່ຮອງຮັບ:
+    - calculate: ຄຳນວນຍອດຍ້ອນຫຼັງ (ຕ້ອງມີ mapping_id)
+    - process: ຫັກຍ້ອນຫຼັງລາຍການດຽວ (ຕ້ອງມີ mapping_id) 
+    - bulk_process: ຫັກຍ້ອນຫຼັງຫຼາຍລາຍການ (ຕ້ອງມີ mapping_ids)
+    - get_candidates: ດຶງລາຍການທີ່ສາມາດຫັກຍ້ອນຫຼັງໄດ້
+    - process_all: ຫັກຍ້ອນຫຼັງທັງໝົດ
+    - validate: ຕກວດສອບກ່ອນຫັກ (ຕ້ອງມີ mapping_id)
+    """
+    try:
+        # ✅ ກວດສອບ method ແບບເກົ່າ
+        if request.method not in ['POST', 'GET']:
+            return JsonResponse({'error': 'ໃຊ້ POST ຫຼື GET method'}, status=400)
+        
+        # ✅ Parse parameters ແບບເກົ່າ
+        if request.method == 'POST':
+            if not request.body:
+                return JsonResponse({'error': 'ບໍ່ມີ request body'}, status=400)
+            
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError as e:
+                return JsonResponse({'error': f'JSON error: {str(e)}'}, status=400)
+            
+            action = data.get('action', 'get_candidates')
+            mapping_id = data.get('mapping_id')
+            mapping_ids = data.get('mapping_ids', [])
+            user_id = data.get('user_id')
+            target_date = data.get('target_date')
+            create_journal = data.get('create_journal', False)  # ✅ KEY parameter ແບບເກົ່າ
+            urgency_levels = data.get('urgency_levels', [])
+        else:  # GET
+            action = request.GET.get('action', 'get_candidates')
+            mapping_id = request.GET.get('mapping_id')
+            mapping_ids_str = request.GET.get('mapping_ids', '')
+            mapping_ids = [int(x) for x in mapping_ids_str.split(',') if x] if mapping_ids_str else []
+            user_id = request.GET.get('user_id')
+            target_date = request.GET.get('target_date')
+            create_journal = request.GET.get('create_journal', 'false').lower() == 'true'  # ✅ KEY parameter ແບບເກົ່າ
+            urgency_levels_str = request.GET.get('urgency_levels', '')
+            urgency_levels = urgency_levels_str.split(',') if urgency_levels_str else []
+        
+        print(f"🔍 Retroactive API called with action: {action}, create_journal: {create_journal}")
+        
+        # ✅ ປະມວນຜົນ actions - ໃຊ້ pattern ແບບເກົ່າ
+        if action == 'calculate':
+            if not mapping_id:
+                return JsonResponse({
+                    'error': 'ໃສ່ mapping_id',
+                    'example': '{"action": "calculate", "mapping_id": 123, "target_date": "2025-01-15"}'
+                }, status=400)
+            result = calculate_retroactive_depreciation_schedule(mapping_id, target_date)
+            
+        elif action == 'process':
+            if not mapping_id:
+                return JsonResponse({
+                    'error': 'ໃສ່ mapping_id', 
+                    'example': '{"action": "process", "mapping_id": 123, "user_id": 1, "create_journal": true}'
+                }, status=400)
+            # ✅ ໃຊ້ function ທີ່ມີ journal logic ແບບເກົ່າ
+            result = process_retroactive_depreciation_with_journal(mapping_id, user_id, target_date, create_journal, request)
+            
+        elif action == 'bulk_process':
+            if not mapping_ids:
+                return JsonResponse({
+                    'error': 'ໃສ່ mapping_ids',
+                    'example': '{"action": "bulk_process", "mapping_ids": [123, 124, 125], "user_id": 1, "create_journal": true}'
+                }, status=400)
+            # ✅ ໃຊ້ transaction ແບບເກົ່າ
+            with transaction.atomic():
+                result = process_bulk_retroactive_depreciation_with_journal(mapping_ids, user_id, target_date, create_journal, request)
+            
+        elif action == 'get_candidates':
+            result = get_retroactive_candidates(target_date)
+            
+        elif action == 'process_all':
+            # ✅ ໃຊ້ function ທີ່ມີ journal logic ແບບເກົ່າ
+            result = process_all_retroactive_depreciation_with_journal(target_date, urgency_levels, user_id, create_journal, request)
+            
+        elif action == 'validate':
+            if not mapping_id:
+                return JsonResponse({
+                    'error': 'ໃສ່ mapping_id',
+                    'example': '{"action": "validate", "mapping_id": 123}'
+                }, status=400)
+            result = validate_retroactive_depreciation(mapping_id, target_date)
+            
+        else:
+            return JsonResponse({
+                'error': f'action "{action}" ບໍ່ຖືກຕ້ອງ',
+                'valid_actions': ['calculate', 'process', 'bulk_process', 'get_candidates', 'process_all', 'validate'],
+                'examples': {
+                    'calculate': '{"action": "calculate", "mapping_id": 123}',
+                    'process_with_journal': '{"action": "process", "mapping_id": 123, "user_id": 1, "create_journal": true}',
+                    'bulk_process_with_journal': '{"action": "bulk_process", "mapping_ids": [123, 124], "user_id": 1, "create_journal": true}',
+                    'get_candidates': '{"action": "get_candidates", "target_date": "2025-01-15"}',
+                    'process_all_with_journal': '{"action": "process_all", "urgency_levels": ["high", "medium"], "user_id": 1, "create_journal": true}',
+                    'validate': '{"action": "validate", "mapping_id": 123}'
+                }
+            }, status=400)
+        
+        # ✅ ຕກວດສອບຜົນລັບແບບເກົ່າ
+        if isinstance(result, dict) and 'error' in result:
+            return JsonResponse(result, status=400)
+        
+        # ✅ ສົ່ງຄືນຜົນລັບແບບເກົ່າ
+        return JsonResponse({
+            'success': True,
+            'action': action,
+            'data': result,
+            'retroactive_features': {
+                'journal_enabled': create_journal if action in ['process', 'bulk_process', 'process_all'] else False,
+                'target_date': target_date,
+                'urgency_levels': urgency_levels if urgency_levels else None,
+                'logic_version': 'follows_calculate_depreciation_api_with_journal'
+            },
+            'timestamp': timezone.now().isoformat()
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = {
+            'error': str(e),
+            'type': type(e).__name__,
+            'traceback': traceback.format_exc()
+        }
+        print("Retroactive API Error Details:", error_details)
+        return JsonResponse(error_details, status=500)
+
+
+# ✅ URL Configuration
+# ໃສ່ໃນ urls.py:
+# path('api/retroactive/', retroactive_depreciation_api, name='retroactive-depreciation-api'),
+
+# ✅ Additional Helper Functions (ໃຊ້ຂໍ້ມູນຈາກ code ເກົ່າ)
+
+def get_month_name_la(month_num):
+    """ຊື່ເດືອນເປັນພາສາລາວ"""
+    months = {
+        1: 'ມັງກອນ', 2: 'ກຸມພາ', 3: 'ມີນາ', 4: 'ເມສາ',
+        5: 'ພຶດສະພາ', 6: 'ມິຖຸນາ', 7: 'ກໍລະກົດ', 8: 'ສິງຫາ',
+        9: 'ກັນຍາ', 10: 'ຕຸລາ', 11: 'ພະຈິກ', 12: 'ທັນວາ'
+    }
+    return months.get(month_num, f'ເດືອນ {month_num}')
+
+def get_last_day_of_month(year, month):
+    """ຫາວັນສຸດທ້າຍຂອງເດືອນ"""
+    if month == 12:
+        return (datetime(year + 1, 1, 1) - timedelta(days=1)).day
+    else:
+        return (datetime(year, month + 1, 1) - timedelta(days=1)).day
+
+def validate_user_id(user_id):
+    """ກວດສອບວ່າ user_id ມີຢູ່ບໍ"""
+    if not user_id:
+        return None
+    try:
+        user = MTTB_Users.objects.get(user_id=user_id)
+        return user.user_id
+    except MTTB_Users.DoesNotExist:
+        print(f"User ID {user_id} ບໍ່ມີຢູ່")
+        return None
+    except Exception as e:
+        print(f"Validate user error: {str(e)}")
+        return None
+
+def get_current_user_id():
+    """ຫາ user_id ປັດຈຸບັນ"""
+    try:
+        first_user = MTTB_Users.objects.first()
+        return first_user.user_id if first_user else None
+    except Exception as e:
+        print(f"Get user error: {str(e)}")
+        return None
+
+# ✅ ຕ້ອງ import functions ເກົ່າເຫຼົ່ານີ້ຈາກໄຟລ໌ຕົ້ນສະບັບ:
+# - calculate_depreciation_schedule()
+# - create_journal_entry_data()
+# - create_journal_entry_via_api()
+# - create_depreciation_history()
+# - create_depreciation_in_month_record()
