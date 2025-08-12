@@ -1208,3 +1208,13 @@ class HolidaySerializer(serializers.ModelSerializer):
         if obj.Holiday_List:
             return obj.Holiday_List.count('H')
         return 0
+    
+from .models import STTB_Somtop_Trial_Balancesheet
+class SomtopTrialBalancesheetSerializer(serializers.ModelSerializer):
+    """
+    Serializer for STTB_Somtop_Trial_Balancesheet model
+    """
+    class Meta:
+        model = STTB_Somtop_Trial_Balancesheet
+        fields = '__all__'
+        read_only_fields = ('Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp')
