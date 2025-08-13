@@ -6639,7 +6639,7 @@ def execute_bulk_journal(eod_function, user, processing_date=None):
             if processing_date:
                 query_filter['value_dt'] = processing_date
                 
-            authorized_logs = ACTB_DAIRY_LOG_HISTORY.objects.filter(**query_filter)
+            authorized_logs = ACTB_DAIRY_LOG_HISTORY.objects.filter(**query_filter).exclude(trn_code='ARD') #<--- br ao ARD nrk jark pid EOM
             
             if not authorized_logs.exists():
                 message = f"ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນສຳລັບວັນທີ {processing_date}" if processing_date else "ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນ"
@@ -20277,7 +20277,7 @@ def validate_journal_approvals(processing_date):
         unapproved_journals = DETB_JRNL_LOG.objects.filter(
             Value_date=processing_date,
             Auth_Status__in=['U', 'P']
-        ).count()
+        ).exclude(Txn_code='ARD').count()
 
         if unapproved_journals > 0:
             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
@@ -21035,3 +21035,412 @@ def execute_bulk_journal_by_single_date(target_date, user=None):
         tuple: (success: bool, message: str)
     """
     return execute_bulk_journal_by_date_range(target_date, target_date, user)
+
+
+ # <--------------- SUBMIT EOM End of MonthCycle Function After Checking Last Dates of EOD is Submited ----------------->
+from datetime import datetime, timedelta, time
+from django.utils import timezone
+from django.db import transaction
+import pytz
+
+from calendar import monthrange
+from .models import (MTTB_LCL_Holiday, STTB_Dates, MTTB_EOC_MAINTAIN, 
+                    MTTB_DATA_Entry, STTB_EOC_STATUS)
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+def check_last_working_date_of_month(year, month):
+    """
+    Check the last working date of a month based on holiday calendar.
+    
+    Args:
+        year (int): Year to check
+        month (int): Month to check (1-12)
+    
+    Returns:
+        tuple: (success, last_working_date, message)
+    """
+    try:
+        year_str = str(year)
+        month_str = str(month).zfill(2)
+        
+        # Get holiday record for the month
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+            holiday_list = holiday_record.Holiday_List
+        except MTTB_LCL_Holiday.DoesNotExist:
+            return False, None, f"ບໍ່ພົບຂໍ້ມູນວັນພັກສຳລັບ {year_str}-{month_str}"
+        
+        # Validate holiday_list length
+        if len(holiday_list) != 31:
+            return False, None, f"ຄວາມຍາວຂອງ Holiday_List ບໍ່ຖືກຕ້ອງ. ຕ້ອງມີ 31 ຕົວອັກສອນ"
+        
+        # Get the number of days in the month
+        days_in_month = monthrange(year, month)[1]
+        
+        # Find the last working day (last 'W' in the holiday_list)
+        last_working_date = None
+        for day in range(days_in_month, 0, -1):  # Search backwards from last day
+            day_index = day - 1  # Convert to 0-based index
+            if holiday_list[day_index] == 'W':
+                last_working_date = day
+                break
+        
+        if last_working_date is None:
+            return False, None, f"ບໍ່ພົບວັນເຮັດວຽກໃນເດືອນ {year_str}-{month_str}"
+        
+        # Create full date
+        last_working_date_full = datetime(year, month, last_working_date).date()
+        
+        return True, last_working_date_full, f"ວັນເຮັດວຽກສຸດທ້າຍຂອງເດືອນ {year_str}-{month_str} ແມ່ນ {last_working_date_full}"
+        
+    except Exception as e:
+        logger.error(f"Error checking last working date: {str(e)}")
+        return False, None, f"ເກີດຂໍ້ຜິດພາດໃນການກວດສອບວັນເຮັດວຽກສຸດທ້າຍ: {str(e)}"
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_eom_alert_view(request):
+    """
+    API endpoint to check if EOM cycle is needed for the current or specified month.
+    """
+    try:
+        # Get target year and month from request or use current
+        target_year = request.GET.get('year')
+        target_month = request.GET.get('month')
+        
+        if target_year and target_month:
+            year = int(target_year)
+            month = int(target_month)
+        else:
+            tz = pytz.timezone('Asia/Bangkok')
+            current_date = timezone.now().astimezone(tz).date()
+            year = current_date.year
+            month = current_date.month
+        
+        # Check last working date of month
+        success, last_working_date, message = check_last_working_date_of_month(year, month)
+        
+        if not success:
+            return Response({
+                "error": message,
+                "success": False
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if current date is the last working date
+        tz = pytz.timezone('Asia/Bangkok')
+        current_date = timezone.now().astimezone(tz).date()
+        
+        is_eom_needed = current_date == last_working_date
+        
+        # Check if EOM already processed for this month
+        eom_processed = STTB_EOC_STATUS.objects.filter(
+            eoc_type='EOM',
+            eod_date__year=year,
+            eod_date__month=month,
+            eoc_status='C'
+        ).exists()
+        
+        return Response({
+            "success": True,
+            "year": year,
+            "month": month,
+            "last_working_date": last_working_date.isoformat(),
+            "current_date": current_date.isoformat(),
+            "is_eom_needed": is_eom_needed and not eom_processed,
+            "eom_already_processed": eom_processed,
+            "message": message,
+            "alert_message": f"ຕ້ອງດຳເນີນການ EOM ສຳລັບເດືອນ {year}-{month:02d}" if is_eom_needed and not eom_processed else None
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error in EOM alert check: {str(e)}")
+        return Response({
+            "error": f"ເກີດຂໍ້ຜິດພາດໃນການກວດສອບ EOM: {str(e)}",
+            "success": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_eom_journal_view(request):
+    """
+    API endpoint for End of Month (EOM) journal processing.
+    """
+    try:
+        tz = pytz.timezone('Asia/Bangkok')
+        target_year = request.data.get('year')
+        target_month = request.data.get('month')
+        
+        # Use current year/month if not specified
+        if target_year and target_month:
+            year = int(target_year)
+            month = int(target_month)
+        else:
+            current_date = timezone.now().astimezone(tz).date()
+            year = current_date.year
+            month = current_date.month
+        
+        logger.info(f"Starting EOM process for {year}-{month:02d}, User: {request.user}")
+        
+        with transaction.atomic():
+            # Step 1: Validate Last_working_Date of Month
+            validation_success, last_working_date, validation_message = validate_eom_requirements(year, month)
+            if not validation_success:
+                logger.error(f"EOM validation failed: {validation_message}")
+                raise Exception(validation_message)
+            
+            # Step 2: Validate Last Date of STTB_Dates.eod_time = 'Y' is last working date
+            eod_validation_success, eod_message = validate_last_eod_completed(last_working_date)
+            if not eod_validation_success:
+                logger.error(f"EOD validation failed: {eod_message}")
+                raise Exception(eod_message)
+            
+            # Step 3: Execute EOM functions
+            eom_success, eom_message, eom_results = execute_eom_process(request.user, year, month, last_working_date)
+            if not eom_success:
+                logger.error(f"EOM process failed: {eom_message}")
+                raise Exception(eom_message)
+            
+            # Step 4: Insert Data into STTB_EOC_STATUS
+            status_success, status_message = insert_eom_status_records(eom_results, last_working_date)
+            if not status_success:
+                logger.error(f"EOM status insertion failed: {status_message}")
+                raise Exception(status_message)
+            
+            # All steps successful
+            final_message = f"ການປະມວນຜົນ EOM ສຳເລັດແລ້ວ ສຳລັບເດືອນ {year}-{month:02d}. ວັນເຮັດວຽກສຸດທ້າຍ: {last_working_date}"
+            logger.info(f"EOM process successful for {year}-{month:02d}")
+
+            return Response({
+                "message": final_message,
+                "success": True,
+                "year": year,
+                "month": month,
+                "last_working_date": last_working_date.isoformat(),
+                "details": {
+                    "validation": validation_message,
+                    "eod_validation": eod_message,
+                    "eom_process": eom_message,
+                    "status_insertion": status_message
+                }
+            }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"EOM process failed for {year}-{month:02d}: {str(e)}")
+        return Response({
+            "error": f"ການປະມວນຜົນ EOM ລົ້ມເຫລວ: {str(e)}",
+            "success": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+def validate_eom_requirements(year, month):
+    """
+    Validates if EOM can be performed for the specified month.
+    
+    Step 1: Validate Last_working_Date of Month
+    """
+    try:
+        # Check last working date of month
+        success, last_working_date, message = check_last_working_date_of_month(year, month)
+        if not success:
+            return False, None, message
+        
+        # Check if EOM already processed for this month
+        eom_exists = STTB_EOC_STATUS.objects.filter(
+            eoc_type='EOM',
+            eod_date__year=year,
+            eod_date__month=month,
+            eoc_status='C'
+        ).exists()
+        
+        if eom_exists:
+            return False, None, f"EOM ສຳລັບເດືອນ {year}-{month:02d} ໄດ້ດຳເນີນການແລ້ວ"
+        
+        # Validate current date is appropriate for EOM
+        tz = pytz.timezone('Asia/Bangkok')
+        current_date = timezone.now().astimezone(tz).date()
+        
+        # Allow EOM processing only on or after the last working date
+        if current_date < last_working_date:
+            return False, None, f"ຍັງບໍ່ເຖິງວັນເຮັດວຽກສຸດທ້າຍຂອງເດືອນ ({last_working_date})"
+        
+        return True, last_working_date, f"EOM validation ຜ່ານສຳລັບເດືອນ {year}-{month:02d}, ວັນເຮັດວຽກສຸດທ້າຍ: {last_working_date}"
+        
+    except Exception as e:
+        return False, None, f"ເກີດຂໍ້ຜິດພາດໃນການກວດສອບ EOM: {str(e)}"
+
+def validate_last_eod_completed(last_working_date):
+    """
+    Validates that the last EOD for the last working date is completed.
+    
+    Step 2: Validate Last Date of STTB_Dates.eod_time = 'Y'
+    """
+    try:
+        # Find the latest STTB_Dates record with eod_time = 'Y'
+        try:
+            latest_completed_eod = STTB_Dates.objects.filter(
+                eod_time='Y'
+            ).latest('date_id')
+        except STTB_Dates.DoesNotExist:
+            return False, "ບໍ່ພົບການບັນທຶກ EOD ທີ່ສຳເລັດແລ້ວ"
+        
+        # Get the Start_Date of the latest completed EOD
+        tz = pytz.timezone('Asia/Bangkok')
+        latest_eod_date = latest_completed_eod.Start_Date.astimezone(tz).date()
+        
+        # Check if this matches the last working date of the month
+        if latest_eod_date != last_working_date:
+            return False, f"EOD ສຸດທ້າຍທີ່ສຳເລັດ ({latest_eod_date}) ບໍ່ແມ່ນວັນເຮັດວຽກສຸດທ້າຍຂອງເດືອນ ({last_working_date})"
+        
+        return True, f"EOD ສຳລັບວັນເຮັດວຽກສຸດທ້າຍ ({last_working_date}) ໄດ້ສຳເລັດແລ້ວ"
+        
+    except Exception as e:
+        return False, f"ເກີດຂໍ້ຜິດພາດໃນການກວດສອບ EOD: {str(e)}"
+
+def execute_eom_process(user, year, month, last_working_date):
+    """
+    Execute all EOM functions in sequence.
+    
+    Step 3: Execute EOM functions
+    """
+    try:
+        with transaction.atomic():
+            eom_functions = MTTB_EOC_MAINTAIN.objects.filter(
+                eoc_type='EOM',
+                Auth_Status='A',
+                Record_Status='O'
+            ).select_related('function_id').order_by('eoc_seq_no')
+
+            if not eom_functions:
+                return False, "ບໍ່ພົບຟັງຊັນ EOM ທີ່ເປີດໃຊ້ງານ", []
+
+            total_executed = 0
+            execution_results = []
+
+            for eom_function in eom_functions:
+                func_success, func_message = execute_eom_function(eom_function, user, year, month, last_working_date)
+                
+                # Record execution result
+                result_record = {
+                    'eom_function': eom_function,
+                    'success': func_success,
+                    'message': func_message,
+                    'status': 'C' if func_success else 'E'
+                }
+                execution_results.append(result_record)
+                
+                if not func_success:
+                    return False, f"ຟັງຊັນ {eom_function.function_id.description_la} ລົ້ມເຫລວ: {func_message}", execution_results
+                
+                total_executed += 1
+                logger.info(f"EOM Function {eom_function.function_id.function_id} executed successfully for {year}-{month:02d}")
+
+            return True, f"ດຳເນີນການຟັງຊັນ EOM ສຳເລັດ {total_executed} ຟັງຊັນ ສຳລັບເດືອນ {year}-{month:02d}", execution_results
+
+    except Exception as e:
+        return False, f"ເກີດຂໍ້ຜິດພາດໃນການປະມວນຜົນ EOM: {str(e)}", []
+
+def execute_eom_function(eom_function, user, year, month, last_working_date):
+    """
+    Execute a specific EOM function based on its function_id
+    """
+    function_id = eom_function.function_id.function_id
+    
+    logger.info(f"Executing EOM function {function_id} for {year}-{month:02d}")
+    
+    try:
+        # Map function IDs to their corresponding execution methods
+        function_mapping = {
+            'EOM_BALANCE': execute_eom_balance_calculation,
+            'EOM_INTEREST': execute_eom_interest_calculation,
+            'EOM_REPORT': execute_eom_report_generation,
+            'EOM_PROVISION': execute_eom_provision_calculation,
+            # Add more EOM function mappings as needed
+        }
+        
+        if function_id in function_mapping:
+            # Execute the mapped function
+            return function_mapping[function_id](eom_function, user, year, month, last_working_date)
+        else:
+            # Generic execution for unmapped functions
+            return execute_generic_eom_function(eom_function, user, year, month, last_working_date)
+            
+    except Exception as e:
+        logger.error(f"Error executing EOM function {function_id}: {str(e)}")
+        return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ: {str(e)}"
+
+def insert_eom_status_records(execution_results, last_working_date):
+    """
+    Insert execution results into STTB_EOC_STATUS table.
+    
+    Step 4: Insert Data into STTB_EOC_STATUS
+    """
+    try:
+        tz = pytz.timezone('Asia/Bangkok')
+        eod_date = timezone.now().astimezone(tz).replace(
+            year=last_working_date.year,
+            month=last_working_date.month,
+            day=last_working_date.day
+        )
+        
+        inserted_count = 0
+        
+        for result in execution_results:
+            eom_function = result['eom_function']
+            success = result['success']
+            message = result['message']
+            status_code = result['status']
+            
+            # Create STTB_EOC_STATUS record
+            eoc_status = STTB_EOC_STATUS.objects.create(
+                eoc_seq_no=eom_function.eoc_seq_no,
+                eoc_id=eom_function,
+                eoc_type='EOM',
+                eod_date=eod_date,
+                eoc_status=status_code,
+                error=message if not success else None
+            )
+            
+            inserted_count += 1
+            logger.info(f"EOM status record created: ID={eoc_status.eoc_stt_id}, Function={eom_function.function_id.function_id}, Status={status_code}")
+        
+        return True, f"ບັນທຶກສະຖານະ EOM ສຳເລັດ {inserted_count} ລາຍການ"
+        
+    except Exception as e:
+        logger.error(f"Error inserting EOM status records: {str(e)}")
+        return False, f"ເກີດຂໍ້ຜິດພາດໃນການບັນທຶກສະຖານະ EOM: {str(e)}"
+
+# Placeholder functions for specific EOM function implementations
+def execute_eom_balance_calculation(eom_function, user, year, month, last_working_date):
+    """Execute EOM balance calculation"""
+    # Implement your specific EOM balance calculation logic here
+    logger.info(f"Executing EOM balance calculation for {year}-{month:02d}")
+    return True, "ການຄິດໄລ່ຍອດເງິນ EOM ສຳເລັດ"
+
+def execute_eom_interest_calculation(eom_function, user, year, month, last_working_date):
+    """Execute EOM interest calculation"""
+    # Implement your specific EOM interest calculation logic here
+    logger.info(f"Executing EOM interest calculation for {year}-{month:02d}")
+    return True, "ການຄິດໄລ່ດອກເບ້ຍ EOM ສຳເລັດ"
+
+def execute_eom_report_generation(eom_function, user, year, month, last_working_date):
+    """Execute EOM report generation"""
+    # Implement your specific EOM report generation logic here
+    logger.info(f"Executing EOM report generation for {year}-{month:02d}")
+    return True, "ການສ້າງລາຍງານ EOM ສຳເລັດ"
+
+def execute_eom_provision_calculation(eom_function, user, year, month, last_working_date):
+    """Execute EOM provision calculation"""
+    # Implement your specific EOM provision calculation logic here
+    logger.info(f"Executing EOM provision calculation for {year}-{month:02d}")
+    return True, "ການຄິດໄລ່ການສຳຮອງ EOM ສຳເລັດ"
+
+def execute_generic_eom_function(eom_function, user, year, month, last_working_date):
+    """Generic execution for unmapped EOM functions"""
+    # Implement generic EOM function execution logic here
+    logger.info(f"Executing generic EOM function {eom_function.function_id.function_id} for {year}-{month:02d}")
+    return True, f"ຟັງຊັນ EOM {eom_function.function_id.description_la} ສຳເລັດ"

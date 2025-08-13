@@ -226,8 +226,7 @@ urlpatterns = [
     # Processing SomTop_Trail_Balance
     # path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
     # path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
-    path('api/somtop_trail_balance-report/bulk-insert/', bulk_insert_somtop_trial_balance, name='bulk-insert-somtop-trial-balance'),
-    path('api/somtop_trail_balance-report/bulk-delete/', bulk_delete_somtop_trial_balance, name='bulk-delete-somtop-trial-balance'),
+
 
     path('api/eod/journal/bulk-by-date-range/', bulk_journal_by_date_range_view, name='bulk_journal_by_date_range'),
 
@@ -242,8 +241,9 @@ urlpatterns = [
          name='trial_balance_consolidated'),
     path('api/trial-balance/fcy/', trial_balance_fcy_view, name='trial-balance-fcy-post'),
     path('api/trial-balance/fcy/get/', trial_balance_fcy_get_view, name='trial-balance-fcy-get'),
-    path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
-
+    path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'), #<--- Insert Dairy Report
+    path('api/somtop_trail_balance-report/bulk-insert/', bulk_insert_somtop_trial_balance, name='bulk-insert-somtop-trial-balance'), #<--- Insert SomTop Trial Balance
+    path('api/somtop_trail_balance-report/bulk-delete/', bulk_delete_somtop_trial_balance, name='bulk-delete-somtop-trial-balance'),
 
     # Stroe Procedure <---- Balance Sheet ------>
     path('api/balance-sheet/acc/', balance_sheet_acc_view, name='balance-sheet-acc'), # Done Update Store Procedure
