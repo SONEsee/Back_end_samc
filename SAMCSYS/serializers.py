@@ -659,6 +659,19 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
 
+class DETB_JRNL_LOG_MASTER_AC_Serializer(serializers.ModelSerializer):
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
+    jrnl_log_ac = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DETB_JRNL_LOG_MASTER
+        fields = '__all__'
+
+    def get_jrnl_log_ac(self, obj):
+        jrnl_log = DETB_JRNL_LOG.objects.filter(Reference_No=obj.Reference_No).first()
+        return {"Ac_relatives": jrnl_log.Ac_relatives} if jrnl_log else None
+
 from rest_framework import serializers
 from .models import DETB_JRNL_LOG_MASTER
 
