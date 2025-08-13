@@ -853,15 +853,13 @@ class MTTB_EOC_MAINTAIN(models.Model):
         verbose_name_plural = 'EOC_MAINTAIN'
 
 class STTB_EOC_STATUS(models.Model):
-    eoc_stt_id = models.AutoField(primary_key=True)
-    eoc_seq_no = models.IntegerField(null=True, blank=True)        
-    # module_id = models.ForeignKey('STTB_ModulesInfo', null=True, blank=True, on_delete=models.CASCADE)
-    # function_id = models.ForeignKey('MTTB_Function_Desc', null=True, blank=True, on_delete=models.CASCADE)
-    eoc_id = models.ForeignKey(MTTB_EOC_MAINTAIN, null=True, blank=True, on_delete=models.CASCADE)
-    eoc_type = models.CharField(max_length=3)
-    eod_date = models.DateTimeField(auto_now=False, null=True, blank=True)         
-    eoc_status = models.CharField(max_length=1)                   
-    error = models.CharField(max_length=550, null=True, blank=True)       
+    eoc_stt_id = models.AutoField(primary_key=True) 
+    eoc_seq_no = models.IntegerField(null=True, blank=True) # Number of Exucution Queue     
+    eoc_id = models.ForeignKey(MTTB_EOC_MAINTAIN, null=True, blank=True, on_delete=models.CASCADE) # id of Process MTTB_EOC_MAINTAIN
+    eoc_type = models.CharField(max_length=3) # Type of Process EOM, EOD, EOC
+    eod_date = models.DateTimeField(auto_now=False, null=True, blank=True)  #Last_working_Date of month      
+    eoc_status = models.CharField(max_length=1)     #N: Normal W: Working C: Completed E:  Error              
+    error = models.CharField(max_length=550, null=True, blank=True) # Error Details      
 
     class Meta:
         verbose_name_plural = 'EOC_STATUS'
