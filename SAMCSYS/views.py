@@ -1,6 +1,7 @@
 # Create your views here.
 from decimal import Decimal
 import hashlib
+from threading import local
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -6621,716 +6622,30 @@ def submit_eod_journal(request):
     except Exception as e:
         return Response({"status": "error", "message": str(e)}, status=500)
     
-
-
-# from datetime import datetime, timedelta
-# from django.utils import timezone
-# import pytz
-# from .models import MTTB_LCL_Holiday, STTB_Dates
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def end_of_day_journal_view(request):
-#     """
-#     API endpoint to validate and process end-of-day journal submission.
-#     Requires authentication.
-#     """
-#     success, message = end_of_day_journal()
-#     if success:
-#         return Response({"message": message}, status=status.HTTP_201_CREATED)
-#     return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
-# def end_of_day_journal():
-#     """
-#     Validates and processes end-of-day journal submission.
-#     Checks if today is a working day and matches the next_working_date in STTB_Dates.
-#     If valid, creates a new STTB_Dates entry for the next working day.
-    
-#     Returns:
-#         tuple: (bool, str) - (Success status, Message)
-#     """
-#     try:
-#         # Set timezone to +07:00 as per user context
-#         tz = pytz.timezone('Asia/Bangkok')  # UTC+07:00
-#         today = timezone.now().astimezone(tz).date()
-#         year_str = str(today.year)
-#         month_str = str(today.month).zfill(2)  # Ensure two-digit month
-#         print(f"Processing end-of-day journal for {year_str}-{month_str} on {today} in timezone {tz}")
-#         # Step 1: Check if today is a working day in MTTB_LCL_Holiday
-#         try:
-#             holiday_record = MTTB_LCL_Holiday.objects.get(
-#                 HYear=year_str, HMonth=month_str
-#             )
-#             print(f"Holiday record found for {year_str}-{month_str}: {holiday_record.Holiday_List}")
-#         except MTTB_LCL_Holiday.DoesNotExist:
-#             return False, f"No holiday record found for {year_str}-{month_str}."
-
-#         holiday_list = holiday_record.Holiday_List
-#         if len(holiday_list) != 31:
-#             return False, "Invalid Holiday_List length. Must be 31 characters."
-
-#         # Get the day index (1-based) for today
-#         day_index = today.day - 1
-#         if day_index >= len(holiday_list) or holiday_list[day_index] != 'W':
-#             return False, f"Today ({today}) is not a working day."
-
-#         # Step 2: Check the latest STTB_Dates row
-#         try:
-#             latest_eod = STTB_Dates.objects.latest('date_id')
-#         except STTB_Dates.DoesNotExist:
-#             return False, "No records found in STTB_Dates."
-
-#         # Convert next_working_day to date for comparison
-#         next_working_date = latest_eod.next_working_Day.astimezone(tz).date()
-#         if next_working_date != today:
-#             return False, f"Today ({today}) does not match the next working day ({next_working_date})."
-
-#         # Step 3: Find the next working day after today
-#         current_date = today
-#         next_working_date = None
-#         while True:
-#             current_date += timedelta(days=1)
-#             # Check if we need to fetch a new holiday record for the next month
-#             if current_date.month != today.month:
-#                 try:
-#                     holiday_record = MTTB_LCL_Holiday.objects.get(
-#                         HYear=str(current_date.year), HMonth=str(current_date.month).zfill(2),
-#                         Record_Status='C', Auth_Status='U'
-#                     )
-#                     holiday_list = holiday_record.Holiday_List
-#                 except MTTB_LCL_Holiday.DoesNotExist:
-#                     return False, f"No holiday record found for {current_date.year}-{current_date.month:02d}."
-#             day_index = current_date.day - 1
-#             if day_index < len(holiday_list) and holiday_list[day_index] == 'W':
-#                 next_working_date = current_date
-#                 break
-#             if current_date > today + timedelta(days=31):  # Prevent infinite loop
-#                 return False, "No working day found in the next 31 days."
-
-#         # Step 4: Create new STTB_Dates entry
-#         new_eod = STTB_Dates(
-#             Start_Date=latest_eod.next_working_Day,  # Use next_working_Day from latest row
-#             prev_Working_Day=latest_eod.Start_Date,  # Use Start_Date from latest row
-#             next_working_Day=timezone.make_aware(
-#                 datetime.combine(next_working_date, datetime.min.time()), timezone=tz
-#             ),
-#             eod_time='N'
-#         )
-#         new_eod.save()
-
-#         return True, f"Journal submission successful for {today}. New entry created for {next_working_date}."
-
-#     except Exception as e:
-#         return False, f"Error processing journal submission: {str(e)}"
-
-
-# from datetime import datetime, timedelta
-# from django.utils import timezone
-# from django.db import transaction
-# import pytz
-# import logging
-# from .models import MTTB_LCL_Holiday, STTB_Dates, MTTB_EOC_MAINTAIN, MTTB_Function_Desc, STTB_EOC_DAILY_LOG, ACTB_DAIRY_LOG, MTTB_DATA_Entry
-# from rest_framework.decorators import api_view, permission_classes
-# from rest_framework.permissions import IsAuthenticated
-# from rest_framework.response import Response
-# from rest_framework import status
-
-# # Set up logging
-# logger = logging.getLogger(__name__)
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def end_of_day_journal_view(request):
-#     """
-#     API endpoint with transaction support - all operations succeed or fail together.
-#     Supports both normal and back-date EOD processing.
-#     """
-#     try:
-#         # Check if this is a back-date submission
-#         target_date = request.data.get('target_date')
-#         eod_id = request.data.get('eod_id')
-        
-#         # Determine the processing date and mode
-#         if target_date and eod_id:
-#             # Back-date mode
-#             if isinstance(target_date, str):
-#                 processing_date = datetime.strptime(target_date, '%Y-%m-%d').date()
-#             else:
-#                 processing_date = target_date
-            
-#             is_back_date = True
-#             logger.info(f"Starting BACK-DATE EOD process for date: {processing_date}, EOD ID: {eod_id}, User: {request.user}")
-#         else:
-#             # Normal mode
-#             value_date = request.data.get('value_date')
-#             if not value_date:
-#                 processing_date = timezone.now().date()
-#             elif isinstance(value_date, str):
-#                 processing_date = datetime.strptime(value_date, '%Y-%m-%d').date()
-#             else:
-#                 processing_date = value_date
-            
-#             is_back_date = False
-#             eod_id = None
-#             logger.info(f"Starting NORMAL EOD process for date: {processing_date}, User: {request.user}")
-        
-#         with transaction.atomic():
-#             # Step 1: Validate EOD requirements (different logic for back-date)
-#             if is_back_date:
-#                 validation_success, validation_message = validate_backdate_eod_requirements(processing_date, eod_id)
-#             else:
-#                 validation_success, validation_message = validate_normal_eod_requirements()
-            
-#             if not validation_success:
-#                 logger.error(f"EOD validation failed: {validation_message}")
-#                 raise Exception(validation_message)
-            
-#             # Step 2: Execute main EOD process
-#             eod_success, eod_message = execute_eod_process(request.user, processing_date, is_back_date)
-#             if not eod_success:
-#                 logger.error(f"EOD process failed: {eod_message}")
-#                 raise Exception(eod_message)
-            
-#             # Step 3: Handle EOD completion
-#             if is_back_date:
-#                 # Update the existing STTB_Dates record to mark as completed
-#                 complete_success, complete_message = complete_backdate_eod(eod_id, request.user)
-#                 if not complete_success:
-#                     logger.error(f"Back-date EOD completion failed: {complete_message}")
-#                     raise Exception(complete_message)
-                
-#                 # Clear EOD journal for the target date
-#                 clear_success, clear_message = clear_eod_journal_with_transaction(processing_date)
-#                 if not clear_success:
-#                     logger.error(f"EOD clear failed: {clear_message}")
-#                     raise Exception(clear_message)
-                
-#                 final_message = f"ການປະມວນຜົນ EOD ຍ້ອນຫຼັງສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}"
-#             else:
-#                 # Normal EOD - clear journal and create next working day
-#                 clear_success, clear_message = clear_eod_journal_with_transaction(processing_date)
-#                 if not clear_success:
-#                     logger.error(f"EOD clear failed: {clear_message}")
-#                     raise Exception(clear_message)
-                
-#                 final_message = f"ການປະມວນຜົນ EOD ສຳເລັດແລ້ວສົມບູນ ສຳລັບວັນທີ {processing_date}"
-            
-#             # All steps successful
-#             logger.info(f"Complete EOD process successful for {processing_date} ({'back-date' if is_back_date else 'normal'} mode)")
-            
-#             return Response({
-#                 "message": final_message,
-#                 "success": True,
-#                 "is_back_date": is_back_date,
-#                 "processing_date": processing_date.isoformat(),
-#                 "details": {
-#                     "validation": validation_message,
-#                     "eod_process": eod_message,
-#                     "completion": complete_message if is_back_date else clear_message
-#                 }
-#             }, status=status.HTTP_201_CREATED)
-    
-#     except Exception as e:
-#         logger.error(f"EOD process failed for {processing_date if 'processing_date' in locals() else 'unknown date'}: {str(e)}")
-#         return Response({
-#             "error": f"ການປະມວນຜົນ EOD ລົ້ມເຫລວ: {str(e)}",
-#             "success": False
-#         }, status=status.HTTP_400_BAD_REQUEST)
-
-# def validate_normal_eod_requirements():
-#     """
-#     Validates if normal EOD can be performed (original validation logic)
-#     """
-#     try:
-#         # Set timezone to +07:00 as per user context
-#         tz = pytz.timezone('Asia/Bangkok')  # UTC+07:00
-#         today = timezone.now().astimezone(tz).date()
-#         year_str = str(today.year)
-#         month_str = str(today.month).zfill(2)
-        
-#         # Check MTTB_DATA_Entry for bypass settings
-#         try:
-#             data_entry = MTTB_DATA_Entry.objects.filter(
-#                 # Auth_Status='A'  # Uncomment if needed
-#             ).first()
-            
-#             if data_entry and data_entry.MOD_NO == 'Y':
-#                 # Bypass working day check
-#                 logger.info("Working day check bypassed (MOD_NO = 'Y')")
-#             else:
-#                 # Step 1: Check if today is a working day
-#                 try:
-#                     holiday_record = MTTB_LCL_Holiday.objects.get(
-#                         HYear=year_str, HMonth=month_str
-#                     )
-#                 except MTTB_LCL_Holiday.DoesNotExist:
-#                     return False, f"No holiday record found for {year_str}-{month_str}."
-
-#                 holiday_list = holiday_record.Holiday_List
-#                 if len(holiday_list) != 31:
-#                     return False, "Invalid Holiday_List length. Must be 31 characters."
-
-#                 day_index = today.day - 1
-#                 if day_index >= len(holiday_list) or holiday_list[day_index] != 'W':
-#                     return False, f"Today ({today}) is not a working day."
-        
-#         except Exception:
-#             # If can't check data entry, use normal validation
-#             pass
-
-#         # Step 2: Check the latest STTB_Dates row
-#         try:
-#             latest_eod = STTB_Dates.objects.latest('date_id')
-#         except STTB_Dates.DoesNotExist:
-#             return False, "No records found in STTB_Dates."
-
-#         next_working_date = latest_eod.next_working_Day.astimezone(tz).date()
-#         if next_working_date != today:
-#             return False, f"Today ({today}) does not match the next working day ({next_working_date})."
-
-#         if latest_eod.eod_time != 'Y':
-#             return False, f"EOD did not completed for today (eod_time = '{latest_eod.eod_time}')."
-
-#         return True, f"Normal EOD validation passed for {today}"
-
-#     except Exception as e:
-#         return False, f"Error in normal EOD validation: {str(e)}"
-# def validate_backdate_eod_requirements(target_date, eod_id):
-#     """
-#     Validates if back-date EOD can be performed
-#     """
-#     try:
-#         tz = pytz.timezone('Asia/Bangkok')
-#         today = timezone.now().astimezone(tz).date()
-        
-#         # Check if BACK_VALUE is enabled
-#         try:
-#             data_entry = MTTB_DATA_Entry.objects.filter(
-#                 # Auth_Status='A'  # Uncomment if needed
-#             ).first()
-            
-#             if not data_entry or data_entry.BACK_VALUE != 'Y':
-#                 return False, "Back-date processing is not enabled (BACK_VALUE != 'Y')."
-        
-#         except Exception:
-#             return False, "Could not verify back-date settings."
-
-#         # Verify the EOD record exists and matches
-#         try:
-#             eod_record = STTB_Dates.objects.get(date_id=eod_id)
-#         except STTB_Dates.DoesNotExist:
-#             return False, f"EOD record with ID {eod_id} not found."
-
-#         # Check if the target date matches the EOD record
-#         eod_next_working = eod_record.Start_Date.astimezone(tz).date()
-#         if eod_next_working != target_date:
-#             return False, f"Target date ({target_date}) does not match EOD record Start_Date ({eod_next_working})."
-
-#         # Check if this EOD is still pending (not yet completed)
-#         if eod_record.eod_time == 'Y':
-#             return False, f"EOD for {target_date} is already completed."
-
-#         # Verify that target_date is in the past (back-dating)
-#         if target_date >= today:
-#             return False, f"Target date ({target_date}) must be in the past for back-dating."
-
-#         return True, f"Back-date EOD validation passed for {target_date} (EOD ID: {eod_id})"
-
-#     except Exception as e:
-#         return False, f"Error in back-date EOD validation: {str(e)}"
-# def complete_backdate_eod(eod_id, user):
-#     """
-#     Mark the back-date EOD as completed by updating the STTB_Dates record
-#     """
-#     try:
-#         tz = pytz.timezone('Asia/Bangkok')
-#         current_time = timezone.now().astimezone(tz)
-        
-#         # Update the EOD record to mark as completed
-#         eod_record = STTB_Dates.objects.get(date_id=eod_id)
-#         eod_record.eod_time = 'Y'  # Mark as completed
-#         eod_record.Checker_Id = user.user_name
-#         eod_record.Checker_DT_Stamp = current_time
-#         eod_record.save()
-        
-#         logger.info(f"Back-date EOD {eod_id} marked as completed by {user.user_name}")
-        
-#         return True, f"Back-date EOD {eod_id} marked as completed successfully."
-        
-#     except STTB_Dates.DoesNotExist:
-#         return False, f"EOD record {eod_id} not found."
-#     except Exception as e:
-#         return False, f"Error completing back-date EOD: {str(e)}"
-
-# def execute_eod_process(user, processing_date, is_back_date=False):
-#     """
-#     Main EOD execution process that runs all sub-functions in sequence
-#     Updated to handle both normal and back-date processing
-#     """
-#     try:
-#         with transaction.atomic():
-#             # Get all EOD functions ordered by sequence
-#             eod_functions = get_eod_functions()
-            
-#             if not eod_functions:
-#                 return False, "ບໍ່ພົບຟັງຊັນ EOD ທີ່ຕ້ອງປະມວນຜົນ"
-            
-#             # Execute functions in sequence
-#             execution_results = []
-#             total_executed = 0
-#             total_skipped = 0
-            
-#             for eod_function in eod_functions:
-#                 try:
-#                     if should_execute_function(eod_function):
-#                         # Execute the function with processing date context
-#                         func_success, func_message = execute_eod_function(eod_function, user, processing_date, is_back_date)
-                        
-#                         if func_success:
-#                             total_executed += 1
-#                             execution_results.append({
-#                                 'function': eod_function.function_id.description_la,
-#                                 'status': 'success',
-#                                 'message': func_message
-#                             })
-#                             logger.info(f"EOD Function {eod_function.function_id.function_id} executed successfully for {processing_date}")
-#                         else:
-#                             # If any critical function fails, stop the process
-#                             logger.error(f"EOD Function {eod_function.function_id.function_id} failed: {func_message}")
-#                             return False, f"ຟັງຊັນ {eod_function.function_id.description_la} ລົ້ມເຫລວ: {func_message}"
-#                     else:
-#                         total_skipped += 1
-#                         execution_results.append({
-#                             'function': eod_function.function_id.description_la,
-#                             'status': 'skipped',
-#                             'message': 'ຟັງຊັນຖືກປິດ (Record_Status = C)'
-#                         })
-#                         logger.info(f"EOD Function {eod_function.function_id.function_id} skipped (closed)")
-                        
-#                 except Exception as e:
-#                     logger.error(f"Error executing EOD function {eod_function.function_id.function_id}: {str(e)}")
-#                     return False, f"ຂໍ້ຜິດພາດໃນຟັງຊັນ {eod_function.function_id.description_la}: {str(e)}"
-            
-#             # Only create next working day entry for normal EOD (not back-date)
-#             if not is_back_date:
-#                 success, message = create_next_working_day_entry(user)
-#                 if not success:
-#                     return False, f"ບໍ່ສາມາດສ້າງ entry ວັນເຮັດການໃໝ່ໄດ້: {message}"
-            
-#             # Prepare summary message
-#             mode_text = "ຍ້ອນຫຼັງ" if is_back_date else "ປົກກະຕິ"
-#             summary_message = f"ປິດບັນຊີ{mode_text}ສຳເລັດແລ້ວສຳລັບ {processing_date} - ປະມວນຜົນ: {total_executed} ຟັງຊັນ, ຂ້າມ: {total_skipped} ຟັງຊັນ"
-            
-#             return True, summary_message
-
-#     except Exception as e:
-#         logger.error(f"Error in EOD process execution: {str(e)}")
-#         return False, f"ເກີດຂໍ້ຜິດພາດໃນການປະມວນຜົນ EOD: {str(e)}"
-# def get_eod_functions():
-#     """
-#     Get all EOD functions that should be considered for execution
-#     """
-#     return MTTB_EOC_MAINTAIN.objects.filter(
-#         eoc_type='EOD',
-#         Auth_Status='A'  # Only authorized functions
-#     ).select_related('function_id', 'module_id').order_by('eoc_seq_no')
-
-# def should_execute_function(eod_function):
-#     """
-#     Determine if a function should be executed based on its status
-#     """
-#     # Execute only if Record_Status is 'O' (Open)
-#     return eod_function.Record_Status == 'O'
-
-
-# def execute_eod_function(eod_function, user, processing_date=None, is_back_date=False):
-#     """
-#     Execute a specific EOD function based on its function_id
-#     """
-#     function_id = eod_function.function_id.function_id
-
-#     context = f"back-date for {processing_date}" if is_back_date else f"normal for {processing_date or 'today'}"
-#     logger.info(f"Executing function {function_id} ({context})")
-    
-#     try:
-#         # Map function IDs to their corresponding execution methods
-#         function_mapping = {
-#             'FN006': execute_bulk_journal,
-#             'EOD_BALANCE': execute_balance_calculation,
-#             'EOD_INTEREST': execute_interest_calculation,
-#             'EOD_REPORT': execute_report_generation,
-#             'EOD_BACKUP': execute_backup_process,
-#             # Add more function mappings as needed
-#         }
-        
-#         if function_id in function_mapping:
-#             # Execute the mapped function
-#             return function_mapping[function_id](eod_function, user)
-#         else:
-#             # Generic execution for unmapped functions
-#             return execute_generic_function(eod_function, user)
-            
-#     except Exception as e:
-#         logger.error(f"Error executing function {function_id}: {str(e)}")
-#         return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ: {str(e)}"
-
-# def get_processing_context():
-#     """
-#     Helper function that EOD functions can call to get current processing context
-#     """
-#     # This can be stored in thread-local storage, cache, or request context
-#     from threading import local
-    
-#     if not hasattr(get_processing_context, '_context'):
-#         get_processing_context._context = local()
-    
-#     return getattr(get_processing_context._context, 'eod_context', {
-#         'processing_date': timezone.now().date(),
-#         'is_back_date': False
-#     })
-
-# def set_processing_context(processing_date, is_back_date=False):
-#     """
-#     Set the current processing context for EOD functions
-#     """
-#     from threading import local
-    
-#     if not hasattr(get_processing_context, '_context'):
-#         get_processing_context._context = local()
-    
-#     get_processing_context._context.eod_context = {
-#         'processing_date': processing_date,
-#         'is_back_date': is_back_date
-#     }
-
-# def complete_current_eod_and_create_next(user, processing_date):
-#     """
-#     Mark current EOD as completed and create next working day entry for normal EOD
-#     """
-#     try:
-#         tz = pytz.timezone('Asia/Bangkok')
-#         current_time = timezone.now().astimezone(tz)
-        
-#         # Get current EOD record
-#         try:
-#             current_eod = STTB_Dates.objects.latest('date_id')
-#         except STTB_Dates.DoesNotExist:
-#             return False, "No current EOD record found"
-        
-#         # Mark current EOD as completed
-#         current_eod.eod_time = 'Y'
-#         current_eod.Checker_Id = user.user_name
-#         current_eod.Checker_DT_Stamp = current_time
-#         current_eod.save()
-        
-#         # Create next working day entry
-#         next_success, next_message = create_next_working_day_entry(user, processing_date)
-#         if not next_success:
-#             return False, f"EOD marked complete but failed to create next day: {next_message}"
-        
-#         return True, f"EOD {current_eod.date_id} completed and {next_message}"
-        
-#     except Exception as e:
-#         return False, f"Error completing current EOD: {str(e)}"
-
-
-# from datetime import datetime, timedelta, time
-# from django.utils import timezone
-
-# def create_next_working_day_entry(user, current_date=None):
-#     """
-#     Create the next working day entry in STTB_Dates.
-#     Ensures Start_Date, prev_Working_Day, and next_working_Day are all set at 00:00:00
-#     """
-#     try:
-#         tz = pytz.timezone('Asia/Bangkok')
-
-#         # Step 1: Get current date
-#         if current_date is None:
-#             current_date = timezone.now().astimezone(tz).date()
-#         elif isinstance(current_date, str):
-#             current_date = datetime.strptime(current_date, '%Y-%m-%d').date()
-
-#         # Step 2: Calculate the start date (next working day after current_date)
-#         start_date = calculate_next_working_day(current_date + timedelta(days=1))
-#         start_date_dt = tz.localize(datetime.combine(start_date, time(0, 0, 0)))
-
-#         # Step 3: Calculate previous working day (working day before start_date)
-#         prev_working_date = calculate_previous_working_day(start_date)
-#         prev_working_day_dt = tz.localize(datetime.combine(prev_working_date, time(0, 0, 0)))
-
-#         # Step 4: Calculate next working day (working day after start_date)
-#         next_working_date = calculate_next_working_day(start_date + timedelta(days=1))
-#         next_working_day_dt = tz.localize(datetime.combine(next_working_date, time(0, 0, 0)))
-
-#         # Step 5: Save to DB
-#         new_eod = STTB_Dates.objects.create(
-#             Start_Date=start_date_dt,
-#             prev_Working_Day=prev_working_day_dt,
-#             next_working_Day=next_working_day_dt,
-#             eod_time='Y'
-#         )
-
-#         logger.info(f"✅ EOD created: ID={new_eod.date_id}, Start={start_date_dt}, Prev={prev_working_day_dt}, Next={next_working_day_dt}")
-#         return True, f"Created EOD for {start_date_dt.date()}"
-
-#     except Exception as e:
-#         logger.error(f"❌ Error in EOD creation: {e}")
-#         return False, str(e)
-
-# def calculate_next_working_day(date):
-#     """
-#     Calculate the next working day based on holiday calendar
-#     """
-#     try:
-#         current_date = date
-#         max_iterations = 10  # Prevent infinite loop
-#         iteration = 0
-        
-#         while iteration < max_iterations:
-#             year_str = str(current_date.year)
-#             month_str = str(current_date.month).zfill(2)
-            
-#             try:
-#                 holiday_record = MTTB_LCL_Holiday.objects.get(
-#                     HYear=year_str, HMonth=month_str
-#                 )
-#                 holiday_list = holiday_record.Holiday_List
-                
-#                 if len(holiday_list) >= current_date.day:
-#                     day_index = current_date.day - 1
-#                     if holiday_list[day_index] == 'W':  # Working day
-#                         return current_date
-                
-#             except MTTB_LCL_Holiday.DoesNotExist:
-#                 # If no holiday record, assume it's a working day
-#                 return current_date
-            
-#             # Move to next day
-#             current_date = current_date + timedelta(days=1)
-#             iteration += 1
-        
-#         # Fallback: return the original date + 1 if no working day found
-#         logger.warning(f"Could not find working day after {max_iterations} iterations, using fallback")
-#         return date + timedelta(days=1)
-#     except Exception as e:
-#         logger.error(f"Error calculating next working day: {str(e)}")
-#         # Fallback: return next day    
-#         return date + timedelta(days=1)
-
-# def calculate_previous_working_day(date):
-#     """
-#     Calculate the previous working day based on holiday calendar
-#     """
-#     try:
-#         current_date = date - timedelta(days=1)
-#         max_iterations = 10  # Prevent infinite loop
-#         iteration = 0
-        
-#         while iteration < max_iterations:
-#             year_str = str(current_date.year)
-#             month_str = str(current_date.month).zfill(2)
-            
-#             try:
-#                 holiday_record = MTTB_LCL_Holiday.objects.get(
-#                     HYear=year_str, HMonth=month_str
-#                 )
-#                 holiday_list = holiday_record.Holiday_List
-                
-#                 if len(holiday_list) >= current_date.day:
-#                     day_index = current_date.day - 1
-#                     if holiday_list[day_index] == 'W':  # Working day
-#                         return current_date
-                
-#             except MTTB_LCL_Holiday.DoesNotExist:
-#                 # If no holiday record, assume it's a working day
-#                 return current_date
-            
-#             # Move to previous day
-#             current_date = current_date - timedelta(days=1)
-#             iteration += 1
-        
-#         # Fallback: return the original date - 1 if no working day found
-#         logger.warning(f"Could not find previous working day after {max_iterations} iterations, using fallback")
-#         return date - timedelta(days=1)
-#     except Exception as e:
-#         logger.error(f"Error calculating previous working day: {str(e)}")
-#         # Fallback: return previous day    
-#         return date - timedelta(days=1)
-
-# def clear_eod_journal_with_transaction(value_date):
-#     """
-#     Your existing clear_eod_journal_with_transaction function
-#     (keeping it unchanged as it works correctly)
-#     """
-#     try:
-#         from datetime import datetime
-#         from django.db import transaction
-#         from .models import DETB_JRNL_LOG, DETB_JRNL_LOG_MASTER
-        
-#         # Convert value_date to proper format if it's a string
-#         if isinstance(value_date, str):
-#             value_date = datetime.strptime(value_date, '%Y-%m-%d').date()
-        
-#         with transaction.atomic():
-#             cleared_count = 0
-#             cleared_details = []
-            
-#             # Clear ACTB_DAIRY_LOG for specific date
-#             actb_count = ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).count()
-#             if actb_count > 0:
-#                 ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).delete()
-#                 cleared_count += actb_count
-#                 cleared_details.append(f"ACTB_DAIRY_LOG: {actb_count}")
-            
-#             # Clear DETB_JRNL_LOG for specific date
-#             jrnl_count = DETB_JRNL_LOG.objects.filter(Value_date=value_date).count()
-#             if jrnl_count > 0:
-#                 DETB_JRNL_LOG.objects.filter(Value_date=value_date).delete()
-#                 cleared_count += jrnl_count
-#                 cleared_details.append(f"DETB_JRNL_LOG: {jrnl_count}")
-            
-#             # Clear DETB_JRNL_LOG_MASTER for specific date
-#             master_count = DETB_JRNL_LOG_MASTER.objects.filter(Value_date=value_date).count()
-#             if master_count > 0:
-#                 DETB_JRNL_LOG_MASTER.objects.filter(Value_date=value_date).delete()
-#                 cleared_count += master_count
-#                 cleared_details.append(f"DETB_JRNL_LOG_MASTER: {master_count}")
-            
-#             if cleared_count > 0:
-#                 details_str = ", ".join(cleared_details)
-#                 message = f"ລຶບຂໍ້ມູນ EOD ສຳເລັດສຳລັບວັນທີ {value_date} (ດ້ວຍ Transaction). ລາຍການທີ່ລຶບ: {details_str}. ລວມ: {cleared_count} ລາຍການ"
-#                 logger.info(f"EOD journal cleared with transaction for date {value_date}. Total: {cleared_count}")
-#                 return True, message
-#             else:
-#                 message = f"ບໍ່ມີຂໍ້ມູນ EOD ໃຫ້ລຶບສຳລັບວັນທີ {value_date}"
-#                 logger.info(f"No EOD journal entries found for date {value_date}")
-#                 return True, message
-                
-#     except Exception as e:
-#         error_message = f"ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ EOD ດ້ວຍ Transaction ສຳລັບວັນທີ {value_date}: {str(e)}"
-#         logger.error(error_message)
-#         return False, error_message
-
-
-from django.db import transaction
-from django.core.exceptions import ValidationError
-import logging
-
-logger = logging.getLogger(__name__)
-
-def execute_bulk_journal(eod_function, user):
+def execute_bulk_journal(eod_function, user, processing_date=None):
     """
-    Execute the bulk journal function (move data from ACTB_DAIRY_LOG to STTB_EOC_DAILY_LOG)
+    Execute the bulk journal function (move data from ACTB_DAIRY_LOG_HISTORY to STTB_EOC_DAILY_LOG)
+    Updated to match new STTB_EOC_DAILY_LOG model structure with CharField fields
     """
     try:
+        # Get processing date from context if not provided
+        if processing_date is None:
+            context = get_processing_context()
+            processing_date = context.get('processing_date')
+            
         with transaction.atomic():
-            # Fetch authorized records from ACTB_DAIRY_LOG
-            authorized_logs = ACTB_DAIRY_LOG.objects.filter(Auth_Status='A')
+            # Fetch authorized records from ACTB_DAIRY_LOG_HISTORY for the specific processing date
+            query_filter = {'Auth_Status': 'A'}
+            if processing_date:
+                query_filter['value_dt'] = processing_date
+                
+            authorized_logs = ACTB_DAIRY_LOG_HISTORY.objects.filter(**query_filter)
             
             if not authorized_logs.exists():
-                return True, "ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນ"
+                message = f"ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນສຳລັບວັນທີ {processing_date}" if processing_date else "ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນ"
+                return True, message
             
-            logger.info(f"Processing {authorized_logs.count()} authorized journal entries")
+            logger.info(f"Processing {authorized_logs.count()} authorized journal entries for date {processing_date}")
             
             # Prepare bulk create objects
             eoc_logs = []
@@ -7339,113 +6654,120 @@ def execute_bulk_journal(eod_function, user):
             # Iterate through authorized logs and prepare STTB_EOC_DAILY_LOG objects
             for log in authorized_logs:
                 try:
-                    # Debug: Print log data to understand the structure
-                    logger.debug(f"Processing log ID {log.ac_entry_sr_no}")
+                    logger.debug(f"Processing log ID {log.ac_entry_sr_no} for date {processing_date}")
                     
-                    # Extract ForeignKey values properly
-                    # Module field
-                    module_value = ''
+                    # Extract module_id (CharField, max 2 chars)
+                    module_id_value = ''
                     if log.module:
-                        module_value = str(getattr(log.module, 'module_code', 
-                                         getattr(log.module, 'code', 
-                                         getattr(log.module, 'module_Id',
-                                         getattr(log.module, 'id', '')))))[:2]  # Max 2 chars
-                    if not module_value:
-                        module_value = 'GL'  # Default module
+                        module_id_value = str(getattr(log.module, 'module_code', 
+                                            getattr(log.module, 'code', 
+                                            getattr(log.module, 'module_id',
+                                            getattr(log.module, 'id', '')))))[:2]
+                    if not module_id_value:
+                        module_id_value = 'GL'  # Default module
                     
-                    # Transaction reference number - from DETB_JRNL_LOG ForeignKey
-                    trn_ref_no_value = ''
-                    if log.trn_ref_no:
-                        trn_ref_no_value = str(getattr(log.trn_ref_no, 'Reference_No', 
-                                             getattr(log.trn_ref_no, 'JRNLLog_id',
-                                             getattr(log.trn_ref_no, 'id', ''))))[:35]  # Max 35 chars
-                    if not trn_ref_no_value:
-                        trn_ref_no_value = f'TRN{log.ac_entry_sr_no}'[:35]
+                    # trn_ref_no (CharField, max 35 chars) - now direct CharField
+                    trn_ref_no_value = (log.trn_ref_no or f'TRN{log.ac_entry_sr_no}')[:35]
                     
-                    # Account number - from MTTB_GLSub ForeignKey
-                    ac_no_value = ''
+                    # trn_ref_sub_no (CharField, max 35 chars)
+                    trn_ref_sub_no_value = (log.trn_ref_sub_no or '')[:35]
+                    
+                    # ac_no_id (CharField, max 50 chars)
+                    ac_no_id_value = ''
                     if log.ac_no:
-                        ac_no_value = str(getattr(log.ac_no, 'gl_sub_code', 
-                                        getattr(log.ac_no, 'account_no', 
-                                        getattr(log.ac_no, 'account_code',
-                                        getattr(log.ac_no, 'code',
-                                        getattr(log.ac_no, 'id', ''))))))[:50]  # Max 50 chars
-                    if not ac_no_value:
-                        ac_no_value = f'AC{log.ac_entry_sr_no}'[:50]
+                        ac_no_id_value = str(getattr(log.ac_no, 'gl_sub_code', 
+                                           getattr(log.ac_no, 'account_no', 
+                                           getattr(log.ac_no, 'account_code',
+                                           getattr(log.ac_no, 'code',
+                                           getattr(log.ac_no, 'id', ''))))))[:50]
+                    if not ac_no_id_value:
+                        ac_no_id_value = f'AC{log.ac_entry_sr_no}'[:50]
                     
-                    # Currency - from MTTB_Ccy_DEFN ForeignKey
-                    ac_ccy_value = ''
+                    # ac_ccy_id (CharField, max 3 chars)
+                    ac_ccy_id_value = ''
                     if log.ac_ccy:
-                        ac_ccy_value = str(getattr(log.ac_ccy, 'ccy_code', 
-                                         getattr(log.ac_ccy, 'currency_code',
-                                         getattr(log.ac_ccy, 'code', 
-                                         getattr(log.ac_ccy, 'id', '')))))[:3]  # Max 3 chars
-                    if not ac_ccy_value:
-                        ac_ccy_value = 'LAK'  # Default currency
+                        ac_ccy_id_value = str(getattr(log.ac_ccy, 'ccy_code', 
+                                            getattr(log.ac_ccy, 'currency_code',
+                                            getattr(log.ac_ccy, 'code', 
+                                            getattr(log.ac_ccy, 'id', '')))))[:3]
+                    if not ac_ccy_id_value:
+                        ac_ccy_id_value = 'LAK'  # Default currency
                     
-                    # Transaction code - from MTTB_TRN_Code ForeignKey
-                    trn_code_value = ''
+                    # trn_code_id (CharField, max 3 chars)
+                    trn_code_id_value = ''
                     if log.trn_code:
-                        trn_code_value = str(getattr(log.trn_code, 'trn_code', 
-                                           getattr(log.trn_code, 'transaction_code',
-                                           getattr(log.trn_code, 'code', 
-                                           getattr(log.trn_code, 'id', '')))))[:3]  # Max 3 chars
-                    if not trn_code_value:
-                        trn_code_value = 'GL'  # Default transaction code
+                        trn_code_id_value = str(getattr(log.trn_code, 'trn_code', 
+                                              getattr(log.trn_code, 'transaction_code',
+                                              getattr(log.trn_code, 'code', 
+                                              getattr(log.trn_code, 'id', '')))))[:3]
+                    if not trn_code_id_value:
+                        trn_code_id_value = 'GL'  # Default transaction code
                     
-                    # Financial cycle - from MTTB_Fin_Cycle ForeignKey
-                    financial_cycle_value = ''
+                    # glid_id (CharField, max 50 chars)
+                    glid_id_value = ''
+                    if log.glid:
+                        glid_id_value = str(getattr(log.glid, 'gl_code', 
+                                          getattr(log.glid, 'gl_master_code',
+                                          getattr(log.glid, 'code', 
+                                          getattr(log.glid, 'id', '')))))[:50]
+                    
+                    # financial_cycle_id (CharField, max 9 chars)
+                    financial_cycle_id_value = ''
                     if log.financial_cycle:
-                        financial_cycle_value = str(getattr(log.financial_cycle, 'fin_cycle', 
-                                                  getattr(log.financial_cycle, 'financial_cycle',
-                                                  getattr(log.financial_cycle, 'cycle', 
-                                                  getattr(log.financial_cycle, 'id', '')))))[:9]  # Max 9 chars
-                    if not financial_cycle_value:
-                        financial_cycle_value = '2025'  # Default financial cycle
+                        financial_cycle_id_value = str(getattr(log.financial_cycle, 'fin_cycle', 
+                                                     getattr(log.financial_cycle, 'financial_cycle',
+                                                     getattr(log.financial_cycle, 'cycle', 
+                                                     getattr(log.financial_cycle, 'id', '')))))[:9]
+                    if not financial_cycle_id_value:
+                        financial_cycle_id_value = '2025'  # Default financial cycle
                     
-                    # Period code - from MTTB_Per_Code ForeignKey
-                    period_code_value = ''
+                    # period_code_id (CharField, max 6 chars)
+                    period_code_id_value = ''
                     if log.period_code:
-                        period_code_value = str(getattr(log.period_code, 'per_code', 
-                                              getattr(log.period_code, 'period_code',
-                                              getattr(log.period_code, 'code', 
-                                              getattr(log.period_code, 'id', '')))))[:6]  # Max 6 chars
-                    if not period_code_value:
-                        period_code_value = f'{log.trn_dt.year}{log.trn_dt.month:02d}' if log.trn_dt else '202507'
+                        period_code_id_value = str(getattr(log.period_code, 'per_code', 
+                                                 getattr(log.period_code, 'period_code',
+                                                 getattr(log.period_code, 'code', 
+                                                 getattr(log.period_code, 'id', '')))))[:6]
+                    if not period_code_id_value:
+                        period_code_id_value = f'{log.trn_dt.year}{log.trn_dt.month:02d}' if log.trn_dt else '202507'
                     
-                    # Maker ID - from MTTB_Users ForeignKey
-                    maker_id_value = ''
+                    # Maker_id_id (CharField, max 12 chars)
+                    maker_id_id_value = ''
                     if log.Maker_id:
-                        maker_id_value = str(getattr(log.Maker_id, 'user_id', 
-                                           getattr(log.Maker_id, 'user_name', 
-                                           getattr(log.Maker_id, 'id', ''))))[:12]  # Max 12 chars
+                        maker_id_id_value = str(getattr(log.Maker_id, 'user_id', 
+                                              getattr(log.Maker_id, 'user_name', 
+                                              getattr(log.Maker_id, 'username',
+                                              getattr(log.Maker_id, 'id', '')))))[:12]
                     
-                    # Checker ID - from MTTB_Users ForeignKey
-                    checker_id_value = ''
+                    # Checker_id_id (CharField, max 12 chars)
+                    checker_id_id_value = ''
                     if log.Checker_id:
-                        checker_id_value = str(getattr(log.Checker_id, 'user_id', 
-                                             getattr(log.Checker_id, 'user_name', 
-                                             getattr(log.Checker_id, 'id', ''))))[:12]  # Max 12 chars
+                        checker_id_id_value = str(getattr(log.Checker_id, 'user_id', 
+                                                getattr(log.Checker_id, 'user_name', 
+                                                getattr(log.Checker_id, 'username',
+                                                getattr(log.Checker_id, 'id', '')))))[:12]
                     
                     # Handle event_sr_no conversion from BigInt to Int
                     event_sr_no_value = log.event_sr_no or 0
                     if event_sr_no_value > 2147483647:  # Max int value
                         event_sr_no_value = 2147483647
+                    elif event_sr_no_value < -2147483648:  # Min int value
+                        event_sr_no_value = -2147483648
                     
-                    # Create STTB_EOC_DAILY_LOG object
+                    # Create STTB_EOC_DAILY_LOG object with updated field mappings
                     eoc_log = STTB_EOC_DAILY_LOG(
-                        # Note: ac_entry_sr_no is AutoField, so we don't set it
-                        module=module_value,
+                        # ac_entry_sr_no is AutoField, so we don't set it
+                        module_id=module_id_value,
                         trn_ref_no=trn_ref_no_value,
-                        trn_ref_sub_no=log.trn_ref_sub_no or '',
+                        trn_ref_sub_no=trn_ref_sub_no_value,
                         event_sr_no=event_sr_no_value,
                         event=log.event or '',
-                        ac_no=ac_no_value,
+                        ac_no_id=ac_no_id_value,
                         ac_no_full=log.ac_no_full or '',
-                        gl_acc_relative=log.ac_relative or '',  # ACTB.ac_relative -> EOC.gl_acc_relative
-                        ac_ccy=ac_ccy_value,
+                        ac_relative=(log.ac_relative or '')[:100],  # Max 100 chars in new model
+                        ac_ccy_id=ac_ccy_id_value,
                         drcr_ind=log.drcr_ind or 'D',
-                        trn_code=trn_code_value,
+                        trn_code_id=trn_code_id_value,
                         fcy_dr=log.fcy_dr or 0,
                         fcy_cr=log.fcy_cr or 0,
                         lcy_dr=log.lcy_dr or 0,
@@ -7453,22 +6775,24 @@ def execute_bulk_journal(eod_function, user):
                         fcy_amount=log.fcy_amount or 0,
                         exch_rate=log.exch_rate or 1,
                         lcy_amount=log.lcy_amount or 0,
-                        external_ref_no=(log.external_ref_no or '')[:50],  # Max 50 chars in EOC
+                        external_ref_no=(log.external_ref_no or '')[:50],
                         addl_text=log.addl_text or '',
                         addl_sub_text=log.addl_sub_text or '',
                         trn_dt=log.trn_dt,
-                        type=log.glType or '',  # ACTB.glType -> EOC.type
+                        glid_id=glid_id_value,
+                        glType=log.glType or '',
                         category=log.category or '',
                         value_dt=log.value_dt,
-                        financial_cycle=financial_cycle_value,
-                        period_code=period_code_value,
-                        Maker_id=maker_id_value,
+                        financial_cycle_id=financial_cycle_id_value,
+                        period_code_id=period_code_id_value,
+                        Maker_id_id=maker_id_id_value,
                         Maker_DT_Stamp=log.Maker_DT_Stamp,
-                        Checker_id=checker_id_value,
+                        Checker_id_id=checker_id_id_value,
                         Checker_DT_Stamp=log.Checker_DT_Stamp,
                         Auth_Status=log.Auth_Status or 'U',
                         product=log.product or '',
-                        entry_seq_no=log.entry_seq_no
+                        entry_seq_no=log.entry_seq_no,
+                        delete_stat=log.delete_stat or ''
                     )
                     
                     # Validate the object before adding to bulk list
@@ -7486,30 +6810,24 @@ def execute_bulk_journal(eod_function, user):
                     continue
             
             if not eoc_logs:
-                return False, "ບໍ່ສາມາດປະມວນຜົນ journal ໃດໆໄດ້"
+                return False, f"ບໍ່ສາມາດປະມວນຜົນ journal ໃດໆໄດ້ສຳລັບວັນທີ {processing_date}"
             
             # Bulk create records in STTB_EOC_DAILY_LOG
             created_records = STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
             
-            # Update source records to prevent reprocessing
-            # Mark as processed
-            ACTB_DAIRY_LOG.objects.filter(
+            # Delete processed records from source table
+            ACTB_DAIRY_LOG_HISTORY.objects.filter(
                 ac_entry_sr_no__in=processed_ids
-            ).update(Auth_Status='P')  # P for Processed
+            ).delete()
             
-            # Alternative: Delete processed records (uncomment if needed)
-            # ACTB_DAIRY_LOG.objects.filter(
-            #     ac_entry_sr_no__in=processed_ids
-            # ).delete()
-            
-            logger.info(f"Successfully processed {len(created_records)} journal entries")
-            return True, f"ບັນທຶກ journal ສຳເລັດ: {len(created_records)} ລາຍການ"
+            logger.info(f"Successfully processed {len(created_records)} journal entries for date {processing_date}")
+            return True, f"ບັນທຶກ journal ສຳເລັດ: {len(created_records)} ລາຍການ ສຳລັບວັນທີ {processing_date}"
         
     except Exception as e:
-        logger.error(f"Error in execute_bulk_journal: {str(e)}")
+        logger.error(f"Error in execute_bulk_journal for date {processing_date}: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False, f"ຂໍ້ຜິດພາດໃນການບັນທຶກ journal: {str(e)}"
+        return False, f"ຂໍ້ຜິດພາດໃນການບັນທຶກ journal ສຳລັບວັນທີ {processing_date}: {str(e)}"
 
 def execute_balance_calculation(eod_function, user):
     """
@@ -18199,7 +17517,7 @@ def run_balance_sheet_acc_proc(segment: str, currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated
+                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
                     @currency = %s
             """
@@ -18233,7 +17551,7 @@ def run_balance_sheet_mfi_proc(segment: str, currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated
+                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
                     @currency = %s
             """
@@ -18750,207 +18068,6 @@ class BalanceSheetViewSet(viewsets.ViewSet):
 
 
 
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from django.db import transaction
-from django.core.exceptions import ValidationError
-from datetime import datetime
-import logging
-
-from .models import Dairy_Report, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
-from .serializers import DairyReportSerializer
-
-logger = logging.getLogger(__name__)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def bulk_insert_dairy_report(request):
-    """
-    Clear existing data and bulk insert trial balance data into Dairy_Report model
-    Expected payload:
-    {
-        "data": [
-            {
-                "acc_no": "110",
-                "Desc": "Cash or Cash Equivalent",
-                "CCy_Code": "LAK",
-                "OP_DR": 0.0,
-                "OP_CR": 0.0,
-                "Mo_DR": 2116880.0,
-                "Mo_Cr": 3710692001.0,
-                "C1_DR": 0.0,
-                "C1_CR": 3708575121.0,
-                "Fin_year": "2025",
-                "Period_code": "202507",
-                "StartDate": "2023-01-01",
-                "EndDate": "2025-07-24",
-                "Category": "TRIAL_BALANCE"
-            }
-        ]
-    }
-    """
-    try:
-        # Validate request data
-        if not request.data or 'data' not in request.data:
-            return Response({
-                'status': 'error',
-                'message': 'ບໍ່ມີຂໍ້ມູນສຳລັບການນຳເຂົ້າ (No data provided for import)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        data_list = request.data['data']
-        
-        if not isinstance(data_list, list) or len(data_list) == 0:
-            return Response({
-                'status': 'error',
-                'message': 'ຂໍ້ມູນບໍ່ຖືກຕ້ອງ ຫຼື ເປັນລິສຄ່າງ (Invalid data format or empty list)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        created_records = []
-        failed_records = []
-        deleted_count = 0
-        
-        with transaction.atomic():
-            try:
-                # Step 1: Clear existing data from Dairy_Report
-                logger.info("Starting to clear existing Dairy_Report data")
-                deleted_count = Dairy_Report.objects.all().count()
-                Dairy_Report.objects.all().delete()
-                logger.info(f"Successfully cleared {deleted_count} existing records from Dairy_Report")
-                
-            except Exception as e:
-                logger.error(f"Error clearing Dairy_Report data: {str(e)}")
-                return Response({
-                    'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Step 2: Insert new data
-            logger.info(f"Starting to insert {len(data_list)} new records")
-            
-            for index, item in enumerate(data_list):
-                try:
-                    # Get or create related objects
-                    ccy_obj = None
-                    if item.get('CCy_Code'):
-                        try:
-                            ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code=item['CCy_Code'])
-                        except MTTB_Ccy_DEFN.DoesNotExist:
-                            logger.warning(f"Currency {item['CCy_Code']} not found for record {index}")
-
-                    fin_year_obj = None
-                    if item.get('Fin_year'):
-                        try:
-                            fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=item['Fin_year'])
-                        except MTTB_Fin_Cycle.DoesNotExist:
-                            logger.warning(f"Financial year {item['Fin_year']} not found for record {index}")
-
-                    period_obj = None
-                    if item.get('Period_code'):
-                        try:
-                            period_obj = MTTB_Per_Code.objects.get(period_code=item['Period_code'])
-                        except MTTB_Per_Code.DoesNotExist:
-                            logger.warning(f"Period code {item['Period_code']} not found for record {index}")
-
-                    # Parse dates
-                    start_date = None
-                    end_date = None
-                    
-                    if item.get('StartDate'):
-                        try:
-                            start_date = datetime.strptime(item['StartDate'], '%Y-%m-%d').date()
-                        except ValueError:
-                            logger.warning(f"Invalid start date format for record {index}: {item['StartDate']}")
-
-                    if item.get('EndDate'):
-                        try:
-                            end_date = datetime.strptime(item['EndDate'], '%Y-%m-%d').date()
-                        except ValueError:
-                            logger.warning(f"Invalid end date format for record {index}: {item['EndDate']}")
-
-                    # Create Dairy_Report record
-                    dairy_report = Dairy_Report(
-                        DP_ID=index+1,
-                        gl_code=item.get('gl_code', ''),
-                        Desc=item.get('Desc', ''),
-                        CCy_Code=ccy_obj,
-                        Fin_year=fin_year_obj,
-                        Period_code=period_obj,
-                        StartDate=start_date,
-                        EndDate=end_date,
-                        Category=item.get('Category', 'TRIAL_BALANCE'),
-                        OP_DR=item.get('OP_DR', 0),
-                        OP_CR=item.get('OP_CR', 0),
-                        Mo_DR=item.get('Mo_DR', 0),
-                        Mo_Cr=item.get('Mo_Cr', 0),
-                        C1_DR=item.get('C1_DR', 0),
-                        C1_CR=item.get('C1_CR', 0),
-                        # Set LCY fields to same values (you can modify this logic as needed)
-                        OP_DR_lcy=item.get('OP_DR', 0),
-                        OP_CR_lcy=item.get('OP_CR', 0),
-                        Mo_DR_lcy=item.get('Mo_DR', 0),
-                        Mo_Cr_lcy=item.get('Mo_Cr', 0),
-                        C1_DR_lcy=item.get('C1_DR', 0),
-                        C1_CR_lcy=item.get('C1_CR', 0),
-                        Maker_Id=request.user,
-                        MSegment=item.get('MSegment', '')
-                    )
-                    
-                    # Validate and save the model
-                    dairy_report.full_clean()
-                    dairy_report.save()
-                    
-                    created_records.append({
-                        'index': index,
-                        'gl_code': dairy_report.gl_code,
-                        'id': dairy_report.DP_ID
-                    })
-                    
-                except ValidationError as ve:
-                    error_message = f"Validation error for record {index}: {str(ve)}"
-                    logger.error(error_message)
-                    failed_records.append({
-                        'index': index,
-                        'gl_code': item.get('gl_code', 'Unknown'),
-                        'error': error_message
-                    })
-                    
-                except Exception as e:
-                    error_message = f"Error processing record {index}: {str(e)}"
-                    logger.error(error_message)
-                    failed_records.append({
-                        'index': index,
-                        'gl_code': item.get('gl_code', 'Unknown'),
-                        'error': error_message
-                    })
-
-        # Prepare response
-        response_data = {
-            'status': 'success',
-            'message': f'ການລຶບແລະນຳເຂົ້າຂໍ້ມູນສຳເລັດ (Clear and import completed successfully)',
-            'cleared_records': deleted_count,
-            'total_records': len(data_list),
-            'inserted_count': len(created_records),
-            'failed_count': len(failed_records),
-            'created_records': created_records
-        }
-
-        if failed_records:
-            response_data['failed_records'] = failed_records
-            response_data['message'] += f' - {len(failed_records)} ລາຍການຜິດພາດ (records failed)'
-            
-        logger.info(f"Bulk operation completed: {deleted_count} deleted, {len(created_records)} inserted, {len(failed_records)} failed")
-
-        return Response(response_data, status=status.HTTP_201_CREATED)
-
-    except Exception as e:
-        logger.error(f"Bulk insert error: {str(e)}")
-        return Response({
-            'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_delete(request):
@@ -18985,8 +18102,485 @@ def bulk_delete(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db import transaction, connection
+from django.core.exceptions import ValidationError
+from datetime import datetime
+import logging
+import re
+
+from .models import STTB_Somtop_Trial_Balancesheet, MTTB_Ccy_DEFN, MTTB_Fin_Cycle, MTTB_Per_Code, MTTB_Users
+from .serializers import SomtopTrialBalancesheetSerializer  # You'll need to create this serializer
+
+logger = logging.getLogger(__name__)
+
+# Helper function for safe decimal conversion
+def safe_decimal_convert(value):
+    """Safely convert value to decimal, return 0 if conversion fails"""
+    try:
+        if value is None:
+            return 0
+        return float(value) if value != '' else 0
+    except (ValueError, TypeError):
+        return 0
+
+# Helper function to get glType lookup (you may need to implement this based on your business logic)
+def get_gltype_lookup_dict():
+    """
+    Create a lookup dictionary for GL code to glType mapping
+    Replace this with your actual implementation
+    """
+    # This is a placeholder - implement based on your business logic
+    return {}
+
+def get_gltype_from_gl_code(gl_code):
+    """
+    Get glType directly from GL code
+    Replace this with your actual implementation
+    """
+    # This is a placeholder - implement based on your business logic
+    return None
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_insert_somtop_trial_balance(request):
+    """
+    Clear STTB_Somtop_Trial_Balancesheet table and insert data from both FCY and LCY stored procedures
+    
+    Expected payload:
+    {
+        "date_start": "YYYY-MM-DD",
+        "date_end": "YYYY-MM-DD", 
+        "fin_year": "2025",
+        "period_code": "",
+        "category": "TRIAL_BALANCE"
+    }
+    """
+    try:
+        # Validate request data
+        date_start = request.data.get("date_start")
+        date_end = request.data.get("date_end")
+        fin_year = request.data.get("fin_year", "2025")
+        period_code = request.data.get("period_code", "")
+        default_category = request.data.get("category", "TRIAL_BALANCE")
+
+        if not all([date_start, date_end]):
+            return Response({
+                'status': 'error',
+                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Date validation
+        try:
+            start_date_obj = datetime.strptime(date_start, '%Y-%m-%d').date()
+            end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
+            
+            if start_date_obj > end_date_obj:
+                return Response({
+                    'status': 'error',
+                    'message': 'ວັນທີເລີ່ມຕົ້ນຕ້ອງນ້ອຍກວ່າວັນທີສິ້ນສຸດ (Start date must be before end date)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except ValueError:
+            return Response({
+                'status': 'error',
+                'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.info(f"[BulkInsertSomtopTrialBalance] Starting bulk insert operation from {date_start} to {date_end}")
+
+        # Statistics tracking
+        stats = {
+            'cleared_records': 0,
+            'fcy_records_fetched': 0,
+            'fcy_records_inserted': 0,
+            'fcy_records_failed': 0,
+            'lcy_records_fetched': 0,
+            'lcy_records_inserted': 0,
+            'lcy_records_failed': 0,
+            'total_inserted': 0,
+            'total_failed': 0
+        }
+        
+        failed_records = []
+        created_records = []
+
+        # Create glType lookup dictionary for performance
+        logger.info("Creating glType lookup dictionary...")
+        gltype_lookup = get_gltype_lookup_dict()
+        logger.info(f"glType lookup created with {len(gltype_lookup)} mappings")
+
+        # Get related objects once
+        ccy_objects = {}
+        fin_year_obj = None
+        period_obj = None
+
+        try:
+            if fin_year:
+                fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
+        except Exception as e:
+            logger.warning(f"Financial year {fin_year} not found: {str(e)}")
+
+        try:
+            if period_code:
+                period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
+        except Exception as e:
+            logger.warning(f"Period code {period_code} not found: {str(e)}")
+
+        with transaction.atomic():
+            # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data
+            try:
+                logger.info("Clearing existing STTB_Somtop_Trial_Balancesheet data...")
+                stats['cleared_records'] = STTB_Somtop_Trial_Balancesheet.objects.all().count()
+                STTB_Somtop_Trial_Balancesheet.objects.all().delete()
+                logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
+                
+            except Exception as e:
+                logger.error(f"Error clearing STTB_Somtop_Trial_Balancesheet data: {str(e)}")
+                return Response({
+                    'status': 'error',
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Step 2: Execute FCY stored procedure and insert FCY data
+            logger.info("Executing FCY stored procedure...")
+            try:
+                with connection.cursor() as cursor:
+                    fcy_query = """
+                        EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy_afterEOC
+                            @DateStart = %s,
+                            @DateEnd = %s
+                    """
+                    cursor.execute(fcy_query, [date_start, date_end])
+                    fcy_columns = [col[0] for col in cursor.description]
+                    fcy_results = [dict(zip(fcy_columns, row)) for row in cursor.fetchall()]
+
+                stats['fcy_records_fetched'] = len(fcy_results)
+                logger.info(f"FCY stored procedure completed. Rows fetched: {stats['fcy_records_fetched']}")
+
+                # Insert FCY data
+                for index, item in enumerate(fcy_results):
+                    try:
+                        gl_code = item.get('GL', '')
+                        currency_code = item.get('Currency', '')
+                        
+                        # Get or create currency object
+                        if currency_code and currency_code not in ccy_objects:
+                            try:
+                                ccy_objects[currency_code] = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
+                            except Exception:
+                                logger.warning(f"Currency {currency_code} not found")
+                                ccy_objects[currency_code] = None
+
+                        # Determine glType
+                        record_gltype = default_category
+                        if gl_code and re.search(r'\.0', str(gl_code)):
+                            record_gltype = '6'
+                        else:
+                            lookup_gltype = gltype_lookup.get(gl_code)
+                            if lookup_gltype:
+                                record_gltype = lookup_gltype
+                            else:
+                                direct_gltype = get_gltype_from_gl_code(gl_code)
+                                if direct_gltype:
+                                    record_gltype = direct_gltype
+
+                        # Create STTB_Somtop_Trial_Balancesheet record with FCY data
+                        somtop_trial_balance = STTB_Somtop_Trial_Balancesheet(
+                            somtop_trail_bal_id=len(created_records) + 1,
+                            gl_code=gl_code,
+                            Desc=item.get('_Desc', ''),
+                            CCy_Code=ccy_objects.get(currency_code),
+                            Fin_year=fin_year_obj,
+                            Period_code=period_obj,
+                            StartDate=start_date_obj,
+                            EndDate=end_date_obj,
+                            Category=record_gltype,
+                            # FCY fields from stored procedure
+                            OP_DR=safe_decimal_convert(item.get('Opening_Dr_FCY', 0)),
+                            OP_CR=safe_decimal_convert(item.get('Opening_Cr_FCY', 0)),
+                            Mo_DR=safe_decimal_convert(item.get('Flow_Dr_FCY', 0)),
+                            Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_FCY', 0)),
+                            C1_DR=safe_decimal_convert(item.get('Closing_Dr_FCY', 0)),
+                            C1_CR=safe_decimal_convert(item.get('Closing_Cr_FCY', 0)),
+                            # LCY fields set to 0 for FCY records
+                            OP_DR_lcy=safe_decimal_convert(0),
+                            OP_CR_lcy=safe_decimal_convert(0),
+                            Mo_DR_lcy=safe_decimal_convert(0),
+                            Mo_Cr_lcy=safe_decimal_convert(0),
+                            C1_DR_lcy=safe_decimal_convert(0),
+                            C1_CR_lcy=safe_decimal_convert(0),
+                            Maker_Id=request.user,
+                            MSegment=item.get('MSegment', '')
+                        )
+                        
+                        somtop_trial_balance.full_clean()
+                        somtop_trial_balance.save()
+                        
+                        stats['fcy_records_inserted'] += 1
+                        created_records.append({
+                            'type': 'FCY',
+                            'gl_code': gl_code,
+                            'currency': currency_code,
+                            'category': record_gltype
+                        })
+                        
+                    except Exception as e:
+                        stats['fcy_records_failed'] += 1
+                        error_msg = f"FCY record {index} error: {str(e)}"
+                        logger.error(error_msg)
+                        failed_records.append({
+                            'type': 'FCY',
+                            'index': index,
+                            'gl_code': item.get('GL', 'Unknown'),
+                            'currency': item.get('Currency', ''),
+                            'error': error_msg
+                        })
+
+            except Exception as e:
+                logger.error(f"Error executing FCY stored procedure: {str(e)}")
+                return Response({
+                    'status': 'error',
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ FCY stored procedure: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Step 3: Execute LCY stored procedure and insert LCY data
+            logger.info("Executing LCY consolidated stored procedure...")
+            try:
+                with connection.cursor() as cursor:
+                    lcy_query = """
+                        EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy_afterEOC
+                            @DateStart = %s,
+                            @DateEnd = %s
+                    """
+                    cursor.execute(lcy_query, [date_start, date_end])
+                    lcy_columns = [col[0] for col in cursor.description]
+                    lcy_results = [dict(zip(lcy_columns, row)) for row in cursor.fetchall()]
+
+                stats['lcy_records_fetched'] = len(lcy_results)
+                logger.info(f"LCY stored procedure completed. Rows fetched: {stats['lcy_records_fetched']}")
+
+                # Get LAK currency object
+                lak_ccy_obj = None
+                try:
+                    lak_ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code='LAK')
+                except Exception:
+                    logger.warning("LAK currency not found")
+
+                # Insert LCY data
+                for index, item in enumerate(lcy_results):
+                    try:
+                        gl_code = item.get('GL_Code', '')
+                        
+                        # Determine glType
+                        record_gltype = default_category
+                        if gl_code and re.search(r'\.0', str(gl_code)):
+                            record_gltype = '6'
+                        else:
+                            lookup_gltype = gltype_lookup.get(gl_code)
+                            if lookup_gltype:
+                                record_gltype = lookup_gltype
+                            else:
+                                direct_gltype = get_gltype_from_gl_code(gl_code)
+                                if direct_gltype:
+                                    record_gltype = direct_gltype
+
+                        # Create STTB_Somtop_Trial_Balancesheet record with LCY data
+                        somtop_trial_balance = STTB_Somtop_Trial_Balancesheet(
+                            somtop_trail_bal_id=len(created_records) + 1,
+                            gl_code=gl_code,
+                            Desc=item.get('Description', ''),
+                            CCy_Code=lak_ccy_obj,
+                            Fin_year=fin_year_obj,
+                            Period_code=period_obj,
+                            StartDate=start_date_obj,
+                            EndDate=end_date_obj,
+                            Category=record_gltype,
+                            # FCY fields set to LAK values for LCY records
+                            OP_DR=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
+                            OP_CR=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
+                            Mo_DR=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
+                            Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
+                            C1_DR=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
+                            C1_CR=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
+                            # LCY fields from stored procedure
+                            OP_DR_lcy=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
+                            OP_CR_lcy=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
+                            Mo_DR_lcy=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
+                            Mo_Cr_lcy=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
+                            C1_DR_lcy=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
+                            C1_CR_lcy=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
+                            Maker_Id=request.user,
+                            MSegment=item.get('MSegment', '')
+                        )
+                        
+                        somtop_trial_balance.full_clean()
+                        somtop_trial_balance.save()
+                        
+                        stats['lcy_records_inserted'] += 1
+                        created_records.append({
+                            'type': 'LCY',
+                            'gl_code': gl_code,
+                            'currency': 'LAK',
+                            'category': record_gltype
+                        })
+                        
+                    except Exception as e:
+                        stats['lcy_records_failed'] += 1
+                        error_msg = f"LCY record {index} error: {str(e)}"
+                        logger.error(error_msg)
+                        failed_records.append({
+                            'type': 'LCY',
+                            'index': index,
+                            'gl_code': item.get('GL_Code', 'Unknown'),
+                            'currency': 'LAK',
+                            'error': error_msg
+                        })
+
+            except Exception as e:
+                logger.error(f"Error executing LCY stored procedure: {str(e)}")
+                return Response({
+                    'status': 'error',
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ LCY stored procedure: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Calculate totals
+        stats['total_inserted'] = stats['fcy_records_inserted'] + stats['lcy_records_inserted']
+        stats['total_failed'] = stats['fcy_records_failed'] + stats['lcy_records_failed']
+
+        # Prepare response
+        response_data = {
+            'status': 'success',
+            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records)',
+            'date_range': f"{date_start} to {date_end}",
+            'statistics': {
+                'cleared_records': stats['cleared_records'],
+                'fcy_procedure': {
+                    'fetched': stats['fcy_records_fetched'],
+                    'inserted': stats['fcy_records_inserted'],
+                    'failed': stats['fcy_records_failed']
+                },
+                'lcy_procedure': {
+                    'fetched': stats['lcy_records_fetched'],
+                    'inserted': stats['lcy_records_inserted'],
+                    'failed': stats['lcy_records_failed']
+                },
+                'totals': {
+                    'inserted': stats['total_inserted'],
+                    'failed': stats['total_failed']
+                }
+            },
+            'sample_created_records': created_records[:5] if created_records else []
+        }
+
+        if failed_records:
+            response_data['failed_records_sample'] = failed_records[:5]
+            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
+
+        logger.info(f"Bulk insert operation completed successfully:")
+        logger.info(f"- Cleared: {stats['cleared_records']} records")
+        logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
+        logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
+        logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Bulk insert somtop trial balance error: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_delete_somtop_trial_balance(request):
+    """
+    Custom action for bulk deleting somtop trial balance data by criteria
+    """
+    try:
+        # Get filter criteria from request
+        fin_year = request.data.get('fin_year')
+        period_code = request.data.get('period_code')
+        ccy_code = request.data.get('ccy_code')
+        category = request.data.get('category', 'TRIAL_BALANCE')
+        
+        # Build filter query
+        filter_kwargs = {'Category': category}
+        
+        if fin_year:
+            filter_kwargs['Fin_year__fin_cycle'] = fin_year
+        if period_code:
+            filter_kwargs['Period_code__period_code'] = period_code
+        if ccy_code:
+            filter_kwargs['CCy_Code__ccy_code'] = ccy_code
+            
+        # Delete matching records
+        deleted_count, _ = STTB_Somtop_Trial_Balancesheet.objects.filter(**filter_kwargs).delete()
+        
+        return Response({
+            'status': 'success',
+            'message': f'ລຶບຂໍ້ມູນສຳເລັດ - {deleted_count} ລາຍການ (Successfully deleted {deleted_count} records)',
+            'deleted_count': deleted_count
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Bulk delete error: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ: {str(e)} (Error deleting data)'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_somtop_trial_balance_summary(request):
+    """
+    Get summary statistics for somtop trial balance data
+    """
+    try:
+        total_records = STTB_Somtop_Trial_Balancesheet.objects.count()
+        
+        # Get unique financial years
+        fin_years = list(STTB_Somtop_Trial_Balancesheet.objects.values_list(
+            'Fin_year__fin_cycle', flat=True
+        ).distinct().order_by('Fin_year__fin_cycle'))
+        
+        # Get unique currencies
+        currencies = list(STTB_Somtop_Trial_Balancesheet.objects.values_list(
+            'CCy_Code__ccy_code', flat=True
+        ).distinct().order_by('CCy_Code__ccy_code'))
+        
+        # Get date range
+        date_range = STTB_Somtop_Trial_Balancesheet.objects.aggregate(
+            min_date=models.Min('StartDate'),
+            max_date=models.Max('EndDate')
+        )
+        
+        return Response({
+            'status': 'success',
+            'summary': {
+                'total_records': total_records,
+                'financial_years': fin_years,
+                'currencies': currencies,
+                'date_range': {
+                    'start_date': date_range['min_date'],
+                    'end_date': date_range['max_date']
+                }
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Get summary error: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນສະຫຼຸບ: {str(e)} (Error getting summary data)'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -19234,7 +18828,7 @@ def bulk_insert_dairy_reports(request):
             try:
                 with connection.cursor() as cursor:
                     fcy_query = """
-                        EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy
+                        EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy_afterEOC
                             @DateStart = %s,
                             @DateEnd = %s
                     """
@@ -19337,7 +18931,7 @@ def bulk_insert_dairy_reports(request):
             try:
                 with connection.cursor() as cursor:
                     lcy_query = """
-                        EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy
+                        EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy_afterEOC
                             @DateStart = %s,
                             @DateEnd = %s
                     """
@@ -19981,7 +19575,7 @@ def run_income_statement_acc_proc(segment: str, currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated
+                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
                     @currency = %s
             """
@@ -20015,7 +19609,7 @@ def run_income_statement_mfi_proc(segment: str, currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated
+                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
                     @currency = %s
             """
@@ -21399,6 +20993,9 @@ def execute_eod_process(user, processing_date, is_back_date=False):
     Execute all EOD functions in sequence for back-date or normal processing.
     """
     try:
+        # Set processing context for all EOD functions
+        set_processing_context(processing_date, is_back_date)
+        
         with transaction.atomic():
             eod_functions = MTTB_EOC_MAINTAIN.objects.filter(
                 eoc_type='EOD',
@@ -21429,17 +21026,79 @@ def execute_eod_process(user, processing_date, is_back_date=False):
     except Exception as e:
         return False, f"Error in EOD process execution: {str(e)}"
 
-def execute_eod_function(eod_function, user, processing_date):
+    
+def get_eod_functions():
     """
-    Execute a specific EOD function (placeholder for actual implementation).
+    Get all EOD functions that should be considered for execution
+    """
+    return MTTB_EOC_MAINTAIN.objects.filter(
+        eoc_type='EOD',
+        Auth_Status='A'  # Only authorized functions
+    ).select_related('function_id', 'module_id').order_by('eoc_seq_no')
+
+def should_execute_function(eod_function):
+    """
+    Determine if a function should be executed based on its status
+    """
+    # Execute only if Record_Status is 'O' (Open)
+    return eod_function.Record_Status == 'O'
+
+
+def execute_eod_function(eod_function, user, processing_date=None, is_back_date=False):
+    """
+    Execute a specific EOD function based on its function_id
     """
     function_id = eod_function.function_id.function_id
-    logger.info(f"Executing function {function_id} for {processing_date}")
+
+    context = f"back-date for {processing_date}" if is_back_date else f"normal for {processing_date or 'today'}"
+    logger.info(f"Executing function {function_id} ({context})")
+    
     try:
-        # Placeholder for actual function execution
-        return True, f"Function {function_id} executed successfully"
+        # Map function IDs to their corresponding execution methods
+        function_mapping = {
+            'FN006': execute_bulk_journal,
+            'EOD_BALANCE': execute_balance_calculation,
+            'EOD_INTEREST': execute_interest_calculation,
+            'EOD_REPORT': execute_report_generation,
+            'EOD_BACKUP': execute_backup_process,
+            # Add more function mappings as needed
+        }
+        
+        if function_id in function_mapping:
+            # Execute the mapped function with processing_date
+            return function_mapping[function_id](eod_function, user, processing_date)
+        else:
+            # Generic execution for unmapped functions
+            return execute_generic_function(eod_function, user, processing_date)
+            
     except Exception as e:
-        return False, f"Error executing function {function_id}: {str(e)}"
+        logger.error(f"Error executing function {function_id}: {str(e)}")
+        return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ: {str(e)}"
+
+def get_processing_context():
+    """
+    Helper function that EOD functions can call to get current processing context
+    """
+    # This can be stored in thread-local storage, cache, or request context
+    if not hasattr(get_processing_context, '_context'):
+        get_processing_context._context = local()
+    
+    return getattr(get_processing_context._context, 'eod_context', {
+        'processing_date': timezone.now().date(),
+        'is_back_date': False
+    })
+
+def set_processing_context(processing_date, is_back_date=False):
+    """
+    Set the current processing context for EOD functions
+    """
+    if not hasattr(get_processing_context, '_context'):
+        get_processing_context._context = local()
+    
+    get_processing_context._context.eod_context = {
+        'processing_date': processing_date,
+        'is_back_date': is_back_date
+    }
 
 def complete_normal_eod_and_create_next(user, processing_date):
     """
@@ -21748,6 +21407,7 @@ def is_working_day(date):
         logger.error(f"Error in is_working_day function: {str(e)}")
 #     return False  # Default to not a working day if any error occurs
 
+<<<<<<< HEAD
 import json
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
@@ -22732,3 +22392,334 @@ def get_current_user_id():
 # - create_journal_entry_via_api()
 # - create_depreciation_history()
 # - create_depreciation_in_month_record()
+=======
+# Trail BalanaceSheets Processing Data:
+
+
+# Test Bulk_journal_eod by Date Range:
+from django.db import transaction
+from django.core.exceptions import ValidationError
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+def execute_bulk_journal_by_date_range(start_date, end_date, user=None):
+    """
+    Execute bulk journal function for a specific date range
+    Move data from ACTB_DAIRY_LOG_HISTORY to STTB_EOC_DAILY_LOG for selected dates
+    
+    Args:
+        start_date: Start date (string 'YYYY-MM-DD' or date object)
+        end_date: End date (string 'YYYY-MM-DD' or date object) 
+        user: User performing the operation
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Convert string dates to date objects if needed
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # Validate date range
+        if start_date > end_date:
+            return False, f"ວັນທີເລີ່ມຕົ້ນ ({start_date}) ບໍ່ສາມາດໃຫຍ່ກວ່າວັນທີສິ້ນສຸດ ({end_date})"
+        
+        # Calculate date range span
+        date_span = (end_date - start_date).days + 1
+        if date_span > 31:
+            return False, f"ໄລຍະວັນທີໃຫຍ່ເກີນໄປ ({date_span} ວັນ). ສູງສຸດ 31 ວັນ"
+        
+        with transaction.atomic():
+            # Fetch authorized records from ACTB_DAIRY_LOG_HISTORY within date range
+            authorized_logs = ACTB_DAIRY_LOG_HISTORY.objects.filter(
+                Auth_Status='A',
+                value_dt__range=[start_date, end_date]
+            ).order_by('value_dt', 'ac_entry_sr_no')
+            
+            if not authorized_logs.exists():
+                return True, f"ບໍ່ມີ journal ທີ່ຕ້ອງປະມວນຜົນໃນໄລຍະ {start_date} ຫາ {end_date}"
+            
+            logger.info(f"Processing {authorized_logs.count()} authorized journal entries from {start_date} to {end_date}")
+            
+            # Prepare bulk create objects
+            eoc_logs = []
+            processed_ids = []
+            processed_by_date = {}
+            
+            # Iterate through authorized logs and prepare STTB_EOC_DAILY_LOG objects
+            for log in authorized_logs:
+                try:
+                    # Track processing by date
+                    log_date = log.value_dt
+                    if log_date not in processed_by_date:
+                        processed_by_date[log_date] = 0
+                    processed_by_date[log_date] += 1
+                    
+                    logger.debug(f"Processing log ID {log.ac_entry_sr_no} for date {log_date}")
+                    
+                    # Extract module_id (CharField, max 2 chars)
+                    module_id_value = ''
+                    if log.module:
+                        module_id_value = str(getattr(log.module, 'module_code', 
+                                            getattr(log.module, 'code', 
+                                            getattr(log.module, 'module_id',
+                                            getattr(log.module, 'id', '')))))[:2]
+                    if not module_id_value:
+                        module_id_value = 'GL'  # Default module
+                    
+                    # trn_ref_no (CharField, max 35 chars)
+                    trn_ref_no_value = (log.trn_ref_no or f'TRN{log.ac_entry_sr_no}')[:35]
+                    
+                    # trn_ref_sub_no (CharField, max 35 chars)
+                    trn_ref_sub_no_value = (log.trn_ref_sub_no or '')[:35]
+                    
+                    # ac_no_id (CharField, max 50 chars)
+                    ac_no_id_value = ''
+                    if log.ac_no:
+                        ac_no_id_value = str(getattr(log.ac_no, 'gl_sub_code', 
+                                           getattr(log.ac_no, 'account_no', 
+                                           getattr(log.ac_no, 'account_code',
+                                           getattr(log.ac_no, 'code',
+                                           getattr(log.ac_no, 'id', ''))))))[:50]
+                    if not ac_no_id_value:
+                        ac_no_id_value = f'AC{log.ac_entry_sr_no}'[:50]
+                    
+                    # ac_ccy_id (CharField, max 3 chars)
+                    ac_ccy_id_value = ''
+                    if log.ac_ccy:
+                        ac_ccy_id_value = str(getattr(log.ac_ccy, 'ccy_code', 
+                                            getattr(log.ac_ccy, 'currency_code',
+                                            getattr(log.ac_ccy, 'code', 
+                                            getattr(log.ac_ccy, 'id', '')))))[:3]
+                    if not ac_ccy_id_value:
+                        ac_ccy_id_value = 'LAK'  # Default currency
+                    
+                    # trn_code_id (CharField, max 3 chars)
+                    trn_code_id_value = ''
+                    if log.trn_code:
+                        trn_code_id_value = str(getattr(log.trn_code, 'trn_code', 
+                                              getattr(log.trn_code, 'transaction_code',
+                                              getattr(log.trn_code, 'code', 
+                                              getattr(log.trn_code, 'id', '')))))[:3]
+                    if not trn_code_id_value:
+                        trn_code_id_value = 'GL'  # Default transaction code
+                    
+                    # glid_id (CharField, max 50 chars)
+                    glid_id_value = ''
+                    if log.glid:
+                        glid_id_value = str(getattr(log.glid, 'gl_code', 
+                                          getattr(log.glid, 'gl_master_code',
+                                          getattr(log.glid, 'code', 
+                                          getattr(log.glid, 'id', '')))))[:50]
+                    
+                    # financial_cycle_id (CharField, max 9 chars)
+                    financial_cycle_id_value = ''
+                    if log.financial_cycle:
+                        financial_cycle_id_value = str(getattr(log.financial_cycle, 'fin_cycle', 
+                                                     getattr(log.financial_cycle, 'financial_cycle',
+                                                     getattr(log.financial_cycle, 'cycle', 
+                                                     getattr(log.financial_cycle, 'id', '')))))[:9]
+                    if not financial_cycle_id_value:
+                        financial_cycle_id_value = '2025'  # Default financial cycle
+                    
+                    # period_code_id (CharField, max 6 chars)
+                    period_code_id_value = ''
+                    if log.period_code:
+                        period_code_id_value = str(getattr(log.period_code, 'per_code', 
+                                                 getattr(log.period_code, 'period_code',
+                                                 getattr(log.period_code, 'code', 
+                                                 getattr(log.period_code, 'id', '')))))[:6]
+                    if not period_code_id_value:
+                        period_code_id_value = f'{log.trn_dt.year}{log.trn_dt.month:02d}' if log.trn_dt else '202507'
+                    
+                    # Maker_id_id (CharField, max 12 chars)
+                    maker_id_id_value = ''
+                    if log.Maker_id:
+                        maker_id_id_value = str(getattr(log.Maker_id, 'user_id', 
+                                              getattr(log.Maker_id, 'user_name', 
+                                              getattr(log.Maker_id, 'username',
+                                              getattr(log.Maker_id, 'id', '')))))[:12]
+                    
+                    # Checker_id_id (CharField, max 12 chars)
+                    checker_id_id_value = ''
+                    if log.Checker_id:
+                        checker_id_id_value = str(getattr(log.Checker_id, 'user_id', 
+                                                getattr(log.Checker_id, 'user_name', 
+                                                getattr(log.Checker_id, 'username',
+                                                getattr(log.Checker_id, 'id', '')))))[:12]
+                    
+                    # Handle event_sr_no conversion from BigInt to Int
+                    event_sr_no_value = log.event_sr_no or 0
+                    if event_sr_no_value > 2147483647:  # Max int value
+                        event_sr_no_value = 2147483647
+                    elif event_sr_no_value < -2147483648:  # Min int value
+                        event_sr_no_value = -2147483648
+                    
+                    # Create STTB_EOC_DAILY_LOG object with updated field mappings
+                    eoc_log = STTB_EOC_DAILY_LOG(
+                        # ac_entry_sr_no is AutoField, so we don't set it
+                        module_id=module_id_value,
+                        trn_ref_no=trn_ref_no_value,
+                        trn_ref_sub_no=trn_ref_sub_no_value,
+                        event_sr_no=event_sr_no_value,
+                        event=log.event or '',
+                        ac_no_id=ac_no_id_value,
+                        ac_no_full=log.ac_no_full or '',
+                        ac_relative=(log.ac_relative or '')[:100],  # Max 100 chars in new model
+                        ac_ccy_id=ac_ccy_id_value,
+                        drcr_ind=log.drcr_ind or 'D',
+                        trn_code_id=trn_code_id_value,
+                        fcy_dr=log.fcy_dr or 0,
+                        fcy_cr=log.fcy_cr or 0,
+                        lcy_dr=log.lcy_dr or 0,
+                        lcy_cr=log.lcy_cr or 0,
+                        fcy_amount=log.fcy_amount or 0,
+                        exch_rate=log.exch_rate or 1,
+                        lcy_amount=log.lcy_amount or 0,
+                        external_ref_no=(log.external_ref_no or '')[:50],
+                        addl_text=log.addl_text or '',
+                        addl_sub_text=log.addl_sub_text or '',
+                        trn_dt=log.trn_dt,
+                        glid_id=glid_id_value,
+                        glType=log.glType or '',
+                        category=log.category or '',
+                        value_dt=log.value_dt,
+                        financial_cycle_id=financial_cycle_id_value,
+                        period_code_id=period_code_id_value,
+                        Maker_id_id=maker_id_id_value,
+                        Maker_DT_Stamp=log.Maker_DT_Stamp,
+                        Checker_id_id=checker_id_id_value,
+                        Checker_DT_Stamp=log.Checker_DT_Stamp,
+                        Auth_Status=log.Auth_Status or 'U',
+                        product=log.product or '',
+                        entry_seq_no=log.entry_seq_no,
+                        delete_stat=log.delete_stat or ''
+                    )
+                    
+                    # Validate the object before adding to bulk list
+                    eoc_log.full_clean()
+                    eoc_logs.append(eoc_log)
+                    processed_ids.append(log.ac_entry_sr_no)
+                    
+                except ValidationError as ve:
+                    logger.error(f"Validation error for log ID {log.ac_entry_sr_no} on date {log.value_dt}: {ve}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing log ID {log.ac_entry_sr_no} on date {log.value_dt}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    continue
+            
+            if not eoc_logs:
+                return False, f"ບໍ່ສາມາດປະມວນຜົນ journal ໃດໆໄດ້ໃນໄລຍະ {start_date} ຫາ {end_date}"
+            
+            # Bulk create records in STTB_EOC_DAILY_LOG
+            created_records = STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
+            
+            # Delete processed records from source table
+            ACTB_DAIRY_LOG_HISTORY.objects.filter(
+                ac_entry_sr_no__in=processed_ids
+            ).delete()
+            
+            # Create summary message
+            date_summary = []
+            for date_key, count in sorted(processed_by_date.items()):
+                date_summary.append(f"{date_key}: {count} ລາຍການ")
+            
+            summary_text = ", ".join(date_summary)
+            
+            logger.info(f"Successfully processed {len(created_records)} journal entries from {start_date} to {end_date}")
+            logger.info(f"Breakdown by date: {summary_text}")
+            
+            success_message = f"ບັນທຶກ journal ສຳເລັດໃນໄລຍະ {start_date} ຫາ {end_date}\n"
+            success_message += f"ລວມ: {len(created_records)} ລາຍການ\n"
+            success_message += f"ລາຍລະອຽດ: {summary_text}"
+            
+            return True, success_message
+        
+    except Exception as e:
+        logger.error(f"Error in execute_bulk_journal_by_date_range for {start_date} to {end_date}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False, f"ຂໍ້ຜິດພາດໃນການບັນທຶກ journal ໃນໄລຍະ {start_date} ຫາ {end_date}: {str(e)}"
+
+
+# API View for date range journal processing
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_journal_by_date_range_view(request):
+    """
+    API endpoint for processing journal entries by date range
+    
+    Expected request data:
+    {
+        "start_date": "2025-08-01",
+        "end_date": "2025-08-12"
+    }
+    """
+    try:
+        start_date = request.data.get('start_date')
+        end_date = request.data.get('end_date')
+        
+        if not start_date or not end_date:
+            return Response({
+                "error": "ຕ້ອງລະບຸວັນທີເລີ່ມຕົ້ນ (start_date) ແລະວັນທີສິ້ນສຸດ (end_date)",
+                "success": False
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Execute bulk journal processing
+        success, message = execute_bulk_journal_by_date_range(
+            start_date=start_date,
+            end_date=end_date,
+            user=request.user
+        )
+        
+        if success:
+            logger.info(f"Date range journal processing successful for {start_date} to {end_date} by user {request.user}")
+            return Response({
+                "message": message,
+                "success": True,
+                "start_date": start_date,
+                "end_date": end_date,
+                "processed_by": request.user.username if hasattr(request.user, 'username') else str(request.user)
+            }, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Date range journal processing failed for {start_date} to {end_date}: {message}")
+            return Response({
+                "error": message,
+                "success": False,
+                "start_date": start_date,
+                "end_date": end_date
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        logger.error(f"Unexpected error in bulk_journal_by_date_range_view: {str(e)}")
+        return Response({
+            "error": f"ເກີດຂໍ້ຜິດພາດທີ່ບໍ່ຄາດຄິດ: {str(e)}",
+            "success": False
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Helper function for single date processing
+def execute_bulk_journal_by_single_date(target_date, user=None):
+    """
+    Execute bulk journal function for a single specific date
+    
+    Args:
+        target_date: Target date (string 'YYYY-MM-DD' or date object)
+        user: User performing the operation
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    return execute_bulk_journal_by_date_range(target_date, target_date, user)
+>>>>>>> c00b1bda9189bb9f2fff10de24c6fa98d4a2bdb6

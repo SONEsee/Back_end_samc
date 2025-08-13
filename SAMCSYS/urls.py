@@ -91,7 +91,6 @@ from .views import (
     overdue_depreciation_api,
     # trial_balance_view,
     # DairyReportViewSet,
-    bulk_insert_dairy_report,
     bulk_delete,
     # bulk_insert_allcurrency,
     #Store Procedure
@@ -118,7 +117,13 @@ from .views import (
     balance_sheet_acc_get_view,
     balance_sheet_mfi_get_view,
     end_of_day_journal_view,
+<<<<<<< HEAD
     retroactive_depreciation_api
+=======
+    bulk_journal_by_date_range_view,
+    bulk_insert_somtop_trial_balance,
+    bulk_delete_somtop_trial_balance,
+>>>>>>> c00b1bda9189bb9f2fff10de24c6fa98d4a2bdb6
 
 )
 from rest_framework_simplejwt.views import (
@@ -217,24 +222,24 @@ urlpatterns = [
     # Pid Bunsy nai mue 
     path('api/end-of-day-journal/', end_of_day_journal_view , name='end-of-day-journal'),
 
-    
-    # path('api/end-of-day-journal/', end_of_day_journal_view, name='end-of-day-journal'), # <----- TIK Function Pid Bunsy nai mue
-    path('api/end-of-day-journal/check/', check_journal_submission_available), # <----- TIK Function Kuad karn pid bunsy
+
+    path('api/end-of-day-journal/check/', check_journal_submission_available),
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
     path('api/depreciation-with-journal/', calculate_depreciation_api_with_journal, name='depreciation_with_journal'),
-    # path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
-    # path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
-    path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
-    path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
-    # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
+    # Processing SomTop_Trail_Balance
+    # path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
+    # path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
+    path('api/somtop_trail_balance-report/bulk-insert/', bulk_insert_somtop_trial_balance, name='bulk-insert-somtop-trial-balance'),
+    path('api/somtop_trail_balance-report/bulk-delete/', bulk_delete_somtop_trial_balance, name='bulk-delete-somtop-trial-balance'),
+
+    path('api/eod/journal/bulk-by-date-range/', bulk_journal_by_date_range_view, name='bulk_journal_by_date_range'),
 
     # Store Procedure <---- Main Trial Balance ------>
     path('api/main-trial-balance/all-currencies/', main_trial_balance_all_currency_view, name='main-trial-balance-all'),
     path('api/main-trial-balance/by-currency/', main_trial_balance_by_currency_view, name='main-trial-balance-by-currency-post'),
     path('api/main-trial-balance/by-currency/get/', main_trial_balance_by_currency_get_view, name='main-trial-balance-by-currency-get'),
-
 
     # Store Procedure <---- Sub Trail Balance ------>
     path('api/trial-balance/consolidated/', 
@@ -244,9 +249,10 @@ urlpatterns = [
     path('api/trial-balance/fcy/get/', trial_balance_fcy_get_view, name='trial-balance-fcy-get'),
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
 
+
     # Stroe Procedure <---- Balance Sheet ------>
-    path('api/balance-sheet/acc/', balance_sheet_acc_view, name='balance-sheet-acc'),
-    path('api/balance-sheet/mfi/', balance_sheet_mfi_view, name='balance-sheet-mfi'),
+    path('api/balance-sheet/acc/', balance_sheet_acc_view, name='balance-sheet-acc'), # Done Update Store Procedure
+    path('api/balance-sheet/mfi/', balance_sheet_mfi_view, name='balance-sheet-mfi'), # Done Update Store Procedure
     path('api/balance-sheet/acc/get/', balance_sheet_acc_get_view, name='balance-sheet-acc-get'),
     path('api/balance-sheet/mfi/get/', balance_sheet_mfi_get_view, name='balance-sheet-mfi-get'),
 
