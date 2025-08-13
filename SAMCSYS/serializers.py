@@ -1218,3 +1218,24 @@ class SomtopTrialBalancesheetSerializer(serializers.ModelSerializer):
         model = STTB_Somtop_Trial_Balancesheet
         fields = '__all__'
         read_only_fields = ('Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp')
+
+from rest_framework import serializers
+from .models import DETB_JRNL_LOG
+
+class PreMainSerializer(serializers.Serializer):
+    aldm_id = serializers.IntegerField()
+    dpca_desc = serializers.CharField()
+
+class DETB_JRNL_LOGSerializer_Asset(serializers.ModelSerializer):
+    pre_main = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DETB_JRNL_LOG
+        fields = '__all__' 
+
+    def get_pre_main(self, obj):
+        return {
+            "aldm_id": getattr(obj, 'aldm_id', None),
+            "dpca_desc": getattr(obj, 'dpca_desc', None)
+        }
+

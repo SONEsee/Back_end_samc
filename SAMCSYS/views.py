@@ -22585,3 +22585,42 @@ def get_current_user_id():
 # - create_journal_entry_via_api()
 # - create_depreciation_history()
 # - create_depreciation_in_month_record()
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db.models import OuterRef, Subquery
+from .models import DETB_JRNL_LOG, FA_Asset_List_Depreciation_Main
+from .serializers import DETB_JRNL_LOGSerializer_Asset
+
+class JRNLLogViewSetAsset(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DETB_JRNL_LOGSerializer_Asset
+
+    def get_queryset(self):
+        ref_no = self.request.query_params.get('ref_no')
+
+        asset_subquery = FA_Asset_List_Depreciation_Main.objects.filter(
+            asset_list_id=OuterRef('Ac_relatives')
+        ).values('aldm_id')[:1]
+
+        asset_desc_subquery = FA_Asset_List_Depreciation_Main.objects.filter(
+            asset_list_id=OuterRef('Ac_relatives')
+        ).values('dpca_desc')[:1]
+
+        queryset = DETB_JRNL_LOG.objects.select_related(
+            'module_id', 'Ccy_cd', 'Account', 'Txn_code',
+            'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id'
+        ).filter(
+            Txn_code__trn_code='ARD'
+        ).annotate(
+            aldm_id=Subquery(asset_subquery),
+            dpca_desc=Subquery(asset_desc_subquery)
+        ).order_by('-Maker_DT_Stamp')
+
+        if ref_no:
+            queryset = queryset.filter(Reference_No=ref_no)
+
+        return queryset
+
+

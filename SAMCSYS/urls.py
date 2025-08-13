@@ -118,7 +118,8 @@ from .views import (
     balance_sheet_acc_get_view,
     balance_sheet_mfi_get_view,
     end_of_day_journal_view,
-    retroactive_depreciation_api
+    retroactive_depreciation_api,
+    JRNLLogViewSetAsset
 
 )
 from rest_framework_simplejwt.views import (
@@ -185,6 +186,7 @@ router.register(r'income-statement', IncomeStatementViewSet, basename='income-st
 router.register(r'asset_audit', FAAssetAuditViewSet, basename='FAAssetAudit')
 # router.register(r'dairy-report', DairyReportViewSet)
 router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
+router.register(r'jrnl-logs-with-asset', JRNLLogViewSetAsset, basename='jrnl_logs_with_asset')
 app_name = 'depreciation'
 
 urlpatterns = [
