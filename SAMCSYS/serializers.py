@@ -670,7 +670,12 @@ class DETB_JRNL_LOG_MASTER_AC_Serializer(serializers.ModelSerializer):
 
     def get_jrnl_log_ac(self, obj):
         jrnl_log = DETB_JRNL_LOG.objects.filter(Reference_No=obj.Reference_No).first()
-        return {"Ac_relatives": jrnl_log.Ac_relatives} if jrnl_log else None
+        if jrnl_log:
+            return {
+                "JRNLLog_id": jrnl_log.JRNLLog_id,
+                "Ac_relatives": jrnl_log.Ac_relatives
+            }
+        return None
 
 from rest_framework import serializers
 from .models import DETB_JRNL_LOG_MASTER
