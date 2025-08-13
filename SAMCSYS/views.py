@@ -17040,9 +17040,96 @@ def get_overdue_by_urgency_level(urgency_level=None):
     
 
 
+# def bulk_confirm_depreciation(aldm_ids, status, reason=None, user_id=None):
+#     """
+#     ✅ MODIFIED: Bulk ຢືນຢັນ + ອັດຕະໂນມັດ approve journal
+#     """
+#     try:
+#         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+#         if not validated_user_id:
+#             return {"error": "ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ"}
+        
+#         if status not in ['A', 'R', 'P']:
+#             return {"error": "status ບໍ່ຖືກຕ້ອງ. ໃຊ້ 'A', 'R', ຫຼື 'P'"}
+        
+#         if not aldm_ids or not isinstance(aldm_ids, list):
+#             return {"error": "ໃສ່ aldm_ids ເປັນ array"}
+        
+#         results = []
+#         success_count = 0
+#         error_count = 0
+#         accounting_method_updates = []
+#         total_journals_approved = 0
+#         journal_approval_summary = []
+#         current_time = timezone.now()
+        
+#         with transaction.atomic():
+#             for aldm_id in aldm_ids:
+#                 # ✅ ໃຊ້ modified confirm_depreciation
+#                 result = confirm_depreciation(aldm_id, status, reason, user_id)
+                
+#                 if result.get('success'):
+#                     results.append({
+#                         'aldm_id': aldm_id,
+#                         'status': 'success',
+#                         'message': result['message'],
+#                         'fa_asset_updated': result.get('fa_asset_updated', False),
+#                         'fa_accounting_method_updated': result.get('fa_accounting_method_updated', False),
+#                         'journal_auto_approval': result.get('journal_auto_approval')
+#                     })
+#                     success_count += 1
+                    
+#                     # ເກັບຂໍ້ມູນ Accounting Method
+#                     if result.get('accounting_method_info'):
+#                         accounting_method_updates.append({
+#                             'aldm_id': aldm_id,
+#                             'accounting_method_info': result['accounting_method_info']
+#                         })
+                    
+#                     # ✅ ເກັບສະຫຼຸບ journal approvals
+#                     journal_approval = result.get('journal_auto_approval')
+#                     if journal_approval and journal_approval.get('success'):
+#                         approved_count = journal_approval.get('approved_count', 0)
+#                         total_journals_approved += approved_count
+                        
+#                         if approved_count > 0:
+#                             journal_approval_summary.append({
+#                                 'aldm_id': aldm_id,
+#                                 'approved_count': approved_count,
+#                                 'reference_numbers': journal_approval.get('reference_numbers', [])
+#                             })
+#                 else:
+#                     results.append({
+#                         'aldm_id': aldm_id,
+#                         'status': 'error',
+#                         'message': result.get('error', 'Unknown error')
+#                     })
+#                     error_count += 1
+        
+#         return {
+#             'success': True,
+#             'summary': {
+#                 'total_items': len(aldm_ids),
+#                 'success_count': success_count,
+#                 'error_count': error_count,
+#                 'status_applied': status,
+#                 'reason_applied': reason if status in ['R', 'P'] else None,
+#                 'processed_by': validated_user_id,
+#                 'processed_at': current_time.strftime('%d/%m/%Y %H:%M:%S'),
+#                 'accounting_method_updates_count': len(accounting_method_updates),
+#                 'total_journals_approved': total_journals_approved,  # ✅ ຄວນບໍ່ເປັນ 0 ແລ້ວ
+#                 'assets_with_journals_approved': len(journal_approval_summary)
+#             },
+#             'details': results,
+#             'accounting_method_updates': accounting_method_updates,
+#             'journal_approval_summary': journal_approval_summary  # ✅ ຄວນມີຂໍ້ມູນແລ້ວ
+#         }
+        
+#     except Exception as e:
+#         return {"error": f"Bulk confirm error: {str(e)}"}
 def bulk_confirm_depreciation(aldm_ids, status, reason=None, user_id=None):
     """
-    ✅ MODIFIED: Bulk ຢືນຢັນ + ອັດຕະໂນມັດ approve journal
+    ✅ MODIFIED: Bulk ຢືນຢັນ + ອັດຕະໂນມັດ approve journal + ອັບເດດ C_dpac
     """
     try:
         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
@@ -17061,6 +17148,7 @@ def bulk_confirm_depreciation(aldm_ids, status, reason=None, user_id=None):
         accounting_method_updates = []
         total_journals_approved = 0
         journal_approval_summary = []
+        c_dpac_updates = []  # ✅ ເພີ່ມ tracking ການອັບເດດ C_dpac
         current_time = timezone.now()
         
         with transaction.atomic():
@@ -17069,13 +17157,71 @@ def bulk_confirm_depreciation(aldm_ids, status, reason=None, user_id=None):
                 result = confirm_depreciation(aldm_id, status, reason, user_id)
                 
                 if result.get('success'):
+                    # ✅ ເພີ່ມການອັບເດດ C_dpac
+                    c_dpac_result = None
+                    try:
+                        # ດຶງຂໍ້ມູນຈາກ FA_Asset_List_Depreciation_Main
+                        aldm_record = FA_Asset_List_Depreciation_Main.objects.get(aldm_id=aldm_id)
+                        dpca_no_of_days = aldm_record.dpca_no_of_days or 0
+                        
+                        if dpca_no_of_days > 0:
+                            # ຄິດໄລ່ ຄ່າທີ່ຈະບວກ (dpca_no_of_days / 30)
+                            additional_dpac = dpca_no_of_days / 30
+                            
+                            # ຫາ asset_list_id ຈາກ aldm_record
+                            asset_list_id = aldm_record.asset_list_id
+                            
+                            # ອັບເດດ C_dpac ໃນ FA_Asset_Lists
+                            fa_asset = FA_Asset_Lists.objects.get(asset_list_id=asset_list_id)
+                            old_c_dpac = fa_asset.C_dpac or 0
+                            new_c_dpac = old_c_dpac + additional_dpac
+                            
+                            fa_asset.C_dpac = new_c_dpac
+                            fa_asset.save()
+                            
+                            c_dpac_result = {
+                                'success': True,
+                                'asset_list_id': asset_list_id,
+                                'dpca_no_of_days': dpca_no_of_days,
+                                'additional_dpac': additional_dpac,
+                                'old_c_dpac': old_c_dpac,
+                                'new_c_dpac': new_c_dpac
+                            }
+                            
+                            c_dpac_updates.append({
+                                'aldm_id': aldm_id,
+                                'c_dpac_update': c_dpac_result
+                            })
+                        else:
+                            c_dpac_result = {
+                                'success': False,
+                                'message': 'dpca_no_of_days ເປັນ 0 ຫຼື null'
+                            }
+                    
+                    except FA_Asset_List_Depreciation_Main.DoesNotExist:
+                        c_dpac_result = {
+                            'success': False,
+                            'message': f'ບໍ່ພົບ ALDM record ສຳລັບ aldm_id: {aldm_id}'
+                        }
+                    except FA_Asset_Lists.DoesNotExist:
+                        c_dpac_result = {
+                            'success': False,
+                            'message': f'ບໍ່ພົບ Asset List record'
+                        }
+                    except Exception as e:
+                        c_dpac_result = {
+                            'success': False,
+                            'message': f'ເກີດຂໍ້ຜິດພາດໃນການອັບເດດ C_dpac: {str(e)}'
+                        }
+                    
                     results.append({
                         'aldm_id': aldm_id,
                         'status': 'success',
                         'message': result['message'],
                         'fa_asset_updated': result.get('fa_asset_updated', False),
                         'fa_accounting_method_updated': result.get('fa_accounting_method_updated', False),
-                        'journal_auto_approval': result.get('journal_auto_approval')
+                        'journal_auto_approval': result.get('journal_auto_approval'),
+                        'c_dpac_update': c_dpac_result  # ✅ ເພີ່ມຜົນການອັບເດດ C_dpac
                     })
                     success_count += 1
                     
@@ -17117,17 +17263,18 @@ def bulk_confirm_depreciation(aldm_ids, status, reason=None, user_id=None):
                 'processed_by': validated_user_id,
                 'processed_at': current_time.strftime('%d/%m/%Y %H:%M:%S'),
                 'accounting_method_updates_count': len(accounting_method_updates),
-                'total_journals_approved': total_journals_approved,  # ✅ ຄວນບໍ່ເປັນ 0 ແລ້ວ
-                'assets_with_journals_approved': len(journal_approval_summary)
+                'total_journals_approved': total_journals_approved,
+                'assets_with_journals_approved': len(journal_approval_summary),
+                'c_dpac_updates_count': len(c_dpac_updates)  # ✅ ເພີ່ມນັບການອັບເດດ C_dpac
             },
             'details': results,
             'accounting_method_updates': accounting_method_updates,
-            'journal_approval_summary': journal_approval_summary  # ✅ ຄວນມີຂໍ້ມູນແລ້ວ
+            'journal_approval_summary': journal_approval_summary,
+            'c_dpac_updates': c_dpac_updates  # ✅ ເພີ່ມລາຍລະອຽດການອັບເດດ C_dpac
         }
         
     except Exception as e:
         return {"error": f"Bulk confirm error: {str(e)}"}
-
 def bulk_confirm_all_pending(status, reason=None, user_id=None, filter_status=['U']):
     """
     🔥 NEW: ຢືນຢັນທຸກລາຍການທີ່ pending ພ້ອມກັນ
