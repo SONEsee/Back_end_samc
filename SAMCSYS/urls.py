@@ -119,7 +119,9 @@ from .views import (
     balance_sheet_mfi_get_view,
     end_of_day_journal_view,
     retroactive_depreciation_api,
-    JRNLLogViewSetAsset
+    JRNLLogViewSetAsset,
+    DETB_JRNL_LOG_MASTER_ARD_ViewSet
+
 
 )
 from rest_framework_simplejwt.views import (
@@ -158,6 +160,7 @@ router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
 # router.register(r'gl-capture', JRNLLogViewSet)
 router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
 router.register(r'journal-log-master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
+router.register(r'journal-log-ard', DETB_JRNL_LOG_MASTER_ARD_ViewSet, basename='jrnl_log_ard')
 router.register(r'asset_types', FAAssetTypeViewSet , basename='asset_type')
 # router.register(r'access-logs', UserAccessLogViewSet, basename='user-access-log')
 router.register(r'chart_of_asset', FAChartOfAssetViewSet , basename='chart_of_asset')
