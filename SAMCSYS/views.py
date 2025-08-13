@@ -22534,11 +22534,7 @@ def retroactive_depreciation_api(request):
         return JsonResponse(error_details, status=500)
 
 
-# ✅ URL Configuration
-# ໃສ່ໃນ urls.py:
-# path('api/retroactive/', retroactive_depreciation_api, name='retroactive-depreciation-api'),
 
-# ✅ Additional Helper Functions (ໃຊ້ຂໍ້ມູນຈາກ code ເກົ່າ)
 
 def get_month_name_la(month_num):
     """ຊື່ເດືອນເປັນພາສາລາວ"""
