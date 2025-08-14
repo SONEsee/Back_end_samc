@@ -16801,14 +16801,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_balance_sheet_acc_proc(segment: str, currency: str):
+def run_balance_sheet_acc_proc(segment: str, currency: str, period_code_id: str):
     """
     Execute the balance sheet ACC stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-    
+        period_code_id (str): Period code ID
+
     Returns:
         list: Query results as list of dictionaries
     """
@@ -16818,11 +16819,12 @@ def run_balance_sheet_acc_proc(segment: str, currency: str):
             sql = """
                 EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
-                    @currency = %s
+                    @currency = %s,
+                    @period_code_id = %s
             """
-            
-            cursor.execute(sql, [segment, currency])
-            
+
+            cursor.execute(sql, [segment, currency, period_code_id])
+
             # Get column names
             columns = [col[0] for col in cursor.description]
             
@@ -16835,7 +16837,7 @@ def run_balance_sheet_acc_proc(segment: str, currency: str):
         logger.error(f"Error executing balance sheet ACC procedure: {str(e)}")
         raise
 
-def run_balance_sheet_mfi_proc(segment: str, currency: str):
+def run_balance_sheet_mfi_proc(segment: str, currency: str, period_code_id: str):
     """
     Execute the balance sheet MFI stored procedure
     
@@ -16852,11 +16854,12 @@ def run_balance_sheet_mfi_proc(segment: str, currency: str):
             sql = """
                 EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
-                    @currency = %s
+                    @currency = %s,
+                    @period_code_id = %s
             """
-            
-            cursor.execute(sql, [segment, currency])
-            
+
+            cursor.execute(sql, [segment, currency, period_code_id])
+
             # Get column names
             columns = [col[0] for col in cursor.description]
             
@@ -16868,6 +16871,8 @@ def run_balance_sheet_mfi_proc(segment: str, currency: str):
     except Exception as e:
         logger.error(f"Error executing balance sheet MFI procedure: {str(e)}")
         raise
+
+
 
 def validate_segment(segment: str) -> bool:
     """
@@ -16931,6 +16936,7 @@ def balance_sheet_acc_view(request):
     }
     """
     # Extract parameters from request
+    period_code_id = request.data.get("period_code_id")
     segment = request.data.get("segment")
     currency = request.data.get("currency")
     
@@ -16945,6 +16951,7 @@ def balance_sheet_acc_view(request):
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
+    period_code_id = period_code_id.upper()
     
     # Validate segment
     if not validate_segment(segment):
@@ -16963,12 +16970,12 @@ def balance_sheet_acc_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[BalanceSheet-ACC] Executing procedure for segment={segment}, currency={currency}")
+        logger.info(f"[BalanceSheet-ACC] Executing procedure for segment={segment}, currency={currency}, period_code_id ={period_code_id}" )
         
         # Execute stored procedure
-        result = run_balance_sheet_acc_proc(segment, currency)
-        
-        logger.info(f"[BalanceSheet-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        result = run_balance_sheet_acc_proc(segment, currency, period_code_id)
+
+        logger.info(f"[BalanceSheet-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency},  period_code_id ={period_code_id} , Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
@@ -16978,6 +16985,7 @@ def balance_sheet_acc_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet ACC data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
@@ -17019,12 +17027,13 @@ def balance_sheet_mfi_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
+    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency:
+    if not segment or not currency or not period_code_id:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency and period_code_id are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -17049,12 +17058,12 @@ def balance_sheet_mfi_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[BalanceSheet-MFI] Executing procedure for segment={segment}, currency={currency}")
+        logger.info(f"[BalanceSheet-MFI] Executing procedure for segment={segment}, currency={currency}, period_code_id={period_code_id}")
         
         # Execute stored procedure
-        result = run_balance_sheet_mfi_proc(segment, currency)
-        
-        logger.info(f"[BalanceSheet-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        result = run_balance_sheet_mfi_proc(segment, currency, period_code_id)
+
+        logger.info(f"[BalanceSheet-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period Code ID: {period_code_id}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
@@ -17064,6 +17073,7 @@ def balance_sheet_mfi_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet MFI data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "MFI",
             "display_currency": display_currency,
             "count": len(result),
@@ -17092,9 +17102,10 @@ def balance_sheet_acc_get_view(request):
     # Extract parameters from query params
     segment = request.query_params.get("segment")
     currency = request.query_params.get("currency")
+    period_code_id = request.query_params.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency:
+    if not segment or not currency or not period_code_id:
         return Response({
             "status": "error",
             "message": "ບໍ່ມີ query parameters ທີ່ຈຳເປັນ: segment ແລະ currency (Missing required query parameters: segment and currency)",
@@ -17117,7 +17128,7 @@ def balance_sheet_acc_get_view(request):
         logger.info(f"[BalanceSheet-ACC-GET] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_balance_sheet_acc_proc(segment, currency)
+        result = run_balance_sheet_acc_proc(segment, currency, period_code_id)
         
         logger.info(f"[BalanceSheet-ACC-GET] Procedure completed successfully. Records: {len(result)}")
         
@@ -17128,6 +17139,7 @@ def balance_sheet_acc_get_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC ສຳລັບ {display_currency} ສຳເລັດ",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
@@ -17156,6 +17168,7 @@ def balance_sheet_mfi_get_view(request):
     # Extract parameters from query params
     segment = request.query_params.get("segment")
     currency = request.query_params.get("currency")
+    period_code_id = request.query_params.get("period_code_id")
     
     # Validate required parameters
     if not segment or not currency:
@@ -17168,7 +17181,8 @@ def balance_sheet_mfi_get_view(request):
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
-    
+    period_code_id = period_code_id.upper()
+
     # Validate parameters
     if not validate_segment(segment) or not validate_currency_code(currency):
         return Response({
@@ -17181,7 +17195,7 @@ def balance_sheet_mfi_get_view(request):
         logger.info(f"[BalanceSheet-MFI-GET] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_balance_sheet_mfi_proc(segment, currency)
+        result = run_balance_sheet_mfi_proc(segment, currenc, period_code_id)
         
         logger.info(f"[BalanceSheet-MFI-GET] Procedure completed successfully. Records: {len(result)}")
         
@@ -17192,6 +17206,7 @@ def balance_sheet_mfi_get_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI ສຳລັບ {display_currency} ສຳເລັດ",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "MFI",
             "display_currency": display_currency,
             "count": len(result),
