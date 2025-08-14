@@ -21237,7 +21237,7 @@ def validate_journal_approvals(processing_date):
         unapproved_journals = DETB_JRNL_LOG.objects.filter(
             Value_date=processing_date,
             Auth_Status__in=['U', 'P']
-        ).count()
+        ).exclude(Txn_code='ARD').count()
 
         if unapproved_journals > 0:
             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
@@ -22587,7 +22587,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import OuterRef, Subquery
 from .models import DETB_JRNL_LOG, FA_Asset_List_Depreciation_Main
-from .serializers import DETB_JRNL_LOGSerializer_Asset
+from .serializers import DETB_JRNL_LOGSerializer_Asset,DETB_JRNL_LOG_MASTER_AC_Serializer
 
 class JRNLLogViewSetAsset(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -22621,7 +22621,7 @@ class JRNLLogViewSetAsset(viewsets.ReadOnlyModelViewSet):
 
 
 class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
-    serializer_class = DETB_JRNL_LOG_MASTER_Serializer  # Use your existing serializer
+    serializer_class = DETB_JRNL_LOG_MASTER_AC_Serializer  # Use your existing serializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['Ccy_cd', 'fin_cycle', 'Auth_Status', 'Reference_No']
