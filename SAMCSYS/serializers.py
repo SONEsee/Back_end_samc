@@ -659,6 +659,24 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
 
+class DETB_JRNL_LOG_MASTER_AC_Serializer(serializers.ModelSerializer):
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
+    jrnl_log_ac = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DETB_JRNL_LOG_MASTER
+        fields = '__all__'
+
+    def get_jrnl_log_ac(self, obj):
+        jrnl_log = DETB_JRNL_LOG.objects.filter(Reference_No=obj.Reference_No).first()
+        if jrnl_log:
+            return {
+                "JRNLLog_id": jrnl_log.JRNLLog_id,
+                "Ac_relatives": jrnl_log.Ac_relatives
+            }
+        return None
+
 from rest_framework import serializers
 from .models import DETB_JRNL_LOG_MASTER
 
@@ -1218,3 +1236,24 @@ class SomtopTrialBalancesheetSerializer(serializers.ModelSerializer):
         model = STTB_Somtop_Trial_Balancesheet
         fields = '__all__'
         read_only_fields = ('Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp')
+
+from rest_framework import serializers
+from .models import DETB_JRNL_LOG
+
+class PreMainSerializer(serializers.Serializer):
+    aldm_id = serializers.IntegerField()
+    dpca_desc = serializers.CharField()
+
+class DETB_JRNL_LOGSerializer_Asset(serializers.ModelSerializer):
+    pre_main = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DETB_JRNL_LOG
+        fields = '__all__' 
+
+    def get_pre_main(self, obj):
+        return {
+            "aldm_id": getattr(obj, 'aldm_id', None),
+            "dpca_desc": getattr(obj, 'dpca_desc', None)
+        }
+
