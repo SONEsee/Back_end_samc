@@ -18462,7 +18462,7 @@ def run_balance_sheet_acc_proc(segment: str, currency: str, period_code_id: str)
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated
+                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
                     @currency = %s,
                     @period_code_id = %s
@@ -18497,7 +18497,7 @@ def run_balance_sheet_mfi_proc(segment: str, currency: str, period_code_id: str)
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated
+                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated_afterEOC
                     @segment = %s,
                     @currency = %s,
                     @period_code_id = %s
