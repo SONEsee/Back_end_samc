@@ -24104,6 +24104,7 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 'target_journals': [],
                 'transaction_type': 'ARD'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24124,43 +24125,12 @@ from .utils import JournalEntryHelper
 
 logger = logging.getLogger(__name__)
 
-class JRNLLogViewSet(viewsets.ModelViewSet):
-    parser_classes = [JSONParser]
-    queryset = DETB_JRNL_LOG.objects.select_related(
-        'Ccy_cd', 'Account', 'Account__gl_code', 'Txn_code',
-        'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id', 'module_id'
-    ).all().order_by('-Maker_DT_Stamp')
-    serializer_class = JRNLLogSerializer
-    permission_classes = [IsAuthenticated]
-    filterset_fields = ['Reference_No', 'Ccy_cd', 'Dr_cr', 'Auth_Status', 'Txn_code']
-    search_fields = ['Reference_No', 'Addl_text', 'Account__glsub_code', 'Account__glsub_Desc_la']
-    ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No']
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        start_date = self.request.query_params.get('start_date')
-        end_date = self.request.query_params.get('end_date')
-        if start_date:
-            queryset = queryset.filter(Value_date__gte=start_date)
-        if end_date:
-            queryset = queryset.filter(Value_date__lte=end_date)
-        account_id = self.request.query_params.get('account_id')
-        if account_id:
-            queryset = queryset.filter(Account_id=account_id)
-        ccy_cd = self.request.query_params.get('Ccy_cd')
-        if ccy_cd:
-            queryset = queryset.filter(Ccy_cd_id=ccy_cd)
-        Auth_Status = self.request.query_params.get('Auth_Status')
-        if Auth_Status:
-            queryset = queryset.filter(Auth_Status=Auth_Status)
-        Reference_No = self.request.query_params.get('Reference_No')
-        if Reference_No:
-            queryset = queryset.filter(Reference_No=Reference_No).order_by('JRNLLog_id')
-        return queryset
 
-class JRNLLogHistViewSet(viewsets.ModelViewSet):
+
+class JournalARDViewSet(viewsets.ModelViewSet):
     """
-    ViewSet ສຳລັບການຈັດການບັນທຶກບັນຊີຈາກ DETB_JRNL_LOG_HIST
+    ViewSet ສຳລັບດຶງຂໍ້ຮຽກຮ້ອງຈາກ DETB_JRNL_LOG_HIST ຕາມຄວາມຕ້ອງການສະເພາະ
     """
     parser_classes = [JSONParser]
     queryset = DETB_JRNL_LOG_HIST.objects.select_related(
@@ -24175,7 +24145,7 @@ class JRNLLogHistViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        ປັບແຕ່ງ queryset ໂດຍອີງຕາມ query parameters
+        ປັບແຕ່ງ queryset ສຳລັບດຶງຂໍ້ຮຽກຮ້ອງຕາມຄວາມຕ້ອງການສະເພາະ
         """
         queryset = super().get_queryset()
         start_date = self.request.query_params.get('start_date')
@@ -24195,5 +24165,6 @@ class JRNLLogHistViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Auth_Status=Auth_Status)
         Reference_No = self.request.query_params.get('Reference_No')
         if Reference_No:
-            queryset = queryset.filter(Reference_No=Reference_No).order_by('JRNLLog_id_his')  # ປ່ຽນຈາກ JRNLLog_id ເປັນ JRNLLog_id_his
+            queryset = queryset.filter(Reference_No=Reference_No)
+            logger.info(f"Fetching JRNL_LOG_HIST with Reference_No: {Reference_No}")
         return queryset
