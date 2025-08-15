@@ -4095,7 +4095,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now(),
-            Auth_Status='U'  # Unauthorized
+            Auth_Status='U'  
         )
 
     def perform_update(self, serializer):
@@ -12461,7 +12461,166 @@ def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=No
     except Exception as e:
         return {"error": f"Bulk depreciation catch-up error: {str(e)}"}
 
+def auto_reject_related_journals(asset_list_id, reason, user_id, request=None):
+    """
+    🔴 ຄົ້ນຫາ + reject journal entries ດ້ວຍ detailed logging
+    """
+    try:
+        print(f"🔴 Auto rejecting journals for asset: {asset_list_id}")
+        
+        # Import DETB_JRNL_LOG
+        try:
+            from .models import DETB_JRNL_LOG
+        except ImportError:
+            try:
+                from .models import DETB_JRNL_LOG_MASTER as DETB_JRNL_LOG
+            except ImportError:
+                return {
+                    'success': False,
+                    'error': 'DETB_JRNL_LOG model not found',
+                    'rejected_count': 0,
+                    'reference_numbers': []
+                }
+        
+        # ✅ ຄົ້ນຫາ journal entries
+        journal_entries = DETB_JRNL_LOG.objects.filter(
+            Ac_relatives__icontains=str(asset_list_id),
+            Auth_Status='U',
+            Dr_cr='D'
+        ).values_list('Reference_No', flat=True).distinct()
+        
+        reference_numbers = list(journal_entries)
+        print(f"📋 Found {len(reference_numbers)} reference numbers: {reference_numbers}")
+        
+        if not reference_numbers:
+            return {
+                'success': True,
+                'message': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງ reject ສຳລັບ asset {asset_list_id}',
+                'rejected_count': 0,
+                'reference_numbers': []
+            }
+        
+        # ✅ Auto reject ແຕ່ລະ Reference_No
+        rejected_count = 0
+        current_time = timezone.now()
+        
+        for ref_no in reference_numbers:
+            try:
+                print(f"📝 ກຳລັງ reject Reference_No: {ref_no}")
+                
+                entries_updated = DETB_JRNL_LOG.objects.filter(
+                    Reference_No=ref_no,
+                    Ac_relatives__icontains=str(asset_list_id),
+                    Auth_Status='U'
+                ).update(
+                    Auth_Status='R',
+                    # detail=reason,  # ← ลบบรรทัดนี้ออก หรือ
+                    # comments=reason,  # ← หรือใช้ field อื่นที่มีอยู่จริง
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=current_time
+                )
+                
+                if entries_updated > 0:
+                    rejected_count += 1
+                    print(f"✅ Rejected: {ref_no} ({entries_updated} entries)")
+                else:
+                    print(f"❌ Failed: {ref_no} - No entries found")
+                    
+            except Exception as reject_error:
+                print(f"💥 Exception: {ref_no} - {str(reject_error)}")
+        
+        return {
+            'success': True,
+            'message': f'ປະມວນຜົນ {len(reference_numbers)} entries: reject ສຳເລັດ {rejected_count}',
+            'rejected_count': rejected_count,
+            'reference_numbers': reference_numbers,
+            'reason_applied': reason
+        }
+        
+    except Exception as e:
+        print(f"💥 Auto reject error: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Auto reject error: {str(e)}",
+            'rejected_count': 0
+        }
 
+
+def update_journal_status_to_pending(asset_list_id, reason, user_id):
+    """
+    🟡 ອັບເດດສະຖານະ journal entries ເປັນ Pending (P)
+    """
+    try:
+        print(f"🟡 Updating journal status to P for asset: {asset_list_id}")
+        
+        # Import DETB_JRNL_LOG
+        try:
+            from .models import DETB_JRNL_LOG
+        except ImportError:
+            try:
+                from .models import DETB_JRNL_LOG_MASTER as DETB_JRNL_LOG
+            except ImportError:
+                return {
+                    'success': False,
+                    'error': 'DETB_JRNL_LOG model not found',
+                    'updated_count': 0
+                }
+        
+        # ✅ ຄົ້ນຫາແລະອັບເດດ
+        journal_entries = DETB_JRNL_LOG.objects.filter(
+            Ac_relatives__icontains=str(asset_list_id),
+            Auth_Status='U',
+            Dr_cr='D'
+        )
+        
+        reference_numbers = list(journal_entries.values_list('Reference_No', flat=True).distinct())
+        print(f"📋 Found {len(reference_numbers)} reference numbers: {reference_numbers}")
+        
+        if not reference_numbers:
+            return {
+                'success': True,
+                'message': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງອັບເດດເປັນ P',
+                'updated_count': 0
+            }
+        
+        current_time = timezone.now()
+        updated_count = 0
+        
+        for ref_no in reference_numbers:
+            try:
+                entries_updated = DETB_JRNL_LOG.objects.filter(
+                    Reference_No=ref_no,
+                    Ac_relatives__icontains=str(asset_list_id),
+                    Auth_Status='U'
+                ).update(
+                    Auth_Status='P',
+                    # detail=reason,  # ← ลบบรรทัดนี้ออก หรือ
+                    # comments=reason,  # ← หรือใช้ field อื่น
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=current_time
+                )
+                
+                if entries_updated > 0:
+                    updated_count += 1
+                    print(f"✅ Updated to P: {ref_no} ({entries_updated} entries)")
+                    
+            except Exception as update_error:
+                print(f"💥 Error: {str(update_error)}")
+        
+        return {
+            'success': True,
+            'message': f'ອັບເດດ {updated_count} entries ເປັນ Pending ສຳເລັດ',
+            'updated_count': updated_count,
+            'reference_numbers': reference_numbers
+        }
+        
+    except Exception as e:
+        print(f"💥 Update to pending error: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Update to pending error: {str(e)}",
+            'updated_count': 0
+        }
 # ✅ Helper function ສຳລັບທົດສອບ
 def test_bulk_depreciation():
     """ຟັງຊັນທົດສອບ bulk depreciation"""
@@ -13188,249 +13347,7 @@ def create_depreciation_daily_log(depreciation_record, user_id=None):
             'success': False,
             'error': f"Daily log creation error: {str(e)}"
         }
-# def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
-#     """
-#     ✅ DIRECT FIX: ຢືນຢັນການຫັກຄ່າເສື່ອມ + debug journal approval
-#     """
-#     try:
-#         print(f"🎯 [DEBUG] confirm_depreciation START: aldm_id={aldm_id}, status={status}")
-        
-#         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
-#         if not validated_user_id:
-#             return {"error": "ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ"}
-        
-#         if status not in ['A', 'R', 'P']:
-#             return {"error": "status ບໍ່ຖືກຕ້ອງ. ໃຊ້ 'A', 'R', ຫຼື 'P'"}
-        
-#         if status in ['R', 'P'] and not reason:
-#             return {"error": "ຕ້ອງລະບຸ reason ສຳລັບ Rejected ຫຼື Pending Revision"}
-        
-#         with transaction.atomic():
-#             main_record = FA_Asset_List_Depreciation_Main.objects.get(aldm_id=aldm_id)
-            
-#             if main_record.Auth_Status not in ['U', 'P']:
-#                 return {"error": f"ບໍ່ສາມາດປ່ຽນສະຖານະຂອງບັນທຶກທີ່ມີ Auth_Status = {main_record.Auth_Status}"}
-            
-#             current_time = timezone.now()
-            
-#             # ✅ 1. ອັບເດດ Main Record
-#             main_record.Auth_Status = status
-#             main_record.detail = reason if status in ['R', 'P'] else None
-#             main_record.Checker_Id_id = validated_user_id
-#             main_record.Checker_DT_Stamp = current_time
-#             main_record.save()
-#             print(f"✅ [DEBUG] Updated main_record: {aldm_id}")
-            
-#             # ✅ 2. ອັບເດດ Detail Record
-#             FA_Asset_List_Depreciation.objects.filter(
-#                 asset_list_id=main_record.asset_list_id,
-#                 dpca_date=main_record.dpca_date,
-#                 dpca_value=main_record.dpca_value
-#             ).update(
-#                 Auth_Status=status,
-#                 detail=reason if status in ['R', 'P'] else None,
-#                 Checker_Id_id=validated_user_id,
-#                 Checker_DT_Stamp=current_time
-#             )
-#             print(f"✅ [DEBUG] Updated detail records")
-            
-#             # ✅ 3. ຖ້າຢືນຢັນ (A), ອັບເດດ FA_Asset_Lists + Auto Approve Journals
-#             journal_auto_approval = None
-            
-#             if status == 'A':
-#                 print(f"🔍 [DEBUG] Status is A, processing...")
-#                 asset = main_record.asset_list_id
-#                 asset_list_id = asset.asset_list_id
-#                 print(f"🔍 [DEBUG] Asset ID: {asset_list_id}")
-                
-#                 # 3.1 ອັບເດດ FA_Asset_Lists
-#                 asset.C_dpac = str(int(asset.C_dpac or 0) + 1)
-#                 asset.asset_accu_dpca_value = Decimal(str(main_record.accumulated_dpca))
-#                 asset.asset_value_remain = Decimal(str(main_record.remaining_value))
-#                 asset.asset_latest_date_dpca = main_record.dpca_date
-#                 asset.save()
-#                 print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
-                
-#                 # ❌ 3.2 ລຶບການອັບເດດ FA_Accounting_Method ອອກ
-#                 # ບໍ່ອັບເດດ FA_Accounting_Method ອີກຕໍ່ໄປ
-                
-#                 # ✅ 3.3 Debug + Auto Approve Journal Entries
-#                 try:
-#                     print(f"🔍 [DEBUG] Starting journal approval for asset: {asset_list_id}")
-                    
-#                     # ✅ ກວດສອບ DETB_JRNL_LOG ກ່ອນ
-#                     try:
-#                         from .models import DETB_JRNL_LOG
-#                         print(f"✅ [DEBUG] DETB_JRNL_LOG imported successfully")
-#                     except ImportError:
-#                         try:
-#                             from .models import DETB_JRNL_LOG_MASTER as DETB_JRNL_LOG
-#                             print(f"✅ [DEBUG] DETB_JRNL_LOG_MASTER imported successfully")
-#                         except ImportError:
-#                             print(f"❌ [DEBUG] Cannot import DETB_JRNL_LOG models")
-#                             journal_auto_approval = {
-#                                 'success': False,
-#                                 'error': 'DETB_JRNL_LOG model not found',
-#                                 'approved_count': 0,
-#                                 'reference_numbers': []
-#                             }
-#                             return self._build_response(...)  # Continue to return
-                    
-#                     # ✅ ກວດສອບ journal entries
-#                     total_journals = DETB_JRNL_LOG.objects.count()
-#                     print(f"📊 [DEBUG] Total journal entries in database: {total_journals}")
-                    
-#                     with_asset = DETB_JRNL_LOG.objects.filter(
-#                         Ac_relatives__icontains=str(asset_list_id)
-#                     ).count()
-#                     print(f"📊 [DEBUG] Entries with asset_list_id '{asset_list_id}': {with_asset}")
-                    
-#                     target_entries = DETB_JRNL_LOG.objects.filter(
-#                         Ac_relatives__icontains=str(asset_list_id),
-#                         Auth_Status='U',
-#                         Dr_cr='D'
-#                     )
-#                     target_count = target_entries.count()
-#                     print(f"📊 [DEBUG] Target entries (Auth_Status='U', Dr_cr='D'): {target_count}")
-                    
-#                     if target_count > 0:
-#                         # ສະແດງ sample
-#                         sample = list(target_entries.values('Reference_No', 'Ac_relatives', 'Auth_Status', 'Dr_cr')[:3])
-#                         print(f"📋 [DEBUG] Sample entries: {sample}")
-                        
-#                         # ດຶງ Reference_No
-#                         reference_numbers = list(target_entries.values_list('Reference_No', flat=True).distinct())
-#                         print(f"📋 [DEBUG] Reference numbers to approve: {reference_numbers}")
-                        
-#                         # ✅ ເອີ້ນ approve_all
-#                         try:
-#                             from SAMCSYS.views import JRNLLogViewSet
-#                             from unittest.mock import Mock
-#                             from .models import MTTB_Users
-                            
-#                             # ສ້າງ mock request
-#                             mock_request = Mock()
-#                             mock_request.user = MTTB_Users.objects.first()
-#                             mock_request.method = 'POST'
-                            
-#                             approved_count = 0
-#                             failed_count = 0
-#                             approval_results = []
-                            
-#                             for ref_no in reference_numbers:
-#                                 try:
-#                                     print(f"📝 [DEBUG] Approving Reference_No: {ref_no}")
-                                    
-#                                     mock_request.data = {'Reference_No': ref_no}
-                                    
-#                                     viewset = JRNLLogViewSet()
-#                                     viewset.request = mock_request
-#                                     viewset.format_kwarg = None
-                                    
-#                                     response = viewset.approve_all(mock_request)
-#                                     print(f"📨 [DEBUG] Response: status={response.status_code}")
-                                    
-#                                     if response.status_code in [200, 201]:
-#                                         approved_count += 1
-#                                         approval_results.append({
-#                                             'reference_no': ref_no,
-#                                             'status': 'success'
-#                                         })
-#                                         print(f"✅ [DEBUG] Approved: {ref_no}")
-#                                     else:
-#                                         failed_count += 1
-#                                         print(f"❌ [DEBUG] Failed: {ref_no}")
-                                        
-#                                 except Exception as approve_error:
-#                                     failed_count += 1
-#                                     print(f"💥 [DEBUG] Approve error: {ref_no} - {str(approve_error)}")
-                            
-#                             journal_auto_approval = {
-#                                 'success': True,
-#                                 'message': f'ປະມວນຜົນ {len(reference_numbers)} entries: approve ສຳເລັດ {approved_count}, ຜິດພາດ {failed_count}',
-#                                 'asset_list_id': asset_list_id,
-#                                 'total_processed': len(reference_numbers),
-#                                 'approved_count': approved_count,
-#                                 'failed_count': failed_count,
-#                                 'reference_numbers': reference_numbers,
-#                                 'approval_details': approval_results,
-#                                 'debug_info': {
-#                                     'total_journals': total_journals,
-#                                     'with_asset': with_asset,
-#                                     'target_count': target_count
-#                                 }
-#                             }
-                            
-#                         except ImportError as import_error:
-#                             print(f"⚠️ [DEBUG] Cannot import JRNLLogViewSet: {str(import_error)}")
-#                             journal_auto_approval = {
-#                                 'success': False,
-#                                 'error': f'Import error: {str(import_error)}',
-#                                 'approved_count': 0,
-#                                 'reference_numbers': reference_numbers,
-#                                 'debug_info': {
-#                                     'total_journals': total_journals,
-#                                     'with_asset': with_asset,
-#                                     'target_count': target_count
-#                                 }
-#                             }
-#                     else:
-#                         print(f"ℹ️ [DEBUG] No journal entries found to approve")
-#                         journal_auto_approval = {
-#                             'success': True,
-#                             'message': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງ approve ສຳລັບ asset {asset_list_id}',
-#                             'approved_count': 0,
-#                             'reference_numbers': [],
-#                             'debug_info': {
-#                                 'total_journals': total_journals,
-#                                 'with_asset': with_asset,
-#                                 'target_count': target_count
-#                             }
-#                         }
-                        
-#                 except Exception as journal_error:
-#                     print(f"⚠️ [DEBUG] Journal error: {str(journal_error)}")
-#                     import traceback
-#                     traceback.print_exc()
-#                     journal_auto_approval = {
-#                         'success': False,
-#                         'error': f"Journal error: {str(journal_error)}",
-#                         'approved_count': 0,
-#                         'reference_numbers': []
-#                     }
-#             else:
-#                 print(f"🔍 [DEBUG] Status is {status}, skipping journal approval")
-#                 journal_auto_approval = {
-#                     'success': False,
-#                     'message': f'Skipped journal approval - status is {status}, not A',
-#                     'approved_count': 0,
-#                     'reference_numbers': []
-#                 }
-            
-#             # ✅ 4. ສ້າງ message
-#             base_message = f"ບັນທຶກ {aldm_id} ອັບເດດເປັນ {status} ສຳເລັດ"
-#             if status == 'A' and journal_auto_approval and journal_auto_approval.get('approved_count', 0) > 0:
-#                 base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
-            
-#             print(f"✅ [DEBUG] Final result: journal_auto_approval = {journal_auto_approval}")
-            
-#             return {
-#                 'success': True,
-#                 'message': base_message,
-#                 'user_id_used': validated_user_id,
-#                 'status_set': status,
-#                 'reason_set': reason if status in ['R', 'P'] else None,
-#                 'fa_asset_updated': status == 'A',
-#                 'fa_accounting_method_updated': False,  # ✅ ປ່ຽນເປັນ False
-#                 'accounting_method_info': None,  # ✅ ປ່ຽນເປັນ None  
-#                 'journal_auto_approval': journal_auto_approval
-#             }
-        
-#     except Exception as e:
-#         print(f"💥 [DEBUG] Error: {str(e)}")
-#         import traceback
-#         traceback.print_exc()
-#         return {"error": f"Confirm depreciation error: {str(e)}"}
+
 def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
     """
     ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug + Fixed C_dpac calculation
@@ -13597,20 +13514,107 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                         'reference_numbers': [],
                         'debug_check': check_result if 'check_result' in locals() else None
                     }
+            elif status == 'R':
+                print(f"🔴 [FORCE] Status is R, processing auto rejection...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                # ✅ กวดສອບ journal entries ກ່ອນ
+                print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
+                try:
+                    check_result = check_journal_entries_for_asset(asset_list_id)
+                    print(f"📊 [FORCE] Check result: {check_result}")
+                except:
+                    check_result = {'error': 'check_journal_entries_for_asset function not found'}
+                    print(f"⚠️ [FORCE] Could not check journal entries: {check_result}")
+                
+                # ✅ ອັດຕະໂນມັດ reject journal entries
+                try:
+                    print(f"🔍 [FORCE] About to call auto_reject_related_journals...")
+                    
+                    # ✅ ບັງຄັບເອີ້ນ function
+                    try:
+                        journal_auto_approval = auto_reject_related_journals(asset_list_id, reason, validated_user_id)
+                        # ປ່ຽນ rejected_count ເປັນ approved_count ເພື່ອໃຊ້ logic ດຽວກັບ A
+                        if journal_auto_approval and journal_auto_approval.get('success'):
+                            journal_auto_approval['approved_count'] = journal_auto_approval.get('rejected_count', 0)
+                    except:
+                        print(f"⚠️ [FORCE] auto_reject_related_journals function not found, using fallback")
+                        journal_auto_approval = {
+                            'success': False,
+                            'message': 'auto_reject_related_journals function not available',
+                            'approved_count': 0,
+                            'reference_numbers': []
+                        }
+                    
+                    print(f"📊 [FORCE] auto_reject_related_journals result: {journal_auto_approval}")
+                    
+                    if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+                        print(f"✅ [FORCE] Auto rejected {journal_auto_approval['approved_count']} journals")
+                    else:
+                        print(f"ℹ️ [FORCE] No journals rejected or function failed")
+                        # ✅ ບັງຄັບສ້າງ result ຖ້າເປັນ None
+                        if journal_auto_approval is None:
+                            journal_auto_approval = {
+                                'success': False,
+                                'message': 'auto_reject_related_journals returned None',
+                                'approved_count': 0,
+                                'reference_numbers': [],
+                                'debug_check': check_result if 'check_result' in locals() else None
+                            }
+                        
+                except Exception as journal_error:
+                    print(f"⚠️ [FORCE] Journal auto rejection error: {str(journal_error)}")
+                    import traceback
+                    traceback.print_exc()
+                    journal_auto_approval = {
+                        'success': False,
+                        'error': f"Journal auto rejection error: {str(journal_error)}",
+                        'approved_count': 0,
+                        'reference_numbers': [],
+                        'debug_check': check_result if 'check_result' in locals() else None
+                    }
+                    
+            elif status == 'P':
+                print(f"🟡 [FORCE] Status is P, processing pending update...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                # ✅ อัพเดทสถานะ journal เป็น P
+                try:
+                    journal_auto_approval = update_journal_status_to_pending(asset_list_id, reason, validated_user_id)
+                    # ปรับ field name เพื่อให้ logic เดิมใช้ได้
+                    if journal_auto_approval and journal_auto_approval.get('success'):
+                        journal_auto_approval['approved_count'] = journal_auto_approval.get('updated_count', 0)
+                except:
+                    journal_auto_approval = {
+                        'success': False,
+                        'message': 'update_journal_status_to_pending function not available',
+                        'approved_count': 0,
+                        'reference_numbers': []
+                    }
+                    
             else:
-                print(f"🔍 [FORCE] Status is {status}, skipping journal approval")
+                print(f"🔍 [FORCE] Status is {status}, skipping journal processing")
                 journal_auto_approval = {
                     'success': False,
-                    'message': f'Skipped journal approval - status is {status}, not A',
+                    'message': f'Unknown status {status}',
                     'approved_count': 0,
                     'reference_numbers': []
                 }
             
             # ✅ 4. ສ້າງ message ທີ່ລວມ journal approval
             base_message = f"ບັນທຶກ {aldm_id} ອັບເດດເປັນ {status} ສຳເລັດ"
-            if status == 'A' and journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
-                base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
             
+            if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+                if status == 'A':
+                    base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
+                elif status == 'R':
+                    base_message += f" + Auto rejected {journal_auto_approval['approved_count']} journal entries"
+                elif status == 'P':
+                    base_message += f" + Updated {journal_auto_approval['approved_count']} journal entries to Pending"
             print(f"✅ [FORCE] Final journal_auto_approval: {journal_auto_approval}")
             
             return {
@@ -16293,11 +16297,89 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                         'reference_numbers': [],
                         'debug_check': check_result if 'check_result' in locals() else None
                     }
+            elif status == 'R':
+                print(f"🔴 [FORCE] Status is R, processing auto rejection...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                # ✅ กวดสอบ journal entries ก่อน
+                print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
+                try:
+                    check_result = check_journal_entries_for_asset(asset_list_id)
+                    print(f"📊 [FORCE] Check result: {check_result}")
+                except:
+                    check_result = {'error': 'check_journal_entries_for_asset function not found'}
+                    print(f"⚠️ [FORCE] Could not check journal entries: {check_result}")
+                
+                # ✅ อัดตะโนมัด reject journal entries
+                try:
+                    print(f"🔍 [FORCE] About to call auto_reject_related_journals...")
+                    
+                    try:
+                        journal_auto_approval = auto_reject_related_journals(asset_list_id, reason, validated_user_id)
+                        # ปรียน rejected_count เป็น approved_count เพื่อใช้ logic เดียวกับ A
+                        if journal_auto_approval and journal_auto_approval.get('success'):
+                            journal_auto_approval['approved_count'] = journal_auto_approval.get('rejected_count', 0)
+                    except:
+                        print(f"⚠️ [FORCE] auto_reject_related_journals function not found, using fallback")
+                        journal_auto_approval = {
+                            'success': False,
+                            'message': 'auto_reject_related_journals function not available',
+                            'approved_count': 0,
+                            'reference_numbers': []
+                        }
+                    
+                    print(f"📊 [FORCE] auto_reject_related_journals result: {journal_auto_approval}")
+                    
+                    if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+                        print(f"✅ [FORCE] Auto rejected {journal_auto_approval['approved_count']} journals")
+                    else:
+                        print(f"ℹ️ [FORCE] No journals rejected or function failed")
+                        if journal_auto_approval is None:
+                            journal_auto_approval = {
+                                'success': False,
+                                'message': 'auto_reject_related_journals returned None',
+                                'approved_count': 0,
+                                'reference_numbers': [],
+                                'debug_check': check_result if 'check_result' in locals() else None
+                            }
+                        
+                except Exception as journal_error:
+                    print(f"⚠️ [FORCE] Journal auto rejection error: {str(journal_error)}")
+                    import traceback
+                    traceback.print_exc()
+                    journal_auto_approval = {
+                        'success': False,
+                        'error': f"Journal auto rejection error: {str(journal_error)}",
+                        'approved_count': 0,
+                        'reference_numbers': [],
+                        'debug_check': check_result if 'check_result' in locals() else None
+                    }
+                    
+            elif status == 'P':
+                print(f"🟡 [FORCE] Status is P, processing pending update...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                try:
+                    journal_auto_approval = update_journal_status_to_pending(asset_list_id, reason, validated_user_id)
+                    if journal_auto_approval and journal_auto_approval.get('success'):
+                        journal_auto_approval['approved_count'] = journal_auto_approval.get('updated_count', 0)
+                except:
+                    journal_auto_approval = {
+                        'success': False,
+                        'message': 'update_journal_status_to_pending function not available',
+                        'approved_count': 0,
+                        'reference_numbers': []
+                    }
+                    
             else:
-                print(f"🔍 [DEBUG] Status is {status}, skipping journal approval")
+                print(f"🔍 [FORCE] Status is {status}, unknown status")
                 journal_auto_approval = {
                     'success': False,
-                    'message': f'Skipped journal approval - status is {status}, not A',
+                    'message': f'Unknown status {status}',
                     'approved_count': 0,
                     'reference_numbers': []
                 }
