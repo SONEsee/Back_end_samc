@@ -118,16 +118,12 @@ from .views import (
     balance_sheet_acc_get_view,
     balance_sheet_mfi_get_view,
     end_of_day_journal_view,
-<<<<<<< HEAD
-    retroactive_depreciation_api
-=======
     retroactive_depreciation_api,
     JRNLLogViewSetAsset,
     DETB_JRNL_LOG_MASTER_ARD_ViewSet,
     JournalARDViewSet
     
 
->>>>>>> b626777093877d15907ae63a073a1b47cfafa2be
 
 )
 from rest_framework_simplejwt.views import (
