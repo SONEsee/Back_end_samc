@@ -935,7 +935,7 @@ class STTB_Trial_Balancesheet(models.Model):
     MSegment = models.CharField(max_length=50, null=True, blank=True)
 
 class STTB_Somtop_Trial_Balancesheet(models.Model):
-    somtop_trail_bal_id = models.IntegerField(primary_key=True)
+    somtop_trail_bal_id = models.AutoField(primary_key=True)
     gl_code = models.CharField(max_length=100, null=True, blank=True)
     Desc = models.CharField(max_length=255, null=True, blank=True)
     CCy_Code = models.ForeignKey(MTTB_Ccy_DEFN, null=True, blank=True, on_delete=models.CASCADE)
