@@ -120,7 +120,9 @@ from .views import (
     end_of_day_journal_view,
     retroactive_depreciation_api,
     JRNLLogViewSetAsset,
-    DETB_JRNL_LOG_MASTER_ARD_ViewSet
+    DETB_JRNL_LOG_MASTER_ARD_ViewSet,
+    JournalARDViewSet
+    
 
 
 )
@@ -159,6 +161,7 @@ router.register(r'villageinfo_name', VillageViewSet, basename='villageinfo_name'
 router.register(r'mttb-data-entry', Data_EntryViewSet, basename='data-entry')
 # router.register(r'gl-capture', JRNLLogViewSet)
 router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
+router.register(r'journal-ard', JournalARDViewSet)
 router.register(r'journal-log-master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
 router.register(r'journal-log-ard', DETB_JRNL_LOG_MASTER_ARD_ViewSet, basename='jrnl_log_ard')
 router.register(r'asset_types', FAAssetTypeViewSet , basename='asset_type')
