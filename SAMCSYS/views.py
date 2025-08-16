@@ -4095,7 +4095,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now(),
-            Auth_Status='U'  # Unauthorized
+            Auth_Status='U'  
         )
 
     def perform_update(self, serializer):
@@ -11457,6 +11457,18 @@ def find_gl_account(account_number):
 #             'success': False,
 #             'error': f"Create journal data error: {str(e)}"
 #         }
+import datetime
+from django.utils import timezone
+from decimal import Decimal
+
+import datetime
+from django.utils import timezone
+from decimal import Decimal
+
+import datetime
+from django.utils import timezone
+from decimal import Decimal
+
 def create_journal_entry_data(asset, accounting_method, depreciation_amount, current_count, total_months):
     """
     ✅ ສ້າງຂໍ້ມູນສຳລັບ Journal Entry
@@ -11471,13 +11483,13 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         # ນັບຈຳນວນ records ທີ່ມີ module_id = "AS" ໃນມື້ນີ້
         daily_count = DETB_JRNL_LOG_MASTER.objects.filter(
             module_id="AS",
-            Maker_DT_Stamp__range=[today_start, today_end]  # ໃຊ້ Maker_DT_Stamp ແທນ created_date
+            Maker_DT_Stamp__range=[today_start, today_end]
         ).count()
         
         # ເພີ່ມ 1 ສຳລັບ record ໃໝ່ນີ້
         sequence_number = daily_count + 1
         
-        # ✅ ສ້າງ reference_no ຫຼັງຈາກກຳນົດ sequence_number ແລ້ວ
+        # ✅ ສ້າງ reference_no
         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
         
         # ✅ Debug: ກວດສອບ data types
@@ -11494,61 +11506,76 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         credit_glid = find_gl_account(credit_account_number)
         
         # ✅ ຄິດໄລ່ Amount ຕາມເງື່ອນໄຂ
-        # ດຶງຂໍ້ມູນ asset ຈາກ FA_Asset_Lists
         try:
             asset_data = FA_Asset_Lists.objects.get(asset_list_id=asset.asset_list_id)
-            c_dpac = int(asset_data.C_dpac or 0)  # ✅ ບັງຄັບ convert ເປັນ int
-            asset_useful_life = int(asset_data.asset_useful_life or 0)  # ✅ ບັງຄັບ convert ເປັນ int
+            c_dpac = int(asset_data.C_dpac or 0)
+            asset_useful_life = int(asset_data.asset_useful_life or 0)
             
             # ຄຳນວນເດືອນທັງໝົດ
             total_depreciation_months = asset_useful_life * 12
             
-            # ກຳນົດ amount ຕາມເງື່ອນໄຂ
-            if c_dpac == 0:
-                # ເດືອນທຳອິດ
-                final_amount = float(getattr(accounting_method, 'amount_start', 0) or depreciation_amount)
-            elif (c_dpac + 1) >= total_depreciation_months:
-                # ເດືອນສຸດທ້າຍ
-                base_amount = float(getattr(accounting_method, 'amount', 0) or depreciation_amount)
-                end_amount = float(getattr(accounting_method, 'amount_end', 0) or 0)
-                final_amount = base_amount + end_amount
-            else:
-                # ເດືອນກາງໆ
-                final_amount = float(getattr(accounting_method, 'amount', 0) or depreciation_amount)
+            # ✅ ດຶງມູນຄ່າທີ່ຫັກຄ່າເສື່ອມຈິງຈາກ FA_Asset_List_Depreciation
+            try:
+                depreciation_record = FA_Asset_List_Depreciation.objects.filter(
+                    asset_list_id=asset.asset_list_id,
+                    dpca_date=asset_data.asset_latest_date_dpca
+                ).order_by('-dpca_date').first()
                 
+                if depreciation_record and depreciation_record.dpca_value:
+                    final_amount = float(depreciation_record.dpca_value)
+                    print(f"🔍 DEBUG real depreciation amount: {final_amount}")
+                else:
+                    final_amount = float(depreciation_amount)
+                    print(f"🔍 DEBUG no real depreciation amount found, using default: {final_amount}")
+            except Exception as dep_error:
+                print(f"❌ Depreciation record error: {dep_error}")
+                final_amount = float(depreciation_amount)
+            
+            # ✅ ກຳນົດ start_date ແລະ end_date ໂດຍອີງຕາມ C_dpac
+            end_date = current_date  # ໃຊ້ວັນທີປັດຈຸບັນເປັນ end_date
+            if c_dpac == 0:
+                # ຖ້າ C_dpac == 0, ໃຊ້ dpca_start_date ເປັນ start_date
+                start_date = asset_data.dpca_start_date or current_date
+            else:
+                # ຖ້າ C_dpac != 0, ໃຊ້ asset_latest_date_dpca ເປັນ start_date
+                start_date = asset_data.asset_latest_date_dpca or current_date
+            
+            # ຮູບແບບເດືອນ/ປີ
+            start_date_str = start_date.strftime('%m/%Y')
+            end_date_str = end_date.strftime('%m/%Y')
+            
         except FA_Asset_Lists.DoesNotExist:
-            # ຖ້າບໍ່ເຈົາ asset ໃຫ້ໃຊ້ຄ່າເດີມ
             final_amount = float(depreciation_amount)
             c_dpac = 0
             total_depreciation_months = 0
+            start_date_str = current_date.strftime('%m/%Y')
+            end_date_str = current_date.strftime('%m/%Y')
         except Exception as calc_error:
-            # ຖ້າມີ error ໃນການຄິດໄລ່
             print(f"❌ Calc error: {calc_error}")
             final_amount = float(depreciation_amount)
             c_dpac = 0
             total_depreciation_months = 0
+            start_date_str = current_date.strftime('%m/%Y')
+            end_date_str = current_date.strftime('%m/%Y')
         
         # ✅ ແປງທຸກຄ່າເປັນ string ກ່ອນໃຊ້
         asset_spec_str = str(asset.asset_spec) if asset.asset_spec is not None else 'N/A'
-        current_count_str = str(current_count) if current_count is not None else '0'
-        total_months_str = str(total_months) if total_months is not None else '0'
         asset_list_id_str = str(asset.asset_list_id) if asset.asset_list_id is not None else ''
         asset_currency_str = str(asset.asset_currency) if asset.asset_currency is not None else ''
         debit_account_str = str(accounting_method.debit_account_id) if accounting_method.debit_account_id is not None else ''
         credit_account_str = str(accounting_method.credit_account_id) if accounting_method.credit_account_id is not None else ''
         
-        # ສ້າງ Additional Text
-        addl_sub_text = f"ຫັກຄ່າເສື່ອມລາຄາ {asset_spec_str} ຄັ້ງທີ່ {current_count_str} ຈາກ {total_months_str}"
+        # ✅ ສ້າງ Addl_sub_text ໂດຍໃສ່ມູນຄ່າ final_amount
+        addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {end_date_str}"
         
         print(f"🔍 DEBUG addl_sub_text: {addl_sub_text}")
         
-        # ສ້າງຂໍ້ມູນ Journal Entry
         journal_data = {
             "Reference_No": reference_no,
             "Ccy_cd": asset_currency_str,  
             "Txn_code": "ARD", 
             "Value_date": current_date.date().isoformat(),
-            "Addl_text": "ຫັກຄ່າເສື່ອມລາຄາ",
+            "Addl_text": "ຫັກຄ່າຫຼູ້ຍຫຽ້ນ",
             "fin_cycle": str(current_date.year),
             "module_id": "AS",
             "Period_code": current_date.strftime('%Y%m'),
@@ -11585,8 +11612,9 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                 'c_dpac': c_dpac if 'c_dpac' in locals() else 0,
                 'total_depreciation_months': total_depreciation_months if 'total_depreciation_months' in locals() else 0,
                 'amount_used': final_amount,
-                'amount_type': ('start' if 'c_dpac' in locals() and c_dpac == 0 else 
-                              ('final' if 'c_dpac' in locals() and 'total_depreciation_months' in locals() and (c_dpac + 1) >= total_depreciation_months else 'regular'))
+                'amount_type': 'real_depreciation',
+                'start_date': start_date_str,
+                'end_date': end_date_str
             }
         }
         
@@ -12433,7 +12461,166 @@ def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=No
     except Exception as e:
         return {"error": f"Bulk depreciation catch-up error: {str(e)}"}
 
+def auto_reject_related_journals(asset_list_id, reason, user_id, request=None):
+    """
+    🔴 ຄົ້ນຫາ + reject journal entries ດ້ວຍ detailed logging
+    """
+    try:
+        print(f"🔴 Auto rejecting journals for asset: {asset_list_id}")
+        
+        # Import DETB_JRNL_LOG
+        try:
+            from .models import DETB_JRNL_LOG
+        except ImportError:
+            try:
+                from .models import DETB_JRNL_LOG_MASTER as DETB_JRNL_LOG
+            except ImportError:
+                return {
+                    'success': False,
+                    'error': 'DETB_JRNL_LOG model not found',
+                    'rejected_count': 0,
+                    'reference_numbers': []
+                }
+        
+        # ✅ ຄົ້ນຫາ journal entries
+        journal_entries = DETB_JRNL_LOG.objects.filter(
+            Ac_relatives__icontains=str(asset_list_id),
+            Auth_Status='U',
+            Dr_cr='D'
+        ).values_list('Reference_No', flat=True).distinct()
+        
+        reference_numbers = list(journal_entries)
+        print(f"📋 Found {len(reference_numbers)} reference numbers: {reference_numbers}")
+        
+        if not reference_numbers:
+            return {
+                'success': True,
+                'message': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງ reject ສຳລັບ asset {asset_list_id}',
+                'rejected_count': 0,
+                'reference_numbers': []
+            }
+        
+        # ✅ Auto reject ແຕ່ລະ Reference_No
+        rejected_count = 0
+        current_time = timezone.now()
+        
+        for ref_no in reference_numbers:
+            try:
+                print(f"📝 ກຳລັງ reject Reference_No: {ref_no}")
+                
+                entries_updated = DETB_JRNL_LOG.objects.filter(
+                    Reference_No=ref_no,
+                    Ac_relatives__icontains=str(asset_list_id),
+                    Auth_Status='U'
+                ).update(
+                    Auth_Status='R',
+                    # detail=reason,  # ← ลบบรรทัดนี้ออก หรือ
+                    # comments=reason,  # ← หรือใช้ field อื่นที่มีอยู่จริง
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=current_time
+                )
+                
+                if entries_updated > 0:
+                    rejected_count += 1
+                    print(f"✅ Rejected: {ref_no} ({entries_updated} entries)")
+                else:
+                    print(f"❌ Failed: {ref_no} - No entries found")
+                    
+            except Exception as reject_error:
+                print(f"💥 Exception: {ref_no} - {str(reject_error)}")
+        
+        return {
+            'success': True,
+            'message': f'ປະມວນຜົນ {len(reference_numbers)} entries: reject ສຳເລັດ {rejected_count}',
+            'rejected_count': rejected_count,
+            'reference_numbers': reference_numbers,
+            'reason_applied': reason
+        }
+        
+    except Exception as e:
+        print(f"💥 Auto reject error: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Auto reject error: {str(e)}",
+            'rejected_count': 0
+        }
 
+
+def update_journal_status_to_pending(asset_list_id, reason, user_id):
+    """
+    🟡 ອັບເດດສະຖານະ journal entries ເປັນ Pending (P)
+    """
+    try:
+        print(f"🟡 Updating journal status to P for asset: {asset_list_id}")
+        
+        # Import DETB_JRNL_LOG
+        try:
+            from .models import DETB_JRNL_LOG
+        except ImportError:
+            try:
+                from .models import DETB_JRNL_LOG_MASTER as DETB_JRNL_LOG
+            except ImportError:
+                return {
+                    'success': False,
+                    'error': 'DETB_JRNL_LOG model not found',
+                    'updated_count': 0
+                }
+        
+        # ✅ ຄົ້ນຫາແລະອັບເດດ
+        journal_entries = DETB_JRNL_LOG.objects.filter(
+            Ac_relatives__icontains=str(asset_list_id),
+            Auth_Status='U',
+            Dr_cr='D'
+        )
+        
+        reference_numbers = list(journal_entries.values_list('Reference_No', flat=True).distinct())
+        print(f"📋 Found {len(reference_numbers)} reference numbers: {reference_numbers}")
+        
+        if not reference_numbers:
+            return {
+                'success': True,
+                'message': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງອັບເດດເປັນ P',
+                'updated_count': 0
+            }
+        
+        current_time = timezone.now()
+        updated_count = 0
+        
+        for ref_no in reference_numbers:
+            try:
+                entries_updated = DETB_JRNL_LOG.objects.filter(
+                    Reference_No=ref_no,
+                    Ac_relatives__icontains=str(asset_list_id),
+                    Auth_Status='U'
+                ).update(
+                    Auth_Status='P',
+                    # detail=reason,  # ← ลบบรรทัดนี้ออก หรือ
+                    # comments=reason,  # ← หรือใช้ field อื่น
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=current_time
+                )
+                
+                if entries_updated > 0:
+                    updated_count += 1
+                    print(f"✅ Updated to P: {ref_no} ({entries_updated} entries)")
+                    
+            except Exception as update_error:
+                print(f"💥 Error: {str(update_error)}")
+        
+        return {
+            'success': True,
+            'message': f'ອັບເດດ {updated_count} entries ເປັນ Pending ສຳເລັດ',
+            'updated_count': updated_count,
+            'reference_numbers': reference_numbers
+        }
+        
+    except Exception as e:
+        print(f"💥 Update to pending error: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Update to pending error: {str(e)}",
+            'updated_count': 0
+        }
 # ✅ Helper function ສຳລັບທົດສອບ
 def test_bulk_depreciation():
     """ຟັງຊັນທົດສອບ bulk depreciation"""
@@ -13072,7 +13259,7 @@ def create_depreciation_daily_log(depreciation_record, user_id=None):
                     'lcy_dr': depreciation_amount,
                     'lcy_cr': 0.0,
                     'external_ref_no': f"DPCA-{asset.asset_code or asset.asset_list_id}",
-                    'addl_text': f"ຫັກຄ່າເສື່ອມລາຄາ {asset.asset_spec or 'N/A'}",
+                    'addl_text': f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset.asset_spec or 'N/A'}",
                     'addl_sub_text': depreciation_record.dpca_desc[:50] if depreciation_record.dpca_desc else '',
                     'trn_dt': depreciation_record.dpca_date,
                     'value_dt': depreciation_record.dpca_date,
@@ -13160,12 +13347,13 @@ def create_depreciation_daily_log(depreciation_record, user_id=None):
             'success': False,
             'error': f"Daily log creation error: {str(e)}"
         }
+
 def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
     """
-    ✅ DIRECT FIX: ຢືນຢັນການຫັກຄ່າເສື່ອມ + debug journal approval
+    ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug + Fixed C_dpac calculation
     """
     try:
-        print(f"🎯 [DEBUG] confirm_depreciation START: aldm_id={aldm_id}, status={status}")
+        print(f"🎯 [FORCE] confirm_depreciation called: aldm_id={aldm_id}, status={status}")
         
         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
         if not validated_user_id:
@@ -13191,7 +13379,7 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
             main_record.Checker_Id_id = validated_user_id
             main_record.Checker_DT_Stamp = current_time
             main_record.save()
-            print(f"✅ [DEBUG] Updated main_record: {aldm_id}")
+            print(f"✅ [FORCE] Updated main_record: {aldm_id}")
             
             # ✅ 2. ອັບເດດ Detail Record
             FA_Asset_List_Depreciation.objects.filter(
@@ -13204,187 +13392,230 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                 Checker_Id_id=validated_user_id,
                 Checker_DT_Stamp=current_time
             )
-            print(f"✅ [DEBUG] Updated detail records")
+            print(f"✅ [FORCE] Updated detail records")
             
             # ✅ 3. ຖ້າຢືນຢັນ (A), ອັບເດດ FA_Asset_Lists + Auto Approve Journals
             journal_auto_approval = None
             
             if status == 'A':
-                print(f"🔍 [DEBUG] Status is A, processing...")
+                print(f"🔍 [FORCE] Status is A, proceeding...")
                 asset = main_record.asset_list_id
                 asset_list_id = asset.asset_list_id
-                print(f"🔍 [DEBUG] Asset ID: {asset_list_id}")
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
                 
-                # 3.1 ອັບເດດ FA_Asset_Lists
-                asset.C_dpac = str(int(asset.C_dpac or 0) + 1)
+                # 3.1 ອັບເດດ FA_Asset_Lists - ✨ ວິທີການໃໝ່ສຳລັບ C_dpac
+                dpca_no_of_days = main_record.dpca_no_of_days or 0
+                print(f"🔍 [FORCE-C_DPAC-DEBUG] dpca_no_of_days: {dpca_no_of_days}")
+                print(f"🔍 [FORCE-C_DPAC-DEBUG] Asset current C_dpac: {asset.C_dpac}")
+                
+                if dpca_no_of_days <= 31:
+                    # ຖ້າ <= 31 ວັນ: ເພີ່ມ 1
+                    c_dpac_increment = 1
+                    print(f"📊 [FORCE-C_DPAC-DEBUG] dpca_no_of_days <= 31, increment by 1")
+                else:
+                    # ຖ້າ > 31 ວັນ: ຫານດ້ວຍ 30 ແລ້ວປັດເປັນເລກຖ້ວນ
+                    c_dpac_increment = round(dpca_no_of_days / 30)
+                    print(f"📊 [FORCE-C_DPAC-DEBUG] dpca_no_of_days > 31, increment by round({dpca_no_of_days}/30) = {c_dpac_increment}")
+                
+                # ອັບເດດຄ່າໃນ database
+                current_c_dpac = Decimal(str(asset.C_dpac or 0))
+                new_c_dpac = current_c_dpac + Decimal(str(c_dpac_increment))
+                
+                print(f"🎯 [FORCE-C_DPAC-DEBUG] CALCULATION: {current_c_dpac} + {c_dpac_increment} = {new_c_dpac}")
+                
+                # ✨ ຄິດໄລ່ asset_latest_date_dpca ໃໝ່ຕາມ C_dpac
+                from dateutil.relativedelta import relativedelta
+                from datetime import datetime
+                
+                try:
+                    # ດຶງ dpca_start_date ຈາກ asset
+                    dpca_start_date = asset.dpca_start_date
+                    print(f"📅 [FORCE-DATE-DEBUG] dpca_start_date: {dpca_start_date}")
+                    
+                    if dpca_start_date:
+                        # ບວກ C_dpac (ເດືອນ) ເຂົ້າກັບ dpca_start_date
+                        calculated_latest_date = dpca_start_date + relativedelta(months=int(new_c_dpac))
+                        print(f"📅 [FORCE-DATE-DEBUG] Calculated date: {dpca_start_date} + {int(new_c_dpac)} months = {calculated_latest_date}")
+                        
+                        # ອັບເດດ asset_latest_date_dpca
+                        asset.asset_latest_date_dpca = calculated_latest_date
+                        print(f"📅 [FORCE-DATE-DEBUG] Updated asset_latest_date_dpca to: {calculated_latest_date}")
+                    else:
+                        # ຖ້າບໍ່ມີ dpca_start_date ໃຫ້ໃຊ້ dpca_date ຈາກ main_record
+                        asset.asset_latest_date_dpca = main_record.dpca_date
+                        print(f"⚠️ [FORCE-DATE-DEBUG] No dpca_start_date, using dpca_date: {main_record.dpca_date}")
+                        
+                except Exception as date_error:
+                    print(f"⚠️ [FORCE-DATE-DEBUG] Date calculation error: {str(date_error)}")
+                    # Fallback ໃຊ້ dpca_date ແທນ
+                    asset.asset_latest_date_dpca = main_record.dpca_date
+                    print(f"⚠️ [FORCE-DATE-DEBUG] Using fallback dpca_date: {main_record.dpca_date}")
+                
+                # ອັບເດດທຸກຄ່າ
+                asset.C_dpac = str(new_c_dpac)
                 asset.asset_accu_dpca_value = Decimal(str(main_record.accumulated_dpca))
                 asset.asset_value_remain = Decimal(str(main_record.remaining_value))
-                asset.asset_latest_date_dpca = main_record.dpca_date
                 asset.save()
-                print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
                 
-                # ❌ 3.2 ລຶບການອັບເດດ FA_Accounting_Method ອອກ
-                # ບໍ່ອັບເດດ FA_Accounting_Method ອີກຕໍ່ໄປ
+                print(f"✅ [FORCE-C_DPAC-DEBUG] ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
+                print(f"📊 [FORCE-C_DPAC-DEBUG] FINAL C_dpac: {new_c_dpac}")
+                print(f"📅 [FORCE-C_DPAC-DEBUG] FINAL asset_latest_date_dpca: {asset.asset_latest_date_dpca}")
+                print(f"🎯 [FORCE-C_DPAC-DEBUG] ===== C_DPAC CALCULATION COMPLETE =====")
                 
-                # ✅ 3.3 Debug + Auto Approve Journal Entries
+                # ✅ 3.2 ບັງຄັບກວດສອບ journal entries ກ່ອນ
+                print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
                 try:
-                    print(f"🔍 [DEBUG] Starting journal approval for asset: {asset_list_id}")
+                    check_result = check_journal_entries_for_asset(asset_list_id)
+                    print(f"📊 [FORCE] Check result: {check_result}")
+                except:
+                    check_result = {'error': 'check_journal_entries_for_asset function not found'}
+                    print(f"⚠️ [FORCE] Could not check journal entries: {check_result}")
+                
+                # ✅ 3.3 ອັດຕະໂນມັດ approve journal entries
+                try:
+                    print(f"🔍 [FORCE] About to call auto_approve_related_journals...")
                     
-                    # ✅ ກວດສອບ DETB_JRNL_LOG ກ່ອນ
+                    # ✅ ບັງຄັບເອີ້ນ function
                     try:
-                        from .models import DETB_JRNL_LOG
-                        print(f"✅ [DEBUG] DETB_JRNL_LOG imported successfully")
-                    except ImportError:
-                        try:
-                            from .models import DETB_JRNL_LOG_MASTER as DETB_JRNL_LOG
-                            print(f"✅ [DEBUG] DETB_JRNL_LOG_MASTER imported successfully")
-                        except ImportError:
-                            print(f"❌ [DEBUG] Cannot import DETB_JRNL_LOG models")
-                            journal_auto_approval = {
-                                'success': False,
-                                'error': 'DETB_JRNL_LOG model not found',
-                                'approved_count': 0,
-                                'reference_numbers': []
-                            }
-                            return self._build_response(...)  # Continue to return
-                    
-                    # ✅ ກວດສອບ journal entries
-                    total_journals = DETB_JRNL_LOG.objects.count()
-                    print(f"📊 [DEBUG] Total journal entries in database: {total_journals}")
-                    
-                    with_asset = DETB_JRNL_LOG.objects.filter(
-                        Ac_relatives__icontains=str(asset_list_id)
-                    ).count()
-                    print(f"📊 [DEBUG] Entries with asset_list_id '{asset_list_id}': {with_asset}")
-                    
-                    target_entries = DETB_JRNL_LOG.objects.filter(
-                        Ac_relatives__icontains=str(asset_list_id),
-                        Auth_Status='U',
-                        Dr_cr='D'
-                    )
-                    target_count = target_entries.count()
-                    print(f"📊 [DEBUG] Target entries (Auth_Status='U', Dr_cr='D'): {target_count}")
-                    
-                    if target_count > 0:
-                        # ສະແດງ sample
-                        sample = list(target_entries.values('Reference_No', 'Ac_relatives', 'Auth_Status', 'Dr_cr')[:3])
-                        print(f"📋 [DEBUG] Sample entries: {sample}")
-                        
-                        # ດຶງ Reference_No
-                        reference_numbers = list(target_entries.values_list('Reference_No', flat=True).distinct())
-                        print(f"📋 [DEBUG] Reference numbers to approve: {reference_numbers}")
-                        
-                        # ✅ ເອີ້ນ approve_all
-                        try:
-                            from SAMCSYS.views import JRNLLogViewSet
-                            from unittest.mock import Mock
-                            from .models import MTTB_Users
-                            
-                            # ສ້າງ mock request
-                            mock_request = Mock()
-                            mock_request.user = MTTB_Users.objects.first()
-                            mock_request.method = 'POST'
-                            
-                            approved_count = 0
-                            failed_count = 0
-                            approval_results = []
-                            
-                            for ref_no in reference_numbers:
-                                try:
-                                    print(f"📝 [DEBUG] Approving Reference_No: {ref_no}")
-                                    
-                                    mock_request.data = {'Reference_No': ref_no}
-                                    
-                                    viewset = JRNLLogViewSet()
-                                    viewset.request = mock_request
-                                    viewset.format_kwarg = None
-                                    
-                                    response = viewset.approve_all(mock_request)
-                                    print(f"📨 [DEBUG] Response: status={response.status_code}")
-                                    
-                                    if response.status_code in [200, 201]:
-                                        approved_count += 1
-                                        approval_results.append({
-                                            'reference_no': ref_no,
-                                            'status': 'success'
-                                        })
-                                        print(f"✅ [DEBUG] Approved: {ref_no}")
-                                    else:
-                                        failed_count += 1
-                                        print(f"❌ [DEBUG] Failed: {ref_no}")
-                                        
-                                except Exception as approve_error:
-                                    failed_count += 1
-                                    print(f"💥 [DEBUG] Approve error: {ref_no} - {str(approve_error)}")
-                            
-                            journal_auto_approval = {
-                                'success': True,
-                                'message': f'ປະມວນຜົນ {len(reference_numbers)} entries: approve ສຳເລັດ {approved_count}, ຜິດພາດ {failed_count}',
-                                'asset_list_id': asset_list_id,
-                                'total_processed': len(reference_numbers),
-                                'approved_count': approved_count,
-                                'failed_count': failed_count,
-                                'reference_numbers': reference_numbers,
-                                'approval_details': approval_results,
-                                'debug_info': {
-                                    'total_journals': total_journals,
-                                    'with_asset': with_asset,
-                                    'target_count': target_count
-                                }
-                            }
-                            
-                        except ImportError as import_error:
-                            print(f"⚠️ [DEBUG] Cannot import JRNLLogViewSet: {str(import_error)}")
-                            journal_auto_approval = {
-                                'success': False,
-                                'error': f'Import error: {str(import_error)}',
-                                'approved_count': 0,
-                                'reference_numbers': reference_numbers,
-                                'debug_info': {
-                                    'total_journals': total_journals,
-                                    'with_asset': with_asset,
-                                    'target_count': target_count
-                                }
-                            }
-                    else:
-                        print(f"ℹ️ [DEBUG] No journal entries found to approve")
+                        journal_auto_approval = auto_approve_related_journals(asset_list_id)
+                    except:
+                        print(f"⚠️ [FORCE] auto_approve_related_journals function not found, using fallback")
                         journal_auto_approval = {
-                            'success': True,
-                            'message': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງ approve ສຳລັບ asset {asset_list_id}',
+                            'success': False,
+                            'message': 'auto_approve_related_journals function not available',
                             'approved_count': 0,
-                            'reference_numbers': [],
-                            'debug_info': {
-                                'total_journals': total_journals,
-                                'with_asset': with_asset,
-                                'target_count': target_count
-                            }
+                            'reference_numbers': []
                         }
+                    
+                    print(f"📊 [FORCE] auto_approve_related_journals result: {journal_auto_approval}")
+                    
+                    if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+                        print(f"✅ [FORCE] Auto approved {journal_auto_approval['approved_count']} journals")
+                    else:
+                        print(f"ℹ️ [FORCE] No journals approved or function failed")
+                        # ✅ ບັງຄັບສ້າງ result ຖ້າເປັນ None
+                        if journal_auto_approval is None:
+                            journal_auto_approval = {
+                                'success': False,
+                                'message': 'auto_approve_related_journals returned None',
+                                'approved_count': 0,
+                                'reference_numbers': [],
+                                'debug_check': check_result if 'check_result' in locals() else None
+                            }
                         
                 except Exception as journal_error:
-                    print(f"⚠️ [DEBUG] Journal error: {str(journal_error)}")
+                    print(f"⚠️ [FORCE] Journal auto approval error: {str(journal_error)}")
                     import traceback
                     traceback.print_exc()
                     journal_auto_approval = {
                         'success': False,
-                        'error': f"Journal error: {str(journal_error)}",
+                        'error': f"Journal auto approval error: {str(journal_error)}",
+                        'approved_count': 0,
+                        'reference_numbers': [],
+                        'debug_check': check_result if 'check_result' in locals() else None
+                    }
+            elif status == 'R':
+                print(f"🔴 [FORCE] Status is R, processing auto rejection...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                # ✅ กวดສອບ journal entries ກ່ອນ
+                print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
+                try:
+                    check_result = check_journal_entries_for_asset(asset_list_id)
+                    print(f"📊 [FORCE] Check result: {check_result}")
+                except:
+                    check_result = {'error': 'check_journal_entries_for_asset function not found'}
+                    print(f"⚠️ [FORCE] Could not check journal entries: {check_result}")
+                
+                # ✅ ອັດຕະໂນມັດ reject journal entries
+                try:
+                    print(f"🔍 [FORCE] About to call auto_reject_related_journals...")
+                    
+                    # ✅ ບັງຄັບເອີ້ນ function
+                    try:
+                        journal_auto_approval = auto_reject_related_journals(asset_list_id, reason, validated_user_id)
+                        # ປ່ຽນ rejected_count ເປັນ approved_count ເພື່ອໃຊ້ logic ດຽວກັບ A
+                        if journal_auto_approval and journal_auto_approval.get('success'):
+                            journal_auto_approval['approved_count'] = journal_auto_approval.get('rejected_count', 0)
+                    except:
+                        print(f"⚠️ [FORCE] auto_reject_related_journals function not found, using fallback")
+                        journal_auto_approval = {
+                            'success': False,
+                            'message': 'auto_reject_related_journals function not available',
+                            'approved_count': 0,
+                            'reference_numbers': []
+                        }
+                    
+                    print(f"📊 [FORCE] auto_reject_related_journals result: {journal_auto_approval}")
+                    
+                    if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+                        print(f"✅ [FORCE] Auto rejected {journal_auto_approval['approved_count']} journals")
+                    else:
+                        print(f"ℹ️ [FORCE] No journals rejected or function failed")
+                        # ✅ ບັງຄັບສ້າງ result ຖ້າເປັນ None
+                        if journal_auto_approval is None:
+                            journal_auto_approval = {
+                                'success': False,
+                                'message': 'auto_reject_related_journals returned None',
+                                'approved_count': 0,
+                                'reference_numbers': [],
+                                'debug_check': check_result if 'check_result' in locals() else None
+                            }
+                        
+                except Exception as journal_error:
+                    print(f"⚠️ [FORCE] Journal auto rejection error: {str(journal_error)}")
+                    import traceback
+                    traceback.print_exc()
+                    journal_auto_approval = {
+                        'success': False,
+                        'error': f"Journal auto rejection error: {str(journal_error)}",
+                        'approved_count': 0,
+                        'reference_numbers': [],
+                        'debug_check': check_result if 'check_result' in locals() else None
+                    }
+                    
+            elif status == 'P':
+                print(f"🟡 [FORCE] Status is P, processing pending update...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                # ✅ อัพเดทสถานะ journal เป็น P
+                try:
+                    journal_auto_approval = update_journal_status_to_pending(asset_list_id, reason, validated_user_id)
+                    # ปรับ field name เพื่อให้ logic เดิมใช้ได้
+                    if journal_auto_approval and journal_auto_approval.get('success'):
+                        journal_auto_approval['approved_count'] = journal_auto_approval.get('updated_count', 0)
+                except:
+                    journal_auto_approval = {
+                        'success': False,
+                        'message': 'update_journal_status_to_pending function not available',
                         'approved_count': 0,
                         'reference_numbers': []
                     }
+                    
             else:
-                print(f"🔍 [DEBUG] Status is {status}, skipping journal approval")
+                print(f"🔍 [FORCE] Status is {status}, skipping journal processing")
                 journal_auto_approval = {
                     'success': False,
-                    'message': f'Skipped journal approval - status is {status}, not A',
+                    'message': f'Unknown status {status}',
                     'approved_count': 0,
                     'reference_numbers': []
                 }
             
-            # ✅ 4. ສ້າງ message
+            # ✅ 4. ສ້າງ message ທີ່ລວມ journal approval
             base_message = f"ບັນທຶກ {aldm_id} ອັບເດດເປັນ {status} ສຳເລັດ"
-            if status == 'A' and journal_auto_approval and journal_auto_approval.get('approved_count', 0) > 0:
-                base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
             
-            print(f"✅ [DEBUG] Final result: journal_auto_approval = {journal_auto_approval}")
+            if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+                if status == 'A':
+                    base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
+                elif status == 'R':
+                    base_message += f" + Auto rejected {journal_auto_approval['approved_count']} journal entries"
+                elif status == 'P':
+                    base_message += f" + Updated {journal_auto_approval['approved_count']} journal entries to Pending"
+            print(f"✅ [FORCE] Final journal_auto_approval: {journal_auto_approval}")
             
             return {
                 'success': True,
@@ -13395,11 +13626,17 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                 'fa_asset_updated': status == 'A',
                 'fa_accounting_method_updated': False,  # ✅ ປ່ຽນເປັນ False
                 'accounting_method_info': None,  # ✅ ປ່ຽນເປັນ None  
-                'journal_auto_approval': journal_auto_approval
+                'c_dpac_calculation': {  # ✨ ເພີ່ມຂໍ້ມູນການຄິດໄລ່ໃໝ່
+                    'dpca_no_of_days': dpca_no_of_days,
+                    'increment_value': c_dpac_increment,
+                    'previous_c_dpac': float(current_c_dpac),
+                    'new_c_dpac': float(new_c_dpac)
+                } if status == 'A' else None,
+                'journal_auto_approval': journal_auto_approval  # ✅ ຈະບໍ່ເປັນ null ແລ້ວ
             }
         
     except Exception as e:
-        print(f"💥 [DEBUG] Error: {str(e)}")
+        print(f"💥 [FORCE] Confirm depreciation error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {"error": f"Confirm depreciation error: {str(e)}"}
@@ -13816,7 +14053,7 @@ def create_depreciation_daily_log_fixed(depreciation_record, user_id=None):
                     'lcy_dr': depreciation_amount,
                     'lcy_cr': 0.0,
                     'external_ref_no': f"DPCA-{asset_code}",  # ✅ ໃຊ້ asset_code ທີ່ fixed ແລ້ວ
-                    'addl_text': f"ຫັກຄ່າເສື່ອມລາຄາ {asset.asset_spec or 'N/A'}",
+                    'addl_text': f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset.asset_spec or 'N/A'}",
                     'addl_sub_text': depreciation_record.dpca_desc[:50] if depreciation_record.dpca_desc else '',
                     'trn_dt': depreciation_record.dpca_date,
                     'value_dt': depreciation_record.dpca_date,
@@ -14864,7 +15101,7 @@ def create_depreciation_history(asset, depreciation_data, user_id=None, in_month
         current_time = timezone.now()
         depreciation_date = depreciation_data['period_start']
         
-        description = f"ຫັກຄ່າເສື່ອມລາຄາເດືອນທີ່ {depreciation_data['month_number']} ({depreciation_data['month_year']})"
+        description = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນເດືອນທີ່ {depreciation_data['month_number']} ({depreciation_data['month_year']})"
         
         main_record_data = {
             'asset_list_id': asset,
@@ -15790,9 +16027,142 @@ def process_bulk_depreciation(mapping_ids, check_only=False, user_id=None):
 #         import traceback
 #         traceback.print_exc()
 #         return {"error": f"Confirm depreciation error: {str(e)}"}
+# def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
+#     """
+#     ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug
+#     """
+#     try:
+#         print(f"🎯 [FORCE] confirm_depreciation called: aldm_id={aldm_id}, status={status}")
+        
+#         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+#         if not validated_user_id:
+#             return {"error": "ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ"}
+        
+#         if status not in ['A', 'R', 'P']:
+#             return {"error": "status ບໍ່ຖືກຕ້ອງ. ໃຊ້ 'A', 'R', ຫຼື 'P'"}
+        
+#         if status in ['R', 'P'] and not reason:
+#             return {"error": "ຕ້ອງລະບຸ reason ສຳລັບ Rejected ຫຼື Pending Revision"}
+        
+#         with transaction.atomic():
+#             main_record = FA_Asset_List_Depreciation_Main.objects.get(aldm_id=aldm_id)
+            
+#             if main_record.Auth_Status not in ['U', 'P']:
+#                 return {"error": f"ບໍ່ສາມາດປ່ຽນສະຖານະຂອງບັນທຶກທີ່ມີ Auth_Status = {main_record.Auth_Status}"}
+            
+#             current_time = timezone.now()
+            
+#             # ✅ 1. ອັບເດດ Main Record
+#             main_record.Auth_Status = status
+#             main_record.detail = reason if status in ['R', 'P'] else None
+#             main_record.Checker_Id_id = validated_user_id
+#             main_record.Checker_DT_Stamp = current_time
+#             main_record.save()
+#             print(f"✅ [FORCE] Updated main_record: {aldm_id}")
+            
+#             # ✅ 2. ອັບເດດ Detail Record
+#             FA_Asset_List_Depreciation.objects.filter(
+#                 asset_list_id=main_record.asset_list_id,
+#                 dpca_date=main_record.dpca_date,
+#                 dpca_value=main_record.dpca_value
+#             ).update(
+#                 Auth_Status=status,
+#                 detail=reason if status in ['R', 'P'] else None,
+#                 Checker_Id_id=validated_user_id,
+#                 Checker_DT_Stamp=current_time
+#             )
+#             print(f"✅ [FORCE] Updated detail records")
+            
+#             # ✅ 3. ຖ້າຢືນຢັນ (A), ອັບເດດ FA_Asset_Lists + Auto Approve Journals
+#             journal_auto_approval = None
+            
+#             if status == 'A':
+#                 print(f"🔍 [FORCE] Status is A, proceeding...")
+#                 asset = main_record.asset_list_id
+#                 asset_list_id = asset.asset_list_id
+#                 print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+#                 # 3.1 ອັບເດດ FA_Asset_Lists
+#                 asset.C_dpac = str(int(asset.C_dpac or 0) + 1)
+#                 asset.asset_accu_dpca_value = Decimal(str(main_record.accumulated_dpca))
+#                 asset.asset_value_remain = Decimal(str(main_record.remaining_value))
+#                 asset.asset_latest_date_dpca = main_record.dpca_date
+#                 asset.save()
+#                 print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
+                
+#                 # ✅ 3.2 ບັງຄັບກວດສອບ journal entries ກ່ອນ
+#                 print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
+#                 check_result = check_journal_entries_for_asset(asset_list_id)
+#                 print(f"📊 [FORCE] Check result: {check_result}")
+                
+#                 # ✅ 3.3 ອັດຕະໂນມັດ approve journal entries
+#                 try:
+#                     print(f"🔍 [FORCE] About to call auto_approve_related_journals...")
+                    
+#                     # ✅ ບັງຄັບເອີ້ນ function
+#                     journal_auto_approval = auto_approve_related_journals(asset_list_id)
+                    
+#                     print(f"📊 [FORCE] auto_approve_related_journals result: {journal_auto_approval}")
+                    
+#                     if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+#                         print(f"✅ [FORCE] Auto approved {journal_auto_approval['approved_count']} journals")
+#                     else:
+#                         print(f"ℹ️ [FORCE] No journals approved or function failed")
+#                         # ✅ ບັງຄັບສ້າງ result ຖ້າເປັນ None
+#                         if journal_auto_approval is None:
+#                             journal_auto_approval = {
+#                                 'success': False,
+#                                 'message': 'auto_approve_related_journals returned None',
+#                                 'approved_count': 0,
+#                                 'reference_numbers': [],
+#                                 'debug_check': check_result
+#                             }
+                        
+#                 except Exception as journal_error:
+#                     print(f"⚠️ [FORCE] Journal auto approval error: {str(journal_error)}")
+#                     import traceback
+#                     traceback.print_exc()
+#                     journal_auto_approval = {
+#                         'success': False,
+#                         'error': f"Journal auto approval error: {str(journal_error)}",
+#                         'approved_count': 0,
+#                         'reference_numbers': [],
+#                         'debug_check': check_result
+#                     }
+#             else:
+#                 print(f"🔍 [FORCE] Status is {status}, skipping journal approval")
+#                 journal_auto_approval = {
+#                     'success': False,
+#                     'message': f'Skipped journal approval - status is {status}, not A',
+#                     'approved_count': 0,
+#                     'reference_numbers': []
+#                 }
+            
+#             # ✅ 4. ສ້າງ message ທີ່ລວມ journal approval
+#             base_message = f"ບັນທຶກ {aldm_id} ອັບເດດເປັນ {status} ສຳເລັດ"
+#             if status == 'A' and journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+#                 base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
+            
+#             print(f"✅ [FORCE] Final journal_auto_approval: {journal_auto_approval}")
+            
+#             return {
+#                 'success': True,
+#                 'message': base_message,
+#                 'user_id_used': validated_user_id,
+#                 'status_set': status,
+#                 'reason_set': reason if status in ['R', 'P'] else None,
+#                 'fa_asset_updated': status == 'A',
+#                 'journal_auto_approval': journal_auto_approval  # ✅ ຈະບໍ່ເປັນ null ແລ້ວ
+#             }
+        
+#     except Exception as e:
+#         print(f"💥 [FORCE] Confirm depreciation error: {str(e)}")
+#         import traceback
+#         traceback.print_exc()
+#         return {"error": f"Confirm depreciation error: {str(e)}"}
 def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
     """
-    ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug
+    ✅ FORCED DEBUG: ຢືນຢັນການຫັກຄ່າເສື່ອມ + ບັງຄັບ debug + Fixed C_dpac calculation
     """
     try:
         print(f"🎯 [FORCE] confirm_depreciation called: aldm_id={aldm_id}, status={status}")
@@ -15845,25 +16215,60 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                 asset_list_id = asset.asset_list_id
                 print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
                 
-                # 3.1 ອັບເດດ FA_Asset_Lists
-                asset.C_dpac = str(int(asset.C_dpac or 0) + 1)
+                # 3.1 ອັບເດດ FA_Asset_Lists - ✨ ວິທີການໃໝ່ສຳລັບ C_dpac
+                dpca_no_of_days = main_record.dpca_no_of_days or 0
+                print(f"🔍 [FORCE-C_DPAC-DEBUG] dpca_no_of_days: {dpca_no_of_days}")
+                print(f"🔍 [FORCE-C_DPAC-DEBUG] Asset current C_dpac: {asset.C_dpac}")
+                
+                if dpca_no_of_days <= 31:
+                    # ຖ້າ <= 31 ວັນ: ເພີ່ມ 1
+                    c_dpac_increment = 1
+                    print(f"📊 [FORCE-C_DPAC-DEBUG] dpca_no_of_days <= 31, increment by 1")
+                else:
+                    # ຖ້າ > 31 ວັນ: ຫານດ້ວຍ 30 ແລ້ວປັດເປັນເລກຖ້ວນ
+                    c_dpac_increment = round(dpca_no_of_days / 30)
+                    print(f"📊 [FORCE-C_DPAC-DEBUG] dpca_no_of_days > 31, increment by round({dpca_no_of_days}/30) = {c_dpac_increment}")
+                
+                # ອັບເດດຄ່າໃນ database
+                current_c_dpac = Decimal(str(asset.C_dpac or 0))
+                new_c_dpac = current_c_dpac + Decimal(str(c_dpac_increment))
+                
+                print(f"🎯 [FORCE-C_DPAC-DEBUG] CALCULATION: {current_c_dpac} + {c_dpac_increment} = {new_c_dpac}")
+                
+                asset.C_dpac = str(new_c_dpac)
                 asset.asset_accu_dpca_value = Decimal(str(main_record.accumulated_dpca))
                 asset.asset_value_remain = Decimal(str(main_record.remaining_value))
                 asset.asset_latest_date_dpca = main_record.dpca_date
                 asset.save()
-                print(f"✅ ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
+                
+                print(f"✅ [FORCE-C_DPAC-DEBUG] ອັບເດດ FA_Asset_Lists ສຳເລັດ - Asset ID: {asset.asset_list_id}")
+                print(f"📊 [FORCE-C_DPAC-DEBUG] FINAL C_dpac: {new_c_dpac}")
+                print(f"🎯 [FORCE-C_DPAC-DEBUG] ===== C_DPAC CALCULATION COMPLETE =====")
                 
                 # ✅ 3.2 ບັງຄັບກວດສອບ journal entries ກ່ອນ
                 print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
-                check_result = check_journal_entries_for_asset(asset_list_id)
-                print(f"📊 [FORCE] Check result: {check_result}")
+                try:
+                    check_result = check_journal_entries_for_asset(asset_list_id)
+                    print(f"📊 [FORCE] Check result: {check_result}")
+                except:
+                    check_result = {'error': 'check_journal_entries_for_asset function not found'}
+                    print(f"⚠️ [FORCE] Could not check journal entries: {check_result}")
                 
                 # ✅ 3.3 ອັດຕະໂນມັດ approve journal entries
                 try:
                     print(f"🔍 [FORCE] About to call auto_approve_related_journals...")
                     
                     # ✅ ບັງຄັບເອີ້ນ function
-                    journal_auto_approval = auto_approve_related_journals(asset_list_id)
+                    try:
+                        journal_auto_approval = auto_approve_related_journals(asset_list_id)
+                    except:
+                        print(f"⚠️ [FORCE] auto_approve_related_journals function not found, using fallback")
+                        journal_auto_approval = {
+                            'success': False,
+                            'message': 'auto_approve_related_journals function not available',
+                            'approved_count': 0,
+                            'reference_numbers': []
+                        }
                     
                     print(f"📊 [FORCE] auto_approve_related_journals result: {journal_auto_approval}")
                     
@@ -15878,7 +16283,7 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                                 'message': 'auto_approve_related_journals returned None',
                                 'approved_count': 0,
                                 'reference_numbers': [],
-                                'debug_check': check_result
+                                'debug_check': check_result if 'check_result' in locals() else None
                             }
                         
                 except Exception as journal_error:
@@ -15890,23 +16295,101 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                         'error': f"Journal auto approval error: {str(journal_error)}",
                         'approved_count': 0,
                         'reference_numbers': [],
-                        'debug_check': check_result
+                        'debug_check': check_result if 'check_result' in locals() else None
                     }
+            elif status == 'R':
+                print(f"🔴 [FORCE] Status is R, processing auto rejection...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                # ✅ กวดสอบ journal entries ก่อน
+                print(f"🔍 [FORCE] Checking journal entries for asset: {asset_list_id}")
+                try:
+                    check_result = check_journal_entries_for_asset(asset_list_id)
+                    print(f"📊 [FORCE] Check result: {check_result}")
+                except:
+                    check_result = {'error': 'check_journal_entries_for_asset function not found'}
+                    print(f"⚠️ [FORCE] Could not check journal entries: {check_result}")
+                
+                # ✅ อัดตะโนมัด reject journal entries
+                try:
+                    print(f"🔍 [FORCE] About to call auto_reject_related_journals...")
+                    
+                    try:
+                        journal_auto_approval = auto_reject_related_journals(asset_list_id, reason, validated_user_id)
+                        # ปรียน rejected_count เป็น approved_count เพื่อใช้ logic เดียวกับ A
+                        if journal_auto_approval and journal_auto_approval.get('success'):
+                            journal_auto_approval['approved_count'] = journal_auto_approval.get('rejected_count', 0)
+                    except:
+                        print(f"⚠️ [FORCE] auto_reject_related_journals function not found, using fallback")
+                        journal_auto_approval = {
+                            'success': False,
+                            'message': 'auto_reject_related_journals function not available',
+                            'approved_count': 0,
+                            'reference_numbers': []
+                        }
+                    
+                    print(f"📊 [FORCE] auto_reject_related_journals result: {journal_auto_approval}")
+                    
+                    if journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+                        print(f"✅ [FORCE] Auto rejected {journal_auto_approval['approved_count']} journals")
+                    else:
+                        print(f"ℹ️ [FORCE] No journals rejected or function failed")
+                        if journal_auto_approval is None:
+                            journal_auto_approval = {
+                                'success': False,
+                                'message': 'auto_reject_related_journals returned None',
+                                'approved_count': 0,
+                                'reference_numbers': [],
+                                'debug_check': check_result if 'check_result' in locals() else None
+                            }
+                        
+                except Exception as journal_error:
+                    print(f"⚠️ [FORCE] Journal auto rejection error: {str(journal_error)}")
+                    import traceback
+                    traceback.print_exc()
+                    journal_auto_approval = {
+                        'success': False,
+                        'error': f"Journal auto rejection error: {str(journal_error)}",
+                        'approved_count': 0,
+                        'reference_numbers': [],
+                        'debug_check': check_result if 'check_result' in locals() else None
+                    }
+                    
+            elif status == 'P':
+                print(f"🟡 [FORCE] Status is P, processing pending update...")
+                asset = main_record.asset_list_id
+                asset_list_id = asset.asset_list_id
+                print(f"🔍 [FORCE] Asset ID: {asset_list_id}")
+                
+                try:
+                    journal_auto_approval = update_journal_status_to_pending(asset_list_id, reason, validated_user_id)
+                    if journal_auto_approval and journal_auto_approval.get('success'):
+                        journal_auto_approval['approved_count'] = journal_auto_approval.get('updated_count', 0)
+                except:
+                    journal_auto_approval = {
+                        'success': False,
+                        'message': 'update_journal_status_to_pending function not available',
+                        'approved_count': 0,
+                        'reference_numbers': []
+                    }
+                    
             else:
-                print(f"🔍 [FORCE] Status is {status}, skipping journal approval")
+                print(f"🔍 [FORCE] Status is {status}, unknown status")
                 journal_auto_approval = {
                     'success': False,
-                    'message': f'Skipped journal approval - status is {status}, not A',
+                    'message': f'Unknown status {status}',
                     'approved_count': 0,
                     'reference_numbers': []
                 }
             
-            # ✅ 4. ສ້າງ message ທີ່ລວມ journal approval
+            # ✅ 4. ສ້າງ message
             base_message = f"ບັນທຶກ {aldm_id} ອັບເດດເປັນ {status} ສຳເລັດ"
-            if status == 'A' and journal_auto_approval and journal_auto_approval.get('success') and journal_auto_approval.get('approved_count', 0) > 0:
+            if status == 'A' and journal_auto_approval and journal_auto_approval.get('approved_count', 0) > 0:
                 base_message += f" + Auto approved {journal_auto_approval['approved_count']} journal entries"
             
-            print(f"✅ [FORCE] Final journal_auto_approval: {journal_auto_approval}")
+            print(f"✅ [DEBUG] Final result: journal_auto_approval = {journal_auto_approval}")
             
             return {
                 'success': True,
@@ -15915,11 +16398,19 @@ def confirm_depreciation(aldm_id, status, reason=None, user_id=None):
                 'status_set': status,
                 'reason_set': reason if status in ['R', 'P'] else None,
                 'fa_asset_updated': status == 'A',
-                'journal_auto_approval': journal_auto_approval  # ✅ ຈະບໍ່ເປັນ null ແລ້ວ
+                'fa_accounting_method_updated': False,  # ✅ ປ່ຽນເປັນ False
+                'accounting_method_info': None,  # ✅ ປ່ຽນເປັນ None  
+                'c_dpac_calculation': {  # ✨ ເພີ່ມຂໍ້ມູນການຄິດໄລ່ໃໝ່
+                    'dpca_no_of_days': dpca_no_of_days,
+                    'increment_value': c_dpac_increment,
+                    'previous_c_dpac': float(current_c_dpac),
+                    'new_c_dpac': float(new_c_dpac)
+                } if status == 'A' else None,
+                'journal_auto_approval': journal_auto_approval
             }
         
     except Exception as e:
-        print(f"💥 [FORCE] Confirm depreciation error: {str(e)}")
+        print(f"💥 [DEBUG] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {"error": f"Confirm depreciation error: {str(e)}"}
@@ -15997,7 +16488,7 @@ def calculate_depreciation_api_debug(request):
             'traceback': traceback.format_exc()
         }
         return JsonResponse(error_details, status=500)
-# ✅ NEW: ຟັງຊັນໃຫມ່ສຳລັບການຍົກເລີກ
+
 def cancel_depreciation(aldm_id, user_id=None):
     """
     ຍົກເລີກບັນທຶກການຫັກຄ່າເສື່ອມທີ່ຍັງບໍ່ຢືນຢັນ
@@ -16013,7 +16504,7 @@ def cancel_depreciation(aldm_id, user_id=None):
             if main_record.Auth_Status not in ['U', 'P']:
                 return {"error": f"ບໍ່ສາມາດຍົກເລີກບັນທຶກທີ່ມີ Auth_Status = {main_record.Auth_Status}"}
             
-            # ລົບບັນທຶກທີ່ກ່ຽວຂ້ອງ
+            
             FA_Asset_List_Depreciation.objects.filter(
                 asset_list_id=main_record.asset_list_id,
                 dpca_date=main_record.dpca_date,
@@ -16812,7 +17303,7 @@ def process_monthly_due_depreciation(target_month=None, target_year=None, user_i
     
         return {
             'success': True,
-            'message': f"ຫັກຄ່າເສື່ອມລາຄາໃນ {due_result['target_period']['month_name_la']} {due_result['target_period']['year']} ສຳເລັດ",
+            'message': f"ຫັກຄ່າຫຼູຍຫຽ້ນຄາໃນ {due_result['target_period']['month_name_la']} {due_result['target_period']['year']} ສຳເລັດ",
             'target_period': due_result['target_period'],
             'processing_result': process_result
         }
@@ -18037,14 +18528,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_balance_sheet_acc_proc(segment: str, currency: str):
+def run_balance_sheet_acc_proc(segment: str, currency: str, period_code_id: str):
     """
     Execute the balance sheet ACC stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-    
+        period_code_id (str): Period code ID
+
     Returns:
         list: Query results as list of dictionaries
     """
@@ -18054,11 +18546,12 @@ def run_balance_sheet_acc_proc(segment: str, currency: str):
             sql = """
                 EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s
+                    @currency = %s,
+                    @period_code_id = %s
             """
-            
-            cursor.execute(sql, [segment, currency])
-            
+
+            cursor.execute(sql, [segment, currency, period_code_id])
+
             # Get column names
             columns = [col[0] for col in cursor.description]
             
@@ -18071,7 +18564,7 @@ def run_balance_sheet_acc_proc(segment: str, currency: str):
         logger.error(f"Error executing balance sheet ACC procedure: {str(e)}")
         raise
 
-def run_balance_sheet_mfi_proc(segment: str, currency: str):
+def run_balance_sheet_mfi_proc(segment: str, currency: str, period_code_id: str):
     """
     Execute the balance sheet MFI stored procedure
     
@@ -18088,11 +18581,12 @@ def run_balance_sheet_mfi_proc(segment: str, currency: str):
             sql = """
                 EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s
+                    @currency = %s,
+                    @period_code_id = %s
             """
-            
-            cursor.execute(sql, [segment, currency])
-            
+
+            cursor.execute(sql, [segment, currency, period_code_id])
+
             # Get column names
             columns = [col[0] for col in cursor.description]
             
@@ -18104,6 +18598,8 @@ def run_balance_sheet_mfi_proc(segment: str, currency: str):
     except Exception as e:
         logger.error(f"Error executing balance sheet MFI procedure: {str(e)}")
         raise
+
+
 
 def validate_segment(segment: str) -> bool:
     """
@@ -18167,6 +18663,7 @@ def balance_sheet_acc_view(request):
     }
     """
     # Extract parameters from request
+    period_code_id = request.data.get("period_code_id")
     segment = request.data.get("segment")
     currency = request.data.get("currency")
     
@@ -18181,6 +18678,7 @@ def balance_sheet_acc_view(request):
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
+    period_code_id = period_code_id.upper()
     
     # Validate segment
     if not validate_segment(segment):
@@ -18199,12 +18697,12 @@ def balance_sheet_acc_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[BalanceSheet-ACC] Executing procedure for segment={segment}, currency={currency}")
+        logger.info(f"[BalanceSheet-ACC] Executing procedure for segment={segment}, currency={currency}, period_code_id ={period_code_id}" )
         
         # Execute stored procedure
-        result = run_balance_sheet_acc_proc(segment, currency)
-        
-        logger.info(f"[BalanceSheet-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        result = run_balance_sheet_acc_proc(segment, currency, period_code_id)
+
+        logger.info(f"[BalanceSheet-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency},  period_code_id ={period_code_id} , Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
@@ -18214,6 +18712,7 @@ def balance_sheet_acc_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet ACC data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
@@ -18255,12 +18754,13 @@ def balance_sheet_mfi_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
+    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency:
+    if not segment or not currency or not period_code_id:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency and period_code_id are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -18285,12 +18785,12 @@ def balance_sheet_mfi_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[BalanceSheet-MFI] Executing procedure for segment={segment}, currency={currency}")
+        logger.info(f"[BalanceSheet-MFI] Executing procedure for segment={segment}, currency={currency}, period_code_id={period_code_id}")
         
         # Execute stored procedure
-        result = run_balance_sheet_mfi_proc(segment, currency)
-        
-        logger.info(f"[BalanceSheet-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        result = run_balance_sheet_mfi_proc(segment, currency, period_code_id)
+
+        logger.info(f"[BalanceSheet-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period Code ID: {period_code_id}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
@@ -18300,6 +18800,7 @@ def balance_sheet_mfi_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet MFI data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "MFI",
             "display_currency": display_currency,
             "count": len(result),
@@ -18328,9 +18829,10 @@ def balance_sheet_acc_get_view(request):
     # Extract parameters from query params
     segment = request.query_params.get("segment")
     currency = request.query_params.get("currency")
+    period_code_id = request.query_params.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency:
+    if not segment or not currency or not period_code_id:
         return Response({
             "status": "error",
             "message": "ບໍ່ມີ query parameters ທີ່ຈຳເປັນ: segment ແລະ currency (Missing required query parameters: segment and currency)",
@@ -18353,7 +18855,7 @@ def balance_sheet_acc_get_view(request):
         logger.info(f"[BalanceSheet-ACC-GET] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_balance_sheet_acc_proc(segment, currency)
+        result = run_balance_sheet_acc_proc(segment, currency, period_code_id)
         
         logger.info(f"[BalanceSheet-ACC-GET] Procedure completed successfully. Records: {len(result)}")
         
@@ -18364,6 +18866,7 @@ def balance_sheet_acc_get_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ ACC ສຳລັບ {display_currency} ສຳເລັດ",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
@@ -18392,6 +18895,7 @@ def balance_sheet_mfi_get_view(request):
     # Extract parameters from query params
     segment = request.query_params.get("segment")
     currency = request.query_params.get("currency")
+    period_code_id = request.query_params.get("period_code_id")
     
     # Validate required parameters
     if not segment or not currency:
@@ -18404,7 +18908,8 @@ def balance_sheet_mfi_get_view(request):
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
-    
+    period_code_id = period_code_id.upper()
+
     # Validate parameters
     if not validate_segment(segment) or not validate_currency_code(currency):
         return Response({
@@ -18417,7 +18922,7 @@ def balance_sheet_mfi_get_view(request):
         logger.info(f"[BalanceSheet-MFI-GET] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_balance_sheet_mfi_proc(segment, currency)
+        result = run_balance_sheet_mfi_proc(segment, currenc, period_code_id)
         
         logger.info(f"[BalanceSheet-MFI-GET] Procedure completed successfully. Records: {len(result)}")
         
@@ -18428,6 +18933,7 @@ def balance_sheet_mfi_get_view(request):
             "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ MFI ສຳລັບ {display_currency} ສຳເລັດ",
             "segment": segment,
             "currency": currency,
+            "period_code_id": period_code_id,
             "type": "MFI",
             "display_currency": display_currency,
             "count": len(result),
@@ -21237,7 +21743,7 @@ def validate_journal_approvals(processing_date):
         unapproved_journals = DETB_JRNL_LOG.objects.filter(
             Value_date=processing_date,
             Auth_Status__in=['U', 'P']
-        ).count()
+        ).exclude(Txn_code='ARD').count()
 
         if unapproved_journals > 0:
             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
@@ -21916,7 +22422,7 @@ def process_retroactive_depreciation_with_journal(mapping_id, user_id=None, targ
                         if validation['debit_found'] and validation['credit_found']:
                             # ✅ ປັບແກ้ journal data ສຳລັບ retroactive
                             journal_data = journal_data_result['journal_data']
-                            journal_data['Addl_text'] = f"ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງ - {asset.asset_spec}"
+                            journal_data['Addl_text'] = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນຍ້ອນຫຼັງ - {asset.asset_spec}"
                             
                             # ✅ ໃຊ້ create_journal_entry_via_api ແບບເກົ່າ
                             journal_result = create_journal_entry_via_api(journal_data, request)
@@ -21959,13 +22465,13 @@ def process_retroactive_depreciation_with_journal(mapping_id, user_id=None, targ
             # ✅ 6. ຜົນລັບແບບເກົ່າ
             result = {
                 'success': True,
-                'message': f"ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງສຳເລັດ - {retroactive_summary['months_to_process']} ເດືອນ",
+                'message': f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນຍ້ອນຫຼັງສຳເລັດ - {retroactive_summary['months_to_process']} ເດືອນ",
                 'asset_info': calc_result['asset_info'],
                 'retroactive_processed': {
                     'months_processed': retroactive_summary['months_to_process'],
                     'total_amount': retroactive_summary['total_retroactive_amount'],
                     'target_date': target_date_obj.strftime('%d/%m/%Y'),
-                    'description': f"ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງ {retroactive_summary['months_to_process']} ເດືອນ",
+                    'description': f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນຍ້ອນຫຼັງ {retroactive_summary['months_to_process']} ເດືອນ",
                     'calculation_note': f"ໃຊ้ Vue.js method - ຄຳນວນຈາກເດືອນທີ່ {calc_result['retroactive_summary']['current_month']+1} ຮອດ {calc_result['new_status']['new_count']}"
                 },
                 'new_status': calc_result['new_status'],
@@ -22534,11 +23040,7 @@ def retroactive_depreciation_api(request):
         return JsonResponse(error_details, status=500)
 
 
-# ✅ URL Configuration
-# ໃສ່ໃນ urls.py:
-# path('api/retroactive/', retroactive_depreciation_api, name='retroactive-depreciation-api'),
 
-# ✅ Additional Helper Functions (ໃຊ້ຂໍ້ມູນຈາກ code ເກົ່າ)
 
 def get_month_name_la(month_num):
     """ຊື່ເດືອນເປັນພາສາລາວ"""
@@ -22584,4 +23086,1171 @@ def get_current_user_id():
 # - create_journal_entry_data()
 # - create_journal_entry_via_api()
 # - create_depreciation_history()
+<<<<<<< HEAD
 # - create_depreciation_in_month_record()
+=======
+# - create_depreciation_in_month_record()
+
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db.models import OuterRef, Subquery
+from .models import DETB_JRNL_LOG, FA_Asset_List_Depreciation_Main
+from .serializers import DETB_JRNL_LOGSerializer_Asset,DETB_JRNL_LOG_MASTER_AC_Serializer
+
+class JRNLLogViewSetAsset(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DETB_JRNL_LOGSerializer_Asset
+
+    def get_queryset(self):
+        ref_no = self.request.query_params.get('ref_no')
+
+        asset_subquery = FA_Asset_List_Depreciation_Main.objects.filter(
+            asset_list_id=OuterRef('Ac_relatives')
+        ).values('aldm_id')[:1]
+
+        asset_desc_subquery = FA_Asset_List_Depreciation_Main.objects.filter(
+            asset_list_id=OuterRef('Ac_relatives')
+        ).values('dpca_desc')[:1]
+
+        queryset = DETB_JRNL_LOG.objects.select_related(
+            'module_id', 'Ccy_cd', 'Account', 'Txn_code',
+            'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id'
+        ).filter(
+            Txn_code__trn_code='ARD'
+        ).annotate(
+            aldm_id=Subquery(asset_subquery),
+            dpca_desc=Subquery(asset_desc_subquery)
+        ).order_by('-Maker_DT_Stamp')
+
+        if ref_no:
+            queryset = queryset.filter(Reference_No=ref_no)
+
+        return queryset
+
+
+class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
+    serializer_class = DETB_JRNL_LOG_MASTER_AC_Serializer  # Use your existing serializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['Ccy_cd', 'fin_cycle', 'Auth_Status', 'Reference_No']
+    search_fields = ['Reference_No', 'Addl_text']
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No', 'Fcy_Amount', 'Auth_Status']
+
+    def get_queryset(self):
+        """Optimized queryset with select_related for foreign keys - ARD transactions only"""
+        base_queryset = DETB_JRNL_LOG_MASTER.objects.select_related(
+            'Maker_Id',
+            'Checker_Id', 
+            'module_id',
+            'Ccy_cd',
+            'Txn_code'
+        ).filter(
+            # Include only ARD transaction codes
+            Txn_code='ARD'
+        ).filter(
+            # Include only non-deleted records
+            Q(delete_stat__isnull=True) | ~Q(delete_stat='D')
+        )
+        
+        # Permission-based filtering
+        show_all = self.request.query_params.get('show_all', 'false').lower()
+        
+        if show_all == 'true':
+            return base_queryset
+        else:
+            user_id = getattr(self.request.user, 'user_id', None) or getattr(self.request.user, 'id', None)
+            return base_queryset.filter(Maker_Id=user_id)
+
+    def _apply_filters(self, queryset, request):
+        """Apply all custom filters efficiently - for ARD transactions"""
+        try:
+            # Date filtering
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    queryset = queryset.filter(Value_date__date=filter_date)
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+            
+            # Other filters
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+            
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+            
+            auth_status = request.query_params.get('Auth_Status')
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+            
+            # Search
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search)
+                )
+            
+            # Exclude deleted
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+
+            # Note: No need to filter Txn_code since we only have ARD transactions
+            print("DEBUG: ARD ViewSet - all transactions are ARD")
+
+            # Ordering
+            ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
+            valid_fields = [
+                'Maker_DT_Stamp', '-Maker_DT_Stamp',
+                'Value_date', '-Value_date',
+                'Reference_No', '-Reference_No',
+                'Fcy_Amount', '-Fcy_Amount',
+                'Auth_Status', '-Auth_Status'
+            ]
+            if ordering in valid_fields:
+                queryset = queryset.order_by(ordering)
+            
+            return queryset
+            
+        except Exception as e:
+            logger.error(f"Error applying ARD filters: {str(e)}")
+            return queryset
+
+    @action(detail=False, methods=['get'], url_path='init-data')
+    def init_data(self, request):
+        """
+        Combined endpoint for initial data loading - ARD transactions only
+        Returns paginated journal data + summary data in one request
+        """
+        try:
+            # Get query parameters
+            page_size = min(int(request.query_params.get('page_size', 25)), 100)
+            page = int(request.query_params.get('page', 1))
+            
+            print(f"DEBUG: ARD init_data called with page={page}, page_size={page_size}")
+            
+            # Get base queryset with optimizations
+            base_queryset = self.get_queryset().select_related(
+                'Maker_Id', 'Checker_Id', 'module_id', 'Ccy_cd', 'Txn_code'
+            )
+            
+            print(f"DEBUG: ARD Base queryset count: {base_queryset.count()}")
+            
+            # Apply existing filters
+            queryset = self.filter_queryset(base_queryset)
+            
+            # Apply additional custom filters
+            queryset = self._apply_custom_filters(queryset, request)
+            
+            print(f"DEBUG: ARD Filtered queryset count: {queryset.count()}")
+            
+            # For summary - get counts WITHOUT Auth_Status filter for accurate totals
+            summary_queryset = self.filter_queryset(base_queryset)
+            summary_queryset = self._apply_custom_filters_for_summary(summary_queryset, request)
+            
+            # Get summary counts
+            summary_data = summary_queryset.aggregate(
+                total=Count('JRNLLog_id'),
+                pending=Count('JRNLLog_id', filter=Q(Auth_Status='U')),
+                approved=Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+                rejected=Count('JRNLLog_id', filter=Q(Auth_Status='R')),
+                correction=Count('JRNLLog_id', filter=Q(Auth_Status='P'))
+            )
+            
+            print(f"DEBUG: ARD Summary data: {summary_data}")
+            
+            # Get total count for pagination
+            total_count = queryset.count()
+            
+            # Paginate the results
+            start = (page - 1) * page_size
+            end = start + page_size
+            paginated_queryset = queryset[start:end]
+            
+            print(f"DEBUG: ARD Paginated queryset: {start}-{end}, count: {len(paginated_queryset)}")
+            
+            # Serialize data using your existing serializer
+            serializer = self.get_serializer(paginated_queryset, many=True)
+            
+            # Build response (NO CACHING)
+            response_data = {
+                'results': serializer.data,
+                'count': total_count,
+                'next': f"?page={page + 1}" if end < total_count else None,
+                'previous': f"?page={page - 1}" if page > 1 else None,
+                'summary': summary_data,
+                'page_info': {
+                    'current_page': page,
+                    'page_size': page_size,
+                    'total_pages': (total_count + page_size - 1) // page_size
+                },
+                'transaction_type': 'ARD'  # Indicator for frontend
+            }
+            
+            print(f"DEBUG: ARD Response ready, results count: {len(response_data['results'])}")
+            
+            return Response(response_data, status=200)
+            
+        except Exception as e:
+            print(f"ERROR in ARD init_data: {str(e)}")
+            logger.error(f"Error in ARD init_data: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            return Response({
+                'error': 'Failed to load ARD initial data',
+                'details': str(e)
+            }, status=500)
+
+    def _apply_custom_filters(self, queryset, request):
+        """Apply all custom filters including Auth_Status - ARD transactions only"""
+        try:
+            print("DEBUG: Applying ARD custom filters...")
+            
+            # Date filtering
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    queryset = queryset.filter(Value_date__date=filter_date)
+                    print(f"DEBUG: ARD Applied specific date filter: {specific_date}")
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                        print(f"DEBUG: ARD Applied date_from filter: {date_from}")
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+                        print(f"DEBUG: ARD Applied date_to filter: {date_to}")
+            
+            # Module filtering
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+                print(f"DEBUG: ARD Applied module filter: {module_id}")
+            
+            # Currency filtering
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+                print(f"DEBUG: ARD Applied currency filter: {ccy_cd}")
+            
+            # Authorization status filtering
+            auth_status = request.query_params.get('Auth_Status')
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+                print(f"DEBUG: ARD Applied auth_status filter: {auth_status}")
+            
+            # Search filtering
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search)
+                )
+                print(f"DEBUG: ARD Applied search filter: {search}")
+            
+            # Exclude soft deleted records
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+                print(f"DEBUG: ARD Applied delete_stat filter: {delete_stat_ne}")
+            
+            # Note: We don't need to handle Txn_code filtering since we only have ARD
+            print("DEBUG: ARD - All transactions are already ARD type")
+            
+            # Ordering
+            ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
+            valid_fields = [
+                'Maker_DT_Stamp', '-Maker_DT_Stamp',
+                'Value_date', '-Value_date',
+                'Reference_No', '-Reference_No',
+                'Fcy_Amount', '-Fcy_Amount',
+                'Auth_Status', '-Auth_Status'
+            ]
+            if ordering in valid_fields:
+                queryset = queryset.order_by(ordering)
+                print(f"DEBUG: ARD Applied ordering: {ordering}")
+            
+            return queryset
+            
+        except Exception as e:
+            print(f"ERROR applying ARD custom filters: {str(e)}")
+            logger.error(f"Error applying ARD custom filters: {str(e)}")
+            return queryset
+
+    def _apply_custom_filters_for_summary(self, queryset, request):
+        """Same as above but exclude Auth_Status filter for accurate summary counts - ARD only"""
+        try:
+            print("DEBUG: Applying ARD custom filters for summary...")
+            
+            # Date filtering
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    queryset = queryset.filter(Value_date__date=filter_date)
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+            
+            # Module filtering
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+            
+            # Currency filtering
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+            
+            # Search filtering
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search)
+                )
+            
+            # Note: No need to exclude ARD since we only have ARD transactions
+            print("DEBUG: ARD Summary - all transactions are ARD type")
+            
+            # Exclude soft deleted records
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+            
+            # NOTE: We EXCLUDE Auth_Status filtering here to get accurate summary counts
+            print("DEBUG: ARD Summary filters applied (excluding Auth_Status)")
+            
+            return queryset
+            
+        except Exception as e:
+            print(f"ERROR applying ARD summary filters: {str(e)}")
+            logger.error(f"Error applying ARD summary filters: {str(e)}")
+            return queryset
+
+    def _get_reference_data(self):
+        """Get reference data with caching - ARD specific"""
+        cache_key = 'ard_journal_reference_data'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return cached_data
+        
+        try:
+            # Get reference data from your existing endpoints or models
+            reference_data = {
+                'modules': self._get_modules_data(),
+                'currencies': self._get_currencies_data(),
+                'auth_status_options': [
+                    {'value': 'U', 'text': 'ລໍຖ້າອະນຸມັດ'},
+                    {'value': 'A', 'text': 'ອະນຸມັດແລ້ວ'},
+                    {'value': 'R', 'text': 'ປະຕິເສດ'},
+                    {'value': 'P', 'text': 'ຖ້າເແກ້ໄຂ'}
+                ],
+                'transaction_type': 'ARD'
+            }
+            
+            # Cache for 5 minutes
+            cache.set(cache_key, reference_data, 300)
+            return reference_data
+            
+        except Exception as e:
+            logger.error(f"Error loading ARD reference data: {str(e)}")
+            return {
+                'modules': [],
+                'currencies': [],
+                'auth_status_options': [
+                    {'value': 'U', 'text': 'ລໍຖ້າອະນຸມັດ'},
+                    {'value': 'A', 'text': 'ອະນຸມັດແລ້ວ'},
+                    {'value': 'R', 'text': 'ປະຕິເສດ'},
+                    {'value': 'P', 'text': 'ຖ້າເເກ້ໄຂ'}
+                ],
+                'transaction_type': 'ARD'
+            }
+
+    def _get_modules_data(self):
+        """Get modules data - adapt this to your actual module model"""
+        try:
+            # You'll need to adapt this based on your actual models
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT module_Id, module_name_la 
+                    FROM STTB_ModulesInfo 
+                    WHERE status = 'A'
+                    ORDER BY module_name_la
+                """)
+                return [
+                    {'module_Id': row[0], 'module_name_la': row[1]} 
+                    for row in cursor.fetchall()
+                ]
+        except Exception as e:
+            logger.error(f"Error loading modules for ARD: {str(e)}")
+            return []
+
+    def _get_currencies_data(self):
+        """Get currencies data - adapt this to your actual currency model"""
+        try:
+            # You'll need to adapt this based on your actual models
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT ccy_code, ccy_name 
+                    FROM MTTB_Ccy_DEFN 
+                    WHERE status = 'A'
+                    ORDER BY ccy_code
+                """)
+                return [
+                    {'ccy_code': row[0], 'ccy_name': row[1]} 
+                    for row in cursor.fetchall()
+                ]
+        except Exception as e:
+            logger.error(f"Error loading currencies for ARD: {str(e)}")
+            return []
+
+    # Keep all your existing methods for ARD
+    def list(self, request, *args, **kwargs):
+        """
+        Override list to add comprehensive date filtering and permission-based access - ARD only
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Permission-based filtering
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
+        
+        # If user doesn't have authorization permission, filter to only their own records
+        if not show_all:
+            user_id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None)
+            if user_id:
+                queryset = queryset.filter(Maker_Id=user_id)
+            else:
+                queryset = queryset.none()
+        
+        # Apply additional filters
+        queryset = self._apply_filters(queryset, request)
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Override retrieve method to check permissions - ARD only"""
+        instance = self.get_object()
+        user = request.user
+        
+        # Permission check
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
+        if not show_all and instance.Maker_Id != user:
+            return Response(
+                {"detail": "You don't have permission to view this ARD record."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if instance.Auth_Status == 'A':
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No=instance.Reference_No,
+                Txn_code='ARD'  # Ensure we only update ARD records
+            ).update(Auth_Status='A')
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete_stat = 'D'
+        instance.save()
+        return Response({'detail': 'ARD record marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'], url_path='journal-log-active')
+    def journal_log_active(self, request):
+        """
+        Get all active ARD journal log master records based on current EOD processing date.
+        This ensures consistency with EOD validation logic.
+        """
+        import pytz
+        from django.utils import timezone
+        from django.db.models import Q
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get the current processing date based on EOD logic
+            processing_date = self.get_current_processing_date(request)
+            
+            # Get query parameters
+            reference_no = request.query_params.get('Reference_No')
+            auth_status = request.query_params.get('Auth_Status')
+            
+            # Base queryset - filter by the processing date and ARD transaction code
+            queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                Txn_code='ARD',  # Only ARD transactions
+                delete_stat__isnull=True,
+                Value_date=processing_date
+            ).exclude(
+                Q(delete_stat='D')
+            ).order_by('-Maker_DT_Stamp')
+
+            # Apply additional filters if provided
+            if reference_no:
+                queryset = queryset.filter(Reference_No=reference_no)
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+
+            serializer = self.get_serializer(queryset, many=True)
+            
+            # Add metadata about the processing date
+            response_data = {
+                'results': serializer.data,
+                'processing_date': processing_date.isoformat(),
+                'is_back_date': processing_date != today,
+                'record_count': len(serializer.data),
+                'today': today.isoformat(),
+                'transaction_type': 'ARD'
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response({
+                'error': f'Error fetching ARD journal records: {str(e)}',
+                'results': [],
+                'processing_date': None,
+                'is_back_date': False,
+                'record_count': 0,
+                'transaction_type': 'ARD'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get_eod_processing_status(self, request):
+        """
+        Get the current EOD processing status to determine which date to use.
+        This mirrors the logic from check_journal_submission_available.
+        """
+        import pytz
+        from django.utils import timezone
+        from .models import MTTB_DATA_Entry, STTB_Dates  # Replace with actual import
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get MTTB_DATA_Entry configuration
+            try:
+                data_entry = MTTB_DATA_Entry.objects.filter(
+                    # Auth_Status='A'
+                ).first()
+                
+                if not data_entry:
+                    bypass_eod_check = False
+                else:
+                    bypass_eod_check = data_entry.BACK_VALUE == 'Y'
+                    
+            except Exception:
+                bypass_eod_check = False
+
+            # Get the latest EOD record
+            try:
+                latest_eod = STTB_Dates.objects.latest('date_id')
+            except STTB_Dates.DoesNotExist:
+                return {
+                    'is_back_date': False,
+                    'target_date': today.isoformat(),
+                    'current_eod': None,
+                    'bypass_enabled': False
+                }
+
+            latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+            
+            # Determine if we're in back-date mode
+            if latest_next_working < today and bypass_eod_check:
+                return {
+                    'is_back_date': True,
+                    'target_date': latest_next_working.isoformat(),
+                    'current_eod': {
+                        'date_id': latest_eod.date_id,
+                        'next_working_day': latest_next_working.isoformat(),
+                        'eod_status': latest_eod.eod_time
+                    },
+                    'bypass_enabled': True
+                }
+            else:
+                return {
+                    'is_back_date': False,
+                    'target_date': today.isoformat(),
+                    'current_eod': {
+                        'date_id': latest_eod.date_id,
+                        'next_working_day': latest_next_working.isoformat(),
+                        'eod_status': latest_eod.eod_time
+                    },
+                    'bypass_enabled': bypass_eod_check
+                }
+                
+        except Exception as e:
+            return {
+                'is_back_date': False,
+                'target_date': today.isoformat(),
+                'current_eod': None,
+                'bypass_enabled': False,
+                'error': str(e)
+            }
+        
+    @action(detail=False, methods=['get'], url_path='journal-log-detail')
+    def journal_log_detail(self, request):
+        """Get ARD journal log detail records"""
+        reference_no = request.query_params.get('Reference_No')
+        auth_status = request.query_params.get('Auth_Status')
+        
+        queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+            Txn_code='ARD',  # Only ARD transactions
+            delete_stat__isnull=True
+        ).exclude(delete_stat='D')
+
+        if reference_no:
+            queryset = queryset.filter(Reference_No=reference_no)
+        if auth_status:
+            queryset = queryset.filter(Auth_Status=auth_status)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['patch'], url_path='approve-by-reference')
+    def approve_by_reference(self, request):
+        reference_no = request.data.get('Reference_No')
+        if not reference_no:
+            return Response({'detail': 'Reference_No is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Ensure we only approve ARD transactions
+            master_record = self.get_queryset().get(
+                Reference_No=reference_no,
+                Txn_code='ARD'
+            )
+            
+            # Update master record
+            master_record.Auth_Status = 'A'
+            master_record.Checker_Id = request.data.get('Checker_Id')
+            master_record.Checker_DT_Stamp = request.data.get('Checker_DT_Stamp')
+            master_record.save()
+            
+            serializer = self.get_serializer(master_record)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except DETB_JRNL_LOG_MASTER.DoesNotExist:
+            return Response({'detail': 'ARD master record not found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=False, methods=['patch'], url_path='reject-by-reference')
+    def reject_by_reference(self, request):
+        reference_no = request.data.get('Reference_No')
+        if not reference_no:
+            return Response({'detail': 'Reference_No is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Ensure we only reject ARD transactions
+            master_record = self.get_queryset().get(
+                Reference_No=reference_no,
+                Txn_code='ARD'
+            )
+            
+            # Update master record
+            master_record.Auth_Status = 'R'
+            master_record.Checker_Id = request.data.get('Checker_Id')
+            master_record.Checker_DT_Stamp = request.data.get('Checker_DT_Stamp')
+            if request.data.get('Addl_text'):
+                master_record.Addl_text = request.data.get('Addl_text')
+            master_record.save()
+            
+            serializer = self.get_serializer(master_record)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except DETB_JRNL_LOG_MASTER.DoesNotExist:
+            return Response({'detail': 'ARD master record not found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+
+    # Additional ARD-specific actions
+    @action(detail=False, methods=['get'], url_path='ard-summary')
+    def ard_summary(self, request):
+        """Get summary statistics for ARD transactions only"""
+        from django.db.models import Sum, Count, Avg
+        from django.utils import timezone
+        import pytz
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get base queryset for ARD transactions
+            queryset = self.get_queryset()
+            
+            # Apply date filters if provided
+            date_from = request.query_params.get('date_from')
+            date_to = request.query_params.get('date_to')
+            
+            if date_from:
+                from_date = parse_date(date_from)
+                if from_date:
+                    queryset = queryset.filter(Value_date__date__gte=from_date)
+            
+            if date_to:
+                to_date = parse_date(date_to)
+                if to_date:
+                    queryset = queryset.filter(Value_date__date__lte=to_date)
+            else:
+                # Default to today if no date_to specified
+                queryset = queryset.filter(Value_date__date=today)
+            
+            # Calculate summary statistics
+            summary = queryset.aggregate(
+                total_count=Count('JRNLLog_id'),
+                total_amount=Sum('Fcy_Amount'),
+                average_amount=Avg('Fcy_Amount'),
+                pending_count=Count('JRNLLog_id', filter=Q(Auth_Status='U')),
+                approved_count=Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+                rejected_count=Count('JRNLLog_id', filter=Q(Auth_Status='R')),
+                correction_count=Count('JRNLLog_id', filter=Q(Auth_Status='P')),
+                pending_amount=Sum('Fcy_Amount', filter=Q(Auth_Status='U')),
+                approved_amount=Sum('Fcy_Amount', filter=Q(Auth_Status='A')),
+                rejected_amount=Sum('Fcy_Amount', filter=Q(Auth_Status='R')),
+            )
+            
+            # Get currency breakdown
+            currency_breakdown = queryset.values('Ccy_cd__ccy_code').annotate(
+                count=Count('JRNLLog_id'),
+                total_amount=Sum('Fcy_Amount')
+            ).order_by('-total_amount')
+            
+            # Get status breakdown by date (last 7 days)
+            from datetime import timedelta
+            date_range = []
+            for i in range(6, -1, -1):
+                check_date = today - timedelta(days=i)
+                day_data = queryset.filter(Value_date__date=check_date).aggregate(
+                    date=check_date.isoformat(),
+                    total=Count('JRNLLog_id'),
+                    pending=Count('JRNLLog_id', filter=Q(Auth_Status='U')),
+                    approved=Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+                    rejected=Count('JRNLLog_id', filter=Q(Auth_Status='R'))
+                )
+                day_data['date'] = check_date.isoformat()
+                date_range.append(day_data)
+            
+            response_data = {
+                'transaction_type': 'ARD',
+                'summary_period': {
+                    'from': date_from or today.isoformat(),
+                    'to': date_to or today.isoformat()
+                },
+                'totals': summary,
+                'currency_breakdown': list(currency_breakdown),
+                'daily_trend': date_range,
+                'generated_at': timezone.now().isoformat()
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response({
+                'error': f'Error generating ARD summary: {str(e)}',
+                'transaction_type': 'ARD'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='bulk-approve')
+    def bulk_approve(self, request):
+        """Bulk approve multiple ARD transactions"""
+        reference_numbers = request.data.get('reference_numbers', [])
+        checker_id = request.data.get('checker_id')
+        checker_dt_stamp = request.data.get('checker_dt_stamp')
+        
+        if not reference_numbers:
+            return Response({
+                'detail': 'reference_numbers list is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not checker_id:
+            return Response({
+                'detail': 'checker_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get ARD records to approve
+            records = DETB_JRNL_LOG_MASTER.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='ARD',
+                Auth_Status='U'  # Only approve pending records
+            )
+            
+            if not records.exists():
+                return Response({
+                    'detail': 'No pending ARD records found for the provided reference numbers'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Update records
+            updated_count = records.update(
+                Auth_Status='A',
+                Checker_Id=checker_id,
+                Checker_DT_Stamp=checker_dt_stamp
+            )
+            
+            # Also update detail records if they exist
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='ARD'
+            ).update(Auth_Status='A')
+            
+            return Response({
+                'detail': f'Successfully approved {updated_count} ARD transactions',
+                'approved_references': reference_numbers,
+                'updated_count': updated_count
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'detail': f'Error during bulk approval: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='bulk-reject')
+    def bulk_reject(self, request):
+        """Bulk reject multiple ARD transactions"""
+        reference_numbers = request.data.get('reference_numbers', [])
+        checker_id = request.data.get('checker_id')
+        checker_dt_stamp = request.data.get('checker_dt_stamp')
+        rejection_reason = request.data.get('rejection_reason', '')
+        
+        if not reference_numbers:
+            return Response({
+                'detail': 'reference_numbers list is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not checker_id:
+            return Response({
+                'detail': 'checker_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get ARD records to reject
+            records = DETB_JRNL_LOG_MASTER.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='ARD',
+                Auth_Status='U'  # Only reject pending records
+            )
+            
+            if not records.exists():
+                return Response({
+                    'detail': 'No pending ARD records found for the provided reference numbers'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Update records
+            update_data = {
+                'Auth_Status': 'R',
+                'Checker_Id': checker_id,
+                'Checker_DT_Stamp': checker_dt_stamp
+            }
+            
+            if rejection_reason:
+                update_data['Addl_text'] = rejection_reason
+            
+            updated_count = records.update(**update_data)
+            
+            # Also update detail records if they exist
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='ARD'
+            ).update(Auth_Status='R')
+            
+            return Response({
+                'detail': f'Successfully rejected {updated_count} ARD transactions',
+                'rejected_references': reference_numbers,
+                'updated_count': updated_count,
+                'rejection_reason': rejection_reason
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'detail': f'Error during bulk rejection: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get_current_processing_date(self, request):
+        """
+        Get the current processing date based on EOD logic.
+        This should match the same logic used in check_journal_submission_available.
+        """
+        import pytz
+        from django.utils import timezone
+        from .models import MTTB_DATA_Entry, STTB_Dates  # Replace with actual import
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get MTTB_DATA_Entry configuration
+            try:
+                data_entry = MTTB_DATA_Entry.objects.filter(
+                    # Auth_Status='A'  # Uncomment if needed
+                ).first()
+                
+                if not data_entry:
+                    bypass_eod_check = False
+                else:
+                    bypass_eod_check = data_entry.BACK_VALUE == 'Y'
+                    
+            except Exception:
+                bypass_eod_check = False
+
+            # Get the latest EOD record
+            try:
+                latest_eod = STTB_Dates.objects.latest('date_id')
+            except STTB_Dates.DoesNotExist:
+                # No EOD records - use today
+                return today
+
+            latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+            
+            # Apply the same logic as EOD validation
+            if latest_next_working == today:
+                # Normal case - processing today's journals
+                return today
+            elif latest_next_working < today:
+                # We're ahead - check if back-dating is enabled
+                if bypass_eod_check:
+                    # Back-date mode - return the target date
+                    return latest_next_working
+                else:
+                    # No back-dating - use today (but this might mean no journals)
+                    return today
+            else:
+                # Future date (shouldn't happen normally) - use today
+                return today
+                
+        except Exception:
+            # Fallback to today if anything goes wrong
+            return timezone.now().astimezone(pytz.timezone('Asia/Bangkok')).date()
+
+    @action(detail=False, methods=['get'], url_path='journal-log-by-date')
+    def journal_log_by_date(self, request):
+        """
+        Get ARD journal log records for a specific date.
+        Used for back-date EOD processing.
+        """
+        target_date_str = request.query_params.get('date')
+        
+        if not target_date_str:
+            return Response({
+                'error': 'Date parameter is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from datetime import datetime
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            
+            # Get query parameters
+            reference_no = request.query_params.get('Reference_No')
+            auth_status = request.query_params.get('Auth_Status')
+            
+            # Query ARD journals for the specific date
+            queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                Txn_code='ARD',  # Only ARD transactions
+                delete_stat__isnull=True,
+                Value_date=target_date,
+                Auth_Status='U'
+            ).exclude(
+                Q(delete_stat='D')
+            ).order_by('-Maker_DT_Stamp')
+
+            # Apply additional filters if provided
+            if reference_no:
+                queryset = queryset.filter(Reference_No=reference_no)
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+
+            serializer = self.get_serializer(queryset, many=True)
+            
+            return Response({
+                'results': serializer.data,
+                'target_date': target_date.isoformat(),
+                'record_count': len(serializer.data),
+                'transaction_type': 'ARD'
+            })
+            
+        except ValueError:
+            return Response({
+                'error': 'Invalid date format. Use YYYY-MM-DD'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'error': f'Error fetching ARD journal records: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='journal-log-eod-context')
+    def journal_log_eod_context(self, request):
+        """
+        Get ARD journal log records with full EOD context.
+        Returns both current and target date journals if in back-date mode.
+        """
+        import pytz
+        from django.utils import timezone
+        from django.db.models import Q
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get EOD status to determine processing context
+            eod_status = self.get_eod_processing_status(request)
+            
+            response_data = {
+                'today': today.isoformat(),
+                'eod_context': eod_status,
+                'current_journals': [],
+                'target_journals': [],
+                'transaction_type': 'ARD'
+            }
+            
+            # Get current day ARD journals (always needed for validation)
+            current_queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                Txn_code='ARD',  # Only ARD transactions
+                delete_stat__isnull=True,
+                Value_date=today
+            ).exclude(
+                Q(delete_stat='D')
+            ).order_by('-Maker_DT_Stamp')
+            
+            current_serializer = self.get_serializer(current_queryset, many=True)
+            response_data['current_journals'] = current_serializer.data
+            
+            # If in back-date mode, also get target date ARD journals
+            if eod_status.get('is_back_date') and eod_status.get('target_date'):
+                target_date_str = eod_status['target_date']
+                target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+                
+                target_queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                    Txn_code='ARD',  # Only ARD transactions
+                    delete_stat__isnull=True,
+                    Value_date=target_date
+                ).exclude(
+                    Q(delete_stat='D')
+                ).order_by('-Maker_DT_Stamp')
+                
+                target_serializer = self.get_serializer(target_queryset, many=True)
+                response_data['target_journals'] = target_serializer.data
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response({
+                'error': f'Error fetching ARD journal records with EOD context: {str(e)}',
+                'today': today.isoformat() if 'today' in locals() else None,
+                'eod_context': {},
+                'current_journals': [],
+                'target_journals': [],
+                'transaction_type': 'ARD'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import JSONParser
+from django.db import transaction
+from django.utils import timezone
+from django.db.models import Q, Sum
+from datetime import datetime, time, timedelta
+import logging
+from .models import (
+    DETB_JRNL_LOG, DETB_JRNL_LOG_HIST,
+    MTTB_GLSub, MTTB_GLMaster, MTTB_TRN_Code,
+    DETB_JRNL_LOG_MASTER, ACTB_DAIRY_LOG, ACTB_DAIRY_LOG_HISTORY
+)
+from .serializers import JRNLLogSerializer, JRNLLogHistSerializer, JournalEntryBatchSerializer
+from .utils import JournalEntryHelper
+
+logger = logging.getLogger(__name__)
+
+
+
+
+class JournalARDViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet ສຳລັບດຶງຂໍ້ຮຽກຮ້ອງຈາກ DETB_JRNL_LOG_HIST ຕາມຄວາມຕ້ອງການສະເພາະ
+    """
+    parser_classes = [JSONParser]
+    queryset = DETB_JRNL_LOG_HIST.objects.select_related(
+        'Ccy_cd', 'Account', 'Account__gl_code', 'Txn_code',
+        'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id', 'module_id'
+    ).all().order_by('-Maker_DT_Stamp')
+    serializer_class = JRNLLogHistSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['Reference_No', 'Ccy_cd', 'Dr_cr', 'Auth_Status', 'Txn_code']
+    search_fields = ['Reference_No', 'Addl_text', 'Account__glsub_code', 'Account__glsub_Desc_la', 'Ac_relatives']
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No']
+
+    def get_queryset(self):
+        """
+        ປັບແຕ່ງ queryset ສຳລັບດຶງຂໍ້ຮຽກຮ້ອງຕາມຄວາມຕ້ອງການສະເພາະ
+        """
+        queryset = super().get_queryset()
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            queryset = queryset.filter(Value_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(Value_date__lte=end_date)
+        account_id = self.request.query_params.get('account_id')
+        if account_id:
+            queryset = queryset.filter(Account_id=account_id)
+        ccy_cd = self.request.query_params.get('Ccy_cd')
+        if ccy_cd:
+            queryset = queryset.filter(Ccy_cd_id=ccy_cd)
+        Auth_Status = self.request.query_params.get('Auth_Status')
+        if Auth_Status:
+            queryset = queryset.filter(Auth_Status=Auth_Status)
+        Reference_No = self.request.query_params.get('Reference_No')
+        if Reference_No:
+            queryset = queryset.filter(Reference_No=Reference_No)
+            logger.info(f"Fetching JRNL_LOG_HIST with Reference_No: {Reference_No}")
+        return queryset
+>>>>>>> b626777093877d15907ae63a073a1b47cfafa2be

@@ -659,6 +659,24 @@ class DETB_JRNL_LOG_MASTER_Serializer(serializers.ModelSerializer):
         model = DETB_JRNL_LOG_MASTER
         fields = '__all__'
 
+class DETB_JRNL_LOG_MASTER_AC_Serializer(serializers.ModelSerializer):
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
+    jrnl_log_ac = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DETB_JRNL_LOG_MASTER
+        fields = '__all__'
+
+    def get_jrnl_log_ac(self, obj):
+        jrnl_log = DETB_JRNL_LOG.objects.filter(Reference_No=obj.Reference_No).first()
+        if jrnl_log:
+            return {
+                "JRNLLog_id": jrnl_log.JRNLLog_id,
+                "Ac_relatives": jrnl_log.Ac_relatives
+            }
+        return None
+
 from rest_framework import serializers
 from .models import DETB_JRNL_LOG_MASTER
 
@@ -1218,3 +1236,132 @@ class SomtopTrialBalancesheetSerializer(serializers.ModelSerializer):
         model = STTB_Somtop_Trial_Balancesheet
         fields = '__all__'
         read_only_fields = ('Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp')
+
+from rest_framework import serializers
+from .models import DETB_JRNL_LOG
+
+class PreMainSerializer(serializers.Serializer):
+    aldm_id = serializers.IntegerField()
+    dpca_desc = serializers.CharField()
+
+class DETB_JRNL_LOGSerializer_Asset(serializers.ModelSerializer):
+    pre_main = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DETB_JRNL_LOG
+        fields = '__all__' 
+
+    def get_pre_main(self, obj):
+        return {
+            "aldm_id": getattr(obj, 'aldm_id', None),
+            "dpca_desc": getattr(obj, 'dpca_desc', None)
+        }
+from rest_framework import serializers
+from decimal import Decimal
+from .models import (
+    DETB_JRNL_LOG, DETB_JRNL_LOG_HIST,
+    MTTB_GLSub, MTTB_GLMaster, MTTB_TRN_Code,
+    DETB_JRNL_LOG_MASTER, ACTB_DAIRY_LOG, ACTB_DAIRY_LOG_HISTORY
+)
+
+# Serializer ສຳລັບ DETB_JRNL_LOG
+class JRNLLogSerializer(serializers.ModelSerializer):
+    currency_name = serializers.CharField(source='Ccy_cd.Ccy_Name_la', read_only=True)
+    account_code = serializers.CharField(source='Account.glsub_code', read_only=True)
+    account_name = serializers.CharField(source='Account.glsub_Desc_la', read_only=True)
+    transaction_name = serializers.CharField(source='Txn_code.trn_Desc_la', read_only=True)
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
+    
+    class Meta:
+        model = DETB_JRNL_LOG
+        fields = '__all__'
+        read_only_fields = ('JRNLLog_id', 'Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+    def validate_Reference_No(self, value):
+        if len(value) > 30:
+            raise serializers.ValidationError("Reference number too long.")
+        return value
+
+    def validate(self, data):
+        if data.get('Fcy_Amount', 0) <= 0:
+            raise serializers.ValidationError("Foreign currency amount must be greater than 0.")
+        if data.get('Lcy_Amount', 0) <= 0:
+            raise serializers.ValidationError("Local currency amount must be greater than 0.")
+        if data.get('Dr_cr') not in ['D', 'C']:
+            raise serializers.ValidationError("Dr_cr must be 'D' for Debit or 'C' for Credit.")
+        if data.get('Exch_rate', 0) <= 0:
+            raise serializers.ValidationError("Exchange rate must be greater than 0.")
+        return data
+
+# Serializer ສຳລັບ DETB_JRNL_LOG_HIST
+class JRNLLogHistSerializer(serializers.ModelSerializer):
+    currency_name = serializers.CharField(source='Ccy_cd.Ccy_Name_la', read_only=True)
+    account_code = serializers.CharField(source='Account.glsub_code', read_only=True)
+    account_name = serializers.CharField(source='Account.glsub_Desc_la', read_only=True)
+    transaction_name = serializers.CharField(source='Txn_code.trn_Desc_la', read_only=True)
+    maker_name = serializers.CharField(source='Maker_Id.user_name', read_only=True)
+    checker_name = serializers.CharField(source='Checker_Id.user_name', read_only=True)
+    ac_relatives = serializers.CharField(source='Ac_relatives', read_only=True)
+
+    class Meta:
+        model = DETB_JRNL_LOG_HIST
+        fields = '__all__'
+        read_only_fields = ('JRNLLog_id', 'Maker_DT_Stamp', 'Checker_DT_Stamp')
+
+    def validate_Reference_No(self, value):
+        if len(value) > 30:
+            raise serializers.ValidationError("Reference number too long.")
+        return value
+
+    def validate(self, data):
+        if data.get('Fcy_Amount', 0) <= 0:
+            raise serializers.ValidationError("Foreign currency amount must be greater than 0.")
+        if data.get('Lcy_Amount', 0) <= 0:
+            raise serializers.ValidationError("Local currency amount must be greater than 0.")
+        if data.get('Dr_cr') not in ['D', 'C']:
+            raise serializers.ValidationError("Dr_cr must be 'D' for Debit or 'C' for Credit.")
+        if data.get('Exch_rate', 0) <= 0:
+            raise serializers.ValidationError("Exchange rate must be greater than 0.")
+        return data
+
+# Serializer ສຳລັບ batch journal entries
+class JournalEntryBatchSerializer(serializers.Serializer):
+    Reference_No = serializers.CharField(max_length=30)
+    Reference_sub_No = serializers.CharField(max_length=35, required=False, allow_blank=True)
+    Ccy_cd = serializers.CharField(max_length=20)
+    Txn_code = serializers.CharField(max_length=20)
+    Value_date = serializers.DateTimeField()
+    Account_no = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    Addl_text = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    fin_cycle = serializers.CharField(max_length=10, required=False)
+    Period_code = serializers.CharField(max_length=20, required=False)
+    module_id = serializers.CharField(max_length=20, required=False)
+    
+    entries = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1
+    )
+    
+    def validate_entries(self, entries):
+        total_debit = Decimal('0.00')
+        total_credit = Decimal('0.00')
+        for entry in entries:
+            if not entry.get('Account'):
+                raise serializers.ValidationError("Each entry must have an Account.")
+            if not entry.get('Amount') or Decimal(str(entry['Amount'])) <= 0:
+                raise serializers.ValidationError("Each entry must have a positive Amount.")
+            dr_cr = entry.get('Dr_cr')
+            amount = Decimal(str(entry['Amount']))
+            if dr_cr == 'D':
+                total_debit += amount
+            elif dr_cr == 'C':
+                total_credit += amount
+            else:
+                raise serializers.ValidationError("Each entry must specify Dr_cr as 'D' or 'C'.")
+        if abs(total_debit - total_credit) > Decimal('0.01'):
+            raise serializers.ValidationError(
+                f"Transaction is not balanced. Debit: {total_debit}, Credit: {total_credit}"
+            )
+        return entries
+
