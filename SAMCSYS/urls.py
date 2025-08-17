@@ -121,7 +121,8 @@ from .views import (
     retroactive_depreciation_api,
     JRNLLogViewSetAsset,
     DETB_JRNL_LOG_MASTER_ARD_ViewSet,
-    JournalARDViewSet
+    JournalARDViewSet,
+    bulk_insert_somtop_trial_balancesheet
     
 
 
@@ -233,13 +234,15 @@ urlpatterns = [
     path('api/depreciation-with-journal/', calculate_depreciation_api_with_journal, name='depreciation_with_journal'),
     # path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
     # path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
-    path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
+    # path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
     path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
     # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
 
-     # Store Procedure <---- Balance Sheet For DairyReport------>
-
+    # Store Procedure <---- Balance Sheet For DairyReport------>
+    path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
+    # Store Procedure <---- Bulk Insert Sub Trial Balance ------>
+    path('api/somtop-trial-balance/bulk-insert/', bulk_insert_somtop_trial_balancesheet, name='bulk-insert-somtop-trial-balancesheet'),
 
     # Store Procedure <---- Main Trial Balance ------>
     path('api/main-trial-balance/all-currencies/', main_trial_balance_all_currency_view, name='main-trial-balance-all'),
@@ -253,7 +256,6 @@ urlpatterns = [
          name='trial_balance_consolidated'),
     path('api/trial-balance/fcy/', trial_balance_fcy_view, name='trial-balance-fcy-post'),
     path('api/trial-balance/fcy/get/', trial_balance_fcy_get_view, name='trial-balance-fcy-get'),
-    path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
 
    
     # Stroe Procedure <---- Balance Sheet ------>
