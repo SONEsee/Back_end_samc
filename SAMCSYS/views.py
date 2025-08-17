@@ -12463,26 +12463,23 @@ def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=No
 
 def auto_reject_related_journals(asset_list_id, reason, user_id, request=None):
     """
-    🔴 ຄົ້ນຫາ + reject journal entries ດ້ວຍ detailed logging
+    🔴 ຄົ້ນຫາ + reject journal entries ໃນທັງ 3 ຕາຕະລາງ
     """
     try:
         print(f"🔴 Auto rejecting journals for asset: {asset_list_id}")
         
-        # Import DETB_JRNL_LOG
+        # Import ທັງ 3 models
         try:
-            from .models import DETB_JRNL_LOG
+            from .models import DETB_JRNL_LOG, DETB_JRNL_LOG_MASTER, DETB_JRNL_LOG_HIST
         except ImportError:
-            try:
-                from .models import DETB_JRNL_LOG_MASTER as DETB_JRNL_LOG
-            except ImportError:
-                return {
-                    'success': False,
-                    'error': 'DETB_JRNL_LOG model not found',
-                    'rejected_count': 0,
-                    'reference_numbers': []
-                }
+            return {
+                'success': False,
+                'error': 'Cannot import journal models',
+                'rejected_count': 0,
+                'reference_numbers': []
+            }
         
-        # ✅ ຄົ້ນຫາ journal entries
+        # ✅ ຄົ້ນຫາ reference numbers ຈາກ DETB_JRNL_LOG
         journal_entries = DETB_JRNL_LOG.objects.filter(
             Ac_relatives__icontains=str(asset_list_id),
             Auth_Status='U',
@@ -12500,41 +12497,79 @@ def auto_reject_related_journals(asset_list_id, reason, user_id, request=None):
                 'reference_numbers': []
             }
         
-        # ✅ Auto reject ແຕ່ລະ Reference_No
+        # ✅ Auto reject ແຕ່ລະ Reference_No ໃນທັງ 3 ຕາຕະລາງ
         rejected_count = 0
         current_time = timezone.now()
+        rejection_details = []
         
         for ref_no in reference_numbers:
             try:
                 print(f"📝 ກຳລັງ reject Reference_No: {ref_no}")
                 
-                entries_updated = DETB_JRNL_LOG.objects.filter(
+                # 1. อัปเดต DETB_JRNL_LOG (มี comments field)
+                log_updated = DETB_JRNL_LOG.objects.filter(
                     Reference_No=ref_no,
                     Ac_relatives__icontains=str(asset_list_id),
                     Auth_Status='U'
                 ).update(
                     Auth_Status='R',
-                    # detail=reason,  # ← ลบบรรทัดนี้ออก หรือ
-                    # comments=reason,  # ← หรือใช้ field อื่นที่มีอยู่จริง
+                    comments=reason,  # ✅ ใช้ comments แทน detail
                     Checker_Id_id=user_id,
                     Checker_DT_Stamp=current_time
                 )
                 
-                if entries_updated > 0:
+                # 2. อัปเดต DETB_JRNL_LOG_HIST (มี comments field)
+                hist_updated = DETB_JRNL_LOG_HIST.objects.filter(
+                    Reference_No=ref_no,
+                    Ac_relatives__icontains=str(asset_list_id),
+                    Auth_Status='U'
+                ).update(
+                    Auth_Status='R',
+                    comments=reason,  # ✅ ใช้ comments แทน detail
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=current_time
+                )
+                
+                # 3. อัปเดต DETB_JRNL_LOG_MASTER (ไม่มี comments field)
+                master_updated = DETB_JRNL_LOG_MASTER.objects.filter(
+                    Reference_No=ref_no,
+                    Auth_Status='U'
+                ).update(
+                    Auth_Status='R',
+                    # ไม่ใส่ comments เพราะไม่มี field นี้
+                    Checker_Id_id=user_id,
+                    Checker_DT_Stamp=current_time
+                )
+                
+                total_updated = log_updated + hist_updated + master_updated
+                
+                if total_updated > 0:
                     rejected_count += 1
-                    print(f"✅ Rejected: {ref_no} ({entries_updated} entries)")
+                    rejection_details.append({
+                        'reference_no': ref_no,
+                        'log_updated': log_updated,
+                        'hist_updated': hist_updated,
+                        'master_updated': master_updated,
+                        'total_updated': total_updated
+                    })
+                    print(f"✅ Rejected: {ref_no} (LOG:{log_updated}, HIST:{hist_updated}, MASTER:{master_updated})")
                 else:
                     print(f"❌ Failed: {ref_no} - No entries found")
                     
             except Exception as reject_error:
                 print(f"💥 Exception: {ref_no} - {str(reject_error)}")
+                rejection_details.append({
+                    'reference_no': ref_no,
+                    'error': str(reject_error)
+                })
         
         return {
             'success': True,
             'message': f'ປະມວນຜົນ {len(reference_numbers)} entries: reject ສຳເລັດ {rejected_count}',
             'rejected_count': rejected_count,
             'reference_numbers': reference_numbers,
-            'reason_applied': reason
+            'reason_applied': reason,
+            'rejection_details': rejection_details
         }
         
     except Exception as e:
@@ -18544,7 +18579,7 @@ def run_balance_sheet_acc_proc(segment: str, currency: str, period_code_id: str)
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated_afterEOC
+                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated
                     @segment = %s,
                     @currency = %s,
                     @period_code_id = %s
@@ -18579,7 +18614,7 @@ def run_balance_sheet_mfi_proc(segment: str, currency: str, period_code_id: str)
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated_afterEOC
+                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated
                     @segment = %s,
                     @currency = %s,
                     @period_code_id = %s
@@ -19915,6 +19950,7 @@ def run_trial_balance_all_currency_proc():
     try:
         with connection.cursor() as cursor:
             # Execute stored procedure without parameters
+            # sql = "EXEC dbo.Trial_Balance_All_Currency"
             sql = "EXEC dbo.Trial_Balance_All_Currency"
             
             cursor.execute(sql)
@@ -19945,7 +19981,7 @@ def run_trial_balance_by_currency_proc(currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated
+                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
                     @Currency = %s
             """
             
@@ -23087,6 +23123,7 @@ def get_current_user_id():
 # - create_journal_entry_via_api()
 # - create_depreciation_history()
 # - create_depreciation_in_month_record()
+# - create_depreciation_in_month_record()
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -24186,6 +24223,10 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 'target_journals': [],
                 'transaction_type': 'ARD'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+<<<<<<< HEAD
+       
+
+=======
         
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -24250,3 +24291,4 @@ class JournalARDViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Reference_No=Reference_No)
             logger.info(f"Fetching JRNL_LOG_HIST with Reference_No: {Reference_No}")
         return queryset
+>>>>>>> 7ecd858a6015c9f147b165e917073e8a04b9a31d
