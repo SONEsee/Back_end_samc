@@ -24223,6 +24223,11 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 'target_journals': [],
                 'transaction_type': 'ARD'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+<<<<<<< HEAD
+=======
+       
+
+>>>>>>> 29a21fb783872274a4b58f69fc8f6285f73a2d35
         
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -24287,6 +24292,7 @@ class JournalARDViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Reference_No=Reference_No)
             logger.info(f"Fetching JRNL_LOG_HIST with Reference_No: {Reference_No}")
         return queryset
+<<<<<<< HEAD
 
 
 
@@ -24650,3 +24656,5 @@ def bulk_insert_somtop_trial_balancesheet(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+=======
+>>>>>>> 29a21fb783872274a4b58f69fc8f6285f73a2d35

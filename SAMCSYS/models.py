@@ -256,7 +256,7 @@ class MTTB_Users(AbstractBaseUser, PermissionsMixin):
 
     # New field to upload a profile picture
     profile_picture = models.ImageField(
-        upload_to='profile_pictures/', null=True, blank=True
+        upload_to='user_profile/', null=True, blank=True
     )
 
     User_Status = models.CharField(
