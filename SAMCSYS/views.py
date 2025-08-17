@@ -24223,10 +24223,8 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 'target_journals': [],
                 'transaction_type': 'ARD'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-<<<<<<< HEAD
        
 
-=======
         
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -24291,4 +24289,3 @@ class JournalARDViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Reference_No=Reference_No)
             logger.info(f"Fetching JRNL_LOG_HIST with Reference_No: {Reference_No}")
         return queryset
->>>>>>> 7ecd858a6015c9f147b165e917073e8a04b9a31d
