@@ -10476,7 +10476,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 for entry in data.get('entries', []):
                     account_no = entry.get('Account_no')
-                    addl_sub_text = entry.get('Addl_sub_text')
+                    glsub_text = entry.get('glsub_text')
 
                     gl_code_part = account_no.split('.')[0] if '.' in account_no else account_no
 
@@ -10504,7 +10504,7 @@ class YourProcessViewSet(viewsets.ModelViewSet):
                         
                         glsub_record = MTTB_GLSub.objects.create(
                             glsub_code=account_no,
-                            glsub_Desc_la=addl_sub_text,
+                            glsub_Desc_la=glsub_text,
                             gl_code=gl_code_obj, 
                             Maker_DT_Stamp=current_time,
                             Checker_DT_Stamp=current_time,
@@ -11566,7 +11566,8 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         credit_account_str = str(accounting_method.credit_account_id) if accounting_method.credit_account_id is not None else ''
         
         # ✅ ສ້າງ Addl_sub_text ໂດຍໃສ່ມູນຄ່າ final_amount
-        addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {end_date_str}"
+        addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫ້ຽນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {end_date_str}"
+        glsub_text = f"ຫັກຄ່າຫຼູ້ຍຫ້ຽນ {asset_spec_str}"
         
         print(f"🔍 DEBUG addl_sub_text: {addl_sub_text}")
         
@@ -11586,6 +11587,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                     "Amount": final_amount,
                     "Dr_cr": "D",
                     "Addl_sub_text": addl_sub_text,
+                    "glsub_text": glsub_text,
                     "Ac_relatives": asset_list_id_str,
                 },
                 {
@@ -11593,6 +11595,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                     "Account_no": credit_account_str,
                     "Amount": final_amount,
                     "Dr_cr": "C",
+                    "glsub_text": glsub_text,
                     "Addl_sub_text": addl_sub_text,
                     "Ac_relatives": asset_list_id_str,
                 }
@@ -11666,7 +11669,7 @@ def find_related_journal_entries(asset_list_id):
         journal_entries_list = list(journal_entries)
         print(f"📊 [DEBUG] Found {len(journal_entries_list)} matching entries (Auth_Status='U' and Dr_cr='D')")
         
-        # ເກັບ Reference_No ທີ່ບໍ່ຊ້ຳກັນ
+        
         reference_numbers = []
         for entry in journal_entries_list:
             ref_no = entry['Reference_No']
