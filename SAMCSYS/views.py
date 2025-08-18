@@ -19953,6 +19953,7 @@ def run_trial_balance_all_currency_proc():
     try:
         with connection.cursor() as cursor:
             # Execute stored procedure without parameters
+            # sql = "EXEC dbo.Trial_Balance_All_Currency"
             sql = "EXEC dbo.Trial_Balance_All_Currency"
             
             cursor.execute(sql)
@@ -19983,7 +19984,7 @@ def run_trial_balance_by_currency_proc(currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated
+                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
                     @Currency = %s
             """
             
@@ -24225,6 +24226,8 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 'target_journals': [],
                 'transaction_type': 'ARD'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+       
+
         
 from rest_framework import viewsets, status
 from rest_framework.decorators import action

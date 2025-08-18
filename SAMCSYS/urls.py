@@ -238,6 +238,9 @@ urlpatterns = [
     # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
 
+     # Store Procedure <---- Balance Sheet For DairyReport------>
+
+
     # Store Procedure <---- Main Trial Balance ------>
     path('api/main-trial-balance/all-currencies/', main_trial_balance_all_currency_view, name='main-trial-balance-all'),
     path('api/main-trial-balance/by-currency/', main_trial_balance_by_currency_view, name='main-trial-balance-by-currency-post'),
@@ -252,6 +255,7 @@ urlpatterns = [
     path('api/trial-balance/fcy/get/', trial_balance_fcy_get_view, name='trial-balance-fcy-get'),
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
 
+   
     # Stroe Procedure <---- Balance Sheet ------>
     path('api/balance-sheet/acc/', balance_sheet_acc_view, name='balance-sheet-acc'),
     path('api/balance-sheet/mfi/', balance_sheet_mfi_view, name='balance-sheet-mfi'),
