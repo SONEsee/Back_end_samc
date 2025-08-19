@@ -9428,8 +9428,8 @@ def get_active_sessions(request):
         "own_role_id": user_role_id,
     }
 
-    SESSION_TIMEOUT_MINUTES = 30
-    time_limit = timezone.now() - timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+    # check session of today
+    today = timezone.now().date()
 
     latest_log_id_subquery = MTTB_USER_ACCESS_LOG.objects.filter(
         user_id=OuterRef('user_id')
@@ -9439,7 +9439,7 @@ def get_active_sessions(request):
         log_id__in=Subquery(latest_log_id_subquery),
         login_status='S',
         logout_datetime__isnull=True,
-        login_datetime__gte=time_limit
+        login_datetime__date=today   # ✅ กรองเฉพาะวันเดียวกับวันนี้
     ).select_related('user_id').order_by('-login_datetime')
 
     active_user_ids = list(
@@ -9460,15 +9460,13 @@ def get_active_sessions(request):
 
     return Response({
         "success": True,
-        **own_user_info,  # show user_id / user_name / role_id is own
+        **own_user_info,
         "active_sessions": sessions_data,
         "total_count": len(sessions_data),
         "total_active_users_all": len(active_user_ids),
         "active_user_ids": active_user_ids,
         "current_time": timezone.now()
     }, status=status.HTTP_200_OK)
-
-
 
 # @api_view(["GET"])
 # @permission_classes([IsAuthenticated])
