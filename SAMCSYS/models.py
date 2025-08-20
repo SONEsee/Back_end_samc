@@ -1905,6 +1905,8 @@ class Cashflow_Acc(models.Model):
     category = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
     is_subtotal = models.BooleanField(default=False, null=True, blank=True)
     is_total = models.BooleanField(default=False)
+    Extensions = models.CharField(max_length=255, null=True, blank=True)  # ຈຳນວນສູນທີ່ເພີ່ມໃນລາຍງານ
+    Reductions = models.CharField(max_length=255, null=True, blank=True)  # ຈຳນວນສູນທີ່ລົບໃນລາຍງານ
     class Meta:
         verbose_name_plural = 'Cashflow_Acc'
 
