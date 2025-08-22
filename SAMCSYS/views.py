@@ -9428,8 +9428,8 @@ def get_active_sessions(request):
         "own_role_id": user_role_id,
     }
 
-    # check session of today
-    today = timezone.now().date()
+    SESSION_TIMEOUT_MINUTES = 30
+    time_limit = timezone.now() - timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
     latest_log_id_subquery = MTTB_USER_ACCESS_LOG.objects.filter(
         user_id=OuterRef('user_id')
@@ -9439,7 +9439,7 @@ def get_active_sessions(request):
         log_id__in=Subquery(latest_log_id_subquery),
         login_status='S',
         logout_datetime__isnull=True,
-        login_datetime__date=today   # ✅ กรองเฉพาะวันเดียวกับวันนี้
+        login_datetime__gte=time_limit
     ).select_related('user_id').order_by('-login_datetime')
 
     active_user_ids = list(
@@ -9460,13 +9460,15 @@ def get_active_sessions(request):
 
     return Response({
         "success": True,
-        **own_user_info,
+        **own_user_info,  # show user_id / user_name / role_id is own
         "active_sessions": sessions_data,
         "total_count": len(sessions_data),
         "total_active_users_all": len(active_user_ids),
         "active_user_ids": active_user_ids,
         "current_time": timezone.now()
     }, status=status.HTTP_200_OK)
+
+
 
 # @api_view(["GET"])
 # @permission_classes([IsAuthenticated])
@@ -17987,7 +17989,7 @@ def run_trial_balance_fcy_proc(ac_ccy_id: str, date_start: str, date_end: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_fcy_afterEOC
+                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_fcy
                     @ac_ccy_id = %s,
                     @DateStart = %s,
                     @DateEnd = %s
@@ -18314,11 +18316,11 @@ def run_trial_balance_consolidated_proc(date_start: str, date_end: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy_afterEOC
+                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy
                     @DateStart = %s,
                     @DateEnd = %s
             """
-                
+            
             cursor.execute(sql, [date_start, date_end])
             
             # Get column names
@@ -18631,7 +18633,7 @@ def validate_currency_code(currency_code: str) -> bool:
         return False
     
     # Common currency codes supported
-    allowed_currencies = ['LAK', 'USD', 'THB']
+    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY', 'VND']
     
     return currency_code.upper() in allowed_currencies
 
@@ -18688,7 +18690,7 @@ def balance_sheet_acc_view(request):
     if not validate_currency_code(currency):
         return Response({
             "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -19479,362 +19481,6 @@ def get_gltype_lookup_dict():
         logger.error(f"Error creating glType lookup dictionary: {str(e)}")
         return {}
 
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def bulk_insert_dairy_reports(request):
-#     """
-#     Clear Dairy_Report table and insert data from both FCY and LCY stored procedures
-    
-#     Expected payload:
-#     {
-#         "date_start": "YYYY-MM-DD",
-#         "date_end": "YYYY-MM-DD", 
-#         "fin_year": "2025",
-#         "period_code": "",
-#         "category": "TRIAL_BALANCE"
-#     }
-#     """
-#     try:
-#         # Validate request data
-#         date_start = request.data.get("date_start")
-#         date_end = request.data.get("date_end")
-#         fin_year = request.data.get("fin_year", "2025")
-#         period_code = request.data.get("period_code", "")
-#         default_category = request.data.get("category", "TRIAL_BALANCE")
-
-#         if not all([date_start, date_end]):
-#             return Response({
-#                 'status': 'error',
-#                 'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#         # Date validation
-#         try:
-#             start_date_obj = datetime.strptime(date_start, '%Y-%m-%d').date()
-#             end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
-            
-#             if start_date_obj > end_date_obj:
-#                 return Response({
-#                     'status': 'error',
-#                     'message': 'ວັນທີເລີ່ມຕົ້ນຕ້ອງນ້ອຍກວ່າວັນທີສິ້ນສຸດ (Start date must be before end date)'
-#                 }, status=status.HTTP_400_BAD_REQUEST)
-                
-#         except ValueError:
-#             return Response({
-#                 'status': 'error',
-#                 'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#         logger.info(f"[BulkInsertDairyReports] Starting bulk insert operation from {date_start} to {date_end}")
-
-#         # Statistics tracking
-#         stats = {
-#             'cleared_records': 0,
-#             'fcy_records_fetched': 0,
-#             'fcy_records_inserted': 0,
-#             'fcy_records_failed': 0,
-#             'lcy_records_fetched': 0,
-#             'lcy_records_inserted': 0,
-#             'lcy_records_failed': 0,
-#             'total_inserted': 0,
-#             'total_failed': 0
-#         }
-        
-#         failed_records = []
-#         created_records = []
-
-#         # Create glType lookup dictionary for performance
-#         logger.info("Creating glType lookup dictionary...")
-#         gltype_lookup = get_gltype_lookup_dict()
-#         logger.info(f"glType lookup created with {len(gltype_lookup)} mappings")
-
-#         # Get related objects once
-#         ccy_objects = {}
-#         fin_year_obj = None
-#         period_obj = None
-
-#         try:
-#             if fin_year:
-#                 from .models import MTTB_Fin_Cycle  # Replace with actual import
-#                 fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
-#         except Exception as e:
-#             logger.warning(f"Financial year {fin_year} not found: {str(e)}")
-
-#         try:
-#             if period_code:
-#                 from .models import MTTB_Per_Code  # Replace with actual import
-#                 period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
-#         except Exception as e:
-#             logger.warning(f"Period code {period_code} not found: {str(e)}")
-
-#         with transaction.atomic():
-#             # Step 1: Clear existing Dairy_Report data
-#             try:
-#                 from .models import Dairy_Report  # Replace with actual import
-                
-#                 logger.info("Clearing existing Dairy_Report data...")
-#                 stats['cleared_records'] = Dairy_Report.objects.all().count()
-#                 Dairy_Report.objects.all().delete()
-#                 logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
-                
-#             except Exception as e:
-#                 logger.error(f"Error clearing Dairy_Report data: {str(e)}")
-#                 return Response({
-#                     'status': 'error',
-#                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
-#                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-#             # Step 2: Execute FCY stored procedure and insert FCY data
-#             logger.info("Executing FCY stored procedure...")
-#             try:
-#                 with connection.cursor() as cursor:
-#                     fcy_query = """
-#                         EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy
-#                             @DateStart = %s,
-#                             @DateEnd = %s
-#                     """
-#                     cursor.execute(fcy_query, [date_start, date_end])
-#                     fcy_columns = [col[0] for col in cursor.description]
-#                     fcy_results = [dict(zip(fcy_columns, row)) for row in cursor.fetchall()]
-
-#                 stats['fcy_records_fetched'] = len(fcy_results)
-#                 logger.info(f"FCY stored procedure completed. Rows fetched: {stats['fcy_records_fetched']}")
-
-#                 # Insert FCY data
-#                 for index, item in enumerate(fcy_results):
-#                     try:
-#                         gl_code = item.get('GL', '')
-#                         currency_code = item.get('Currency', '')
-                        
-#                         # Get or create currency object
-#                         if currency_code and currency_code not in ccy_objects:
-#                             try:
-#                                 from .models import MTTB_Ccy_DEFN  # Replace with actual import
-#                                 ccy_objects[currency_code] = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
-#                             except Exception:
-#                                 logger.warning(f"Currency {currency_code} not found")
-#                                 ccy_objects[currency_code] = None
-
-#                         # Determine glType
-#                         record_gltype = default_category
-#                         if gl_code and re.search(r'\.0', str(gl_code)):
-#                             record_gltype = '6'
-#                         else:
-#                             lookup_gltype = gltype_lookup.get(gl_code)
-#                             if lookup_gltype:
-#                                 record_gltype = lookup_gltype
-#                             else:
-#                                 direct_gltype = get_gltype_from_gl_code(gl_code)
-#                                 if direct_gltype:
-#                                     record_gltype = direct_gltype
-
-#                         # Create Dairy_Report record with FCY data
-#                         dairy_report = Dairy_Report(
-#                             DP_ID=len(created_records) + 1,
-#                             gl_code=gl_code,
-#                             Desc=item.get('_Desc', ''),
-#                             CCy_Code=ccy_objects.get(currency_code),
-#                             Fin_year=fin_year_obj,
-#                             Period_code=period_obj,
-#                             StartDate=start_date_obj,
-#                             EndDate=end_date_obj,
-#                             Category=record_gltype,
-#                             # FCY fields from stored procedure
-#                             OP_DR=safe_decimal_convert(item.get('Opening_Dr_FCY', 0)),
-#                             OP_CR=safe_decimal_convert(item.get('Opening_Cr_FCY', 0)),
-#                             Mo_DR=safe_decimal_convert(item.get('Flow_Dr_FCY', 0)),
-#                             Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_FCY', 0)),
-#                             C1_DR=safe_decimal_convert(item.get('Closing_Dr_FCY', 0)),
-#                             C1_CR=safe_decimal_convert(item.get('Closing_Cr_FCY', 0)),
-#                             # LCY fields set to 0 for FCY records
-#                             OP_DR_lcy=safe_decimal_convert(0),
-#                             OP_CR_lcy=safe_decimal_convert(0),
-#                             Mo_DR_lcy=safe_decimal_convert(0),
-#                             Mo_Cr_lcy=safe_decimal_convert(0),
-#                             C1_DR_lcy=safe_decimal_convert(0),
-#                             C1_CR_lcy=safe_decimal_convert(0),
-#                             Maker_Id=request.user,
-#                             MSegment=item.get('MSegment', '')
-#                         )
-                        
-#                         dairy_report.full_clean()
-#                         dairy_report.save()
-                        
-#                         stats['fcy_records_inserted'] += 1
-#                         created_records.append({
-#                             'type': 'FCY',
-#                             'gl_code': gl_code,
-#                             'currency': currency_code,
-#                             'category': record_gltype
-#                         })
-                        
-#                     except Exception as e:
-#                         stats['fcy_records_failed'] += 1
-#                         error_msg = f"FCY record {index} error: {str(e)}"
-#                         logger.error(error_msg)
-#                         failed_records.append({
-#                             'type': 'FCY',
-#                             'index': index,
-#                             'gl_code': item.get('GL', 'Unknown'),
-#                             'currency': item.get('Currency', ''),
-#                             'error': error_msg
-#                         })
-
-#             except Exception as e:
-#                 logger.error(f"Error executing FCY stored procedure: {str(e)}")
-#                 return Response({
-#                     'status': 'error',
-#                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ FCY stored procedure: {str(e)}'
-#                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-#             # Step 3: Execute LCY stored procedure and insert LCY data
-#             logger.info("Executing LCY consolidated stored procedure...")
-#             try:
-#                 with connection.cursor() as cursor:
-#                     lcy_query = """
-#                         EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy
-#                             @DateStart = %s,
-#                             @DateEnd = %s
-#                     """
-#                     cursor.execute(lcy_query, [date_start, date_end])
-#                     lcy_columns = [col[0] for col in cursor.description]
-#                     lcy_results = [dict(zip(lcy_columns, row)) for row in cursor.fetchall()]
-
-#                 stats['lcy_records_fetched'] = len(lcy_results)
-#                 logger.info(f"LCY stored procedure completed. Rows fetched: {stats['lcy_records_fetched']}")
-
-#                 # Get LAK currency object
-#                 lak_ccy_obj = None
-#                 try:
-#                     from .models import MTTB_Ccy_DEFN  # Replace with actual import
-#                     lak_ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code='LAK')
-#                 except Exception:
-#                     logger.warning("LAK currency not found")
-
-#                 # Insert LCY data
-#                 for index, item in enumerate(lcy_results):
-#                     try:
-#                         gl_code = item.get('GL_Code', '')
-                        
-#                         # Determine glType
-#                         record_gltype = default_category
-#                         if gl_code and re.search(r'\.0', str(gl_code)):
-#                             record_gltype = '6'
-#                         else:
-#                             lookup_gltype = gltype_lookup.get(gl_code)
-#                             if lookup_gltype:
-#                                 record_gltype = lookup_gltype
-#                             else:
-#                                 direct_gltype = get_gltype_from_gl_code(gl_code)
-#                                 if direct_gltype:
-#                                     record_gltype = direct_gltype
-
-#                         # Create Dairy_Report record with LCY data
-#                         dairy_report = Dairy_Report(
-#                             DP_ID=len(created_records) + 1,
-#                             gl_code=gl_code,
-#                             Desc=item.get('Description', ''),
-#                             CCy_Code=lak_ccy_obj,
-#                             Fin_year=fin_year_obj,
-#                             Period_code=period_obj,
-#                             StartDate=start_date_obj,
-#                             EndDate=end_date_obj,
-#                             Category=record_gltype,
-#                             # FCY fields set to 0 for LCY records
-#                             OP_DR=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
-#                             OP_CR=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
-#                             Mo_DR=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
-#                             Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
-#                             C1_DR=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
-#                             C1_CR=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
-#                             # LCY fields from stored procedure
-#                             OP_DR_lcy=safe_decimal_convert(0),
-#                             OP_CR_lcy=safe_decimal_convert(0),
-#                             Mo_DR_lcy=safe_decimal_convert(0),
-#                             Mo_Cr_lcy=safe_decimal_convert(0),
-#                             C1_DR_lcy=safe_decimal_convert(0),
-#                             C1_CR_lcy=safe_decimal_convert(0),
-#                             Maker_Id=request.user,
-#                             MSegment=item.get('MSegment', '')
-#                         )
-                        
-#                         dairy_report.full_clean()
-#                         dairy_report.save()
-                        
-#                         stats['lcy_records_inserted'] += 1
-#                         created_records.append({
-#                             'type': 'LCY',
-#                             'gl_code': gl_code,
-#                             'currency': 'LAK',
-#                             'category': record_gltype
-#                         })
-                        
-#                     except Exception as e:
-#                         stats['lcy_records_failed'] += 1
-#                         error_msg = f"LCY record {index} error: {str(e)}"
-#                         logger.error(error_msg)
-#                         failed_records.append({
-#                             'type': 'LCY',
-#                             'index': index,
-#                             'gl_code': item.get('GL_Code', 'Unknown'),
-#                             'currency': 'LAK',
-#                             'error': error_msg
-#                         })
-
-#             except Exception as e:
-#                 logger.error(f"Error executing LCY stored procedure: {str(e)}")
-#                 return Response({
-#                     'status': 'error',
-#                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ LCY stored procedure: {str(e)}'
-#                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-#         # Calculate totals
-#         stats['total_inserted'] = stats['fcy_records_inserted'] + stats['lcy_records_inserted']
-#         stats['total_failed'] = stats['fcy_records_failed'] + stats['lcy_records_failed']
-
-#         # Prepare response
-#         response_data = {
-#             'status': 'success',
-#             'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records)',
-#             'date_range': f"{date_start} to {date_end}",
-#             'statistics': {
-#                 'cleared_records': stats['cleared_records'],
-#                 'fcy_procedure': {
-#                     'fetched': stats['fcy_records_fetched'],
-#                     'inserted': stats['fcy_records_inserted'],
-#                     'failed': stats['fcy_records_failed']
-#                 },
-#                 'lcy_procedure': {
-#                     'fetched': stats['lcy_records_fetched'],
-#                     'inserted': stats['lcy_records_inserted'],
-#                     'failed': stats['lcy_records_failed']
-#                 },
-#                 'totals': {
-#                     'inserted': stats['total_inserted'],
-#                     'failed': stats['total_failed']
-#                 }
-#             },
-#             'sample_created_records': created_records[:5] if created_records else []
-#         }
-
-#         if failed_records:
-#             response_data['failed_records_sample'] = failed_records[:5]
-#             response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
-
-#         logger.info(f"Bulk insert operation completed successfully:")
-#         logger.info(f"- Cleared: {stats['cleared_records']} records")
-#         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
-#         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
-#         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
-
-#         return Response(response_data, status=status.HTTP_201_CREATED)
-
-#     except Exception as e:
-#         logger.error(f"Bulk insert dairy reports error: {str(e)}")
-#         return Response({
-#             'status': 'error',
-#             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
-#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_dairy_reports(request):
@@ -19845,18 +19491,17 @@ def bulk_insert_dairy_reports(request):
     {
         "date_start": "YYYY-MM-DD",
         "date_end": "YYYY-MM-DD", 
+        "fin_year": "2025",
+        "period_code": "",
         "category": "TRIAL_BALANCE"
     }
-    
-    Note: 
-    - period_code is automatically calculated from date_end (YYYYMM format)
-    - fin_year is automatically calculated from date_end (YYYY format)
     """
     try:
         # Validate request data
         date_start = request.data.get("date_start")
         date_end = request.data.get("date_end")
         fin_year = request.data.get("fin_year", "2025")
+        period_code = request.data.get("period_code", "")
         default_category = request.data.get("category", "TRIAL_BALANCE")
 
         if not all([date_start, date_end]):
@@ -19865,7 +19510,7 @@ def bulk_insert_dairy_reports(request):
                 'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Date validation and period_code calculation
+        # Date validation
         try:
             start_date_obj = datetime.strptime(date_start, '%Y-%m-%d').date()
             end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
@@ -19875,12 +19520,6 @@ def bulk_insert_dairy_reports(request):
                     'status': 'error',
                     'message': 'ວັນທີເລີ່ມຕົ້ນຕ້ອງນ້ອຍກວ່າວັນທີສິ້ນສຸດ (Start date must be before end date)'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Auto-calculate period_code from date_end (YYYYMM format)
-            period_code = end_date_obj.strftime('%Y%m')
-            
-            # Auto-calculate fin_year from date_end (YYYY format)
-            fin_year = end_date_obj.strftime('%Y')
                 
         except ValueError:
             return Response({
@@ -19888,7 +19527,7 @@ def bulk_insert_dairy_reports(request):
                 'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        logger.info(f"[BulkInsertDairyReports] Starting bulk insert operation from {date_start} to {date_end}, period: {period_code}, fin_year: {fin_year}")
+        logger.info(f"[BulkInsertDairyReports] Starting bulk insert operation from {date_start} to {date_end}")
 
         # Statistics tracking
         stats = {
@@ -20160,8 +19799,6 @@ def bulk_insert_dairy_reports(request):
             'status': 'success',
             'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records)',
             'date_range': f"{date_start} to {date_end}",
-            'period_code': period_code,
-            'fin_year': fin_year,
             'statistics': {
                 'cleared_records': stats['cleared_records'],
                 'fcy_procedure': {
@@ -20188,7 +19825,6 @@ def bulk_insert_dairy_reports(request):
 
         logger.info(f"Bulk insert operation completed successfully:")
         logger.info(f"- Cleared: {stats['cleared_records']} records")
-        logger.info(f"- Period: {period_code}, Fin Year: {fin_year}")
         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
@@ -20256,7 +19892,6 @@ class CompanyProfileViewSet(viewsets.ModelViewSet):
 
 
 # Main Trial Balance
-# Main Trial Balance
 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
@@ -20268,31 +19903,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_trial_balance_all_currency_proc(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str):
+def run_trial_balance_all_currency_proc():
     """
-    Execute the trial balance by currency stored procedure (used for both single and all currency queries)
-    
-    Args:
-        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
-        m_segment (str): Market segment (LCY, FCY)
-        fin_year_id (str): Financial year (e.g., 2025)
-        period_code_id (str): Period code (e.g., 202508)
+    Execute the trial balance all currency stored procedure
     
     Returns:
         list: Query results as list of dictionaries
     """
     try:
         with connection.cursor() as cursor:
-            # Use the same procedure that has the correct parameter structure
-            sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
-                    @CCy_Code_id = %s,
-                    @MSegment = %s,
-                    @Fin_year_id = %s,
-                    @Period_code_id = %s
-            """
+            # Execute stored procedure without parameters
+            sql = "EXEC dbo.Trial_Balance_All_Currency"
             
-            cursor.execute(sql, [ccy_code_id, m_segment, fin_year_id, period_code_id])
+            cursor.execute(sql)
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20303,18 +19926,15 @@ def run_trial_balance_all_currency_proc(ccy_code_id: str, m_segment: str, fin_ye
             return results
             
     except Exception as e:
-        logger.error(f"Error executing trial balance procedure: {str(e)}")
+        logger.error(f"Error executing trial balance all currency procedure: {str(e)}")
         raise
 
-def run_trial_balance_by_currency_proc(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str):
+def run_trial_balance_by_currency_proc(currency: str):
     """
     Execute the trial balance by currency stored procedure
     
     Args:
-        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
-        m_segment (str): Market segment (LCY, FCY)
-        fin_year_id (str): Financial year (e.g., 2025)
-        period_code_id (str): Period code (e.g., 202508)
+        currency (str): Currency code (LAK, USD, THB, etc.)
     
     Returns:
         list: Query results as list of dictionaries
@@ -20323,14 +19943,11 @@ def run_trial_balance_by_currency_proc(ccy_code_id: str, m_segment: str, fin_yea
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
-                    @CCy_Code_id = %s,
-                    @MSegment = %s,
-                    @Fin_year_id = %s,
-                    @Period_code_id = %s
+                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated
+                    @Currency = %s
             """
             
-            cursor.execute(sql, [ccy_code_id, m_segment, fin_year_id, period_code_id])
+            cursor.execute(sql, [currency])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20357,8 +19974,8 @@ def validate_currency_code(currency_code: str) -> bool:
     if not currency_code or not isinstance(currency_code, str):
         return False
     
-    # Check length (should be 3-4 characters)
-    if len(currency_code) < 3 or len(currency_code) > 4:
+    # Check length (should be 3-5 characters)
+    if len(currency_code) < 3 or len(currency_code) > 5:
         return False
     
     # Common currency codes supported
@@ -20366,153 +19983,39 @@ def validate_currency_code(currency_code: str) -> bool:
     
     return currency_code.upper() in allowed_currencies
 
-def validate_market_segment(m_segment: str) -> bool:
-    """
-    Validate market segment
-    
-    Args:
-        m_segment (str): Market segment to validate
-    
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    if not m_segment or not isinstance(m_segment, str):
-        return False
-    
-    allowed_segments = ['LCY', 'FCY']
-    return m_segment.upper() in allowed_segments
-
-def validate_financial_year(fin_year: str) -> bool:
-    """
-    Validate financial year format
-    
-    Args:
-        fin_year (str): Financial year to validate
-    
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    if not fin_year or not isinstance(fin_year, str):
-        return False
-    
-    # Should be 4 digits and reasonable year range
-    try:
-        year = int(fin_year)
-        return 2020 <= year <= 2050 and len(fin_year) == 4
-    except ValueError:
-        return False
-
-def validate_period_code(period_code: str) -> bool:
-    """
-    Validate period code format (YYYYMM)
-    
-    Args:
-        period_code (str): Period code to validate
-    
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    if not period_code or not isinstance(period_code, str):
-        return False
-    
-    # Should be 6 digits (YYYYMM format)
-    if len(period_code) != 6:
-        return False
-    
-    try:
-        year = int(period_code[:4])
-        month = int(period_code[4:6])
-        return 2020 <= year <= 2050 and 1 <= month <= 12
-    except ValueError:
-        return False
-
-def validate_trial_balance_params(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str) -> tuple:
-    """
-    Validate all trial balance parameters
-    
-    Returns:
-        tuple: (is_valid: bool, error_message: str)
-    """
-    if not validate_currency_code(ccy_code_id):
-        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code)"
-    
-    if not validate_market_segment(m_segment):
-        return False, "ປະເພດຕະຫຼາດບໍ່ຖືກຕ້ອງ (ຕ້ອງເປັນ LCY ຫຼື FCY) (Invalid market segment, must be LCY or FCY)"
-    
-    if not validate_financial_year(fin_year_id):
-        return False, "ປີການເງິນບໍ່ຖືກຕ້ອງ (Invalid financial year)"
-    
-    if not validate_period_code(period_code_id):
-        return False, "ລະຫັດງວດບໍ່ຖືກຕ້ອງ (ຮູບແບບ: YYYYMM) (Invalid period code format: YYYYMM)"
-    
-    return True, ""
-
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def main_trial_balance_all_currency_view(request):
     """
-    API endpoint for main trial balance by currency and segment (Category <= 5)
+    API endpoint for main trial balance all currencies (GL codes <= 5 digits)
     
-    Required parameters:
-    - ccy_code_id: Currency code (LAK, USD, THB, etc.)
-    - m_segment: Market segment (LCY, FCY)
-    - fin_year_id: Financial year (e.g., 2025)
-    - period_code_id: Period code (e.g., 202508)
+    This endpoint doesn't require any parameters as it returns all currencies
     
     Returns:
     {
         "status": "success|error",
         "message": "Description",
         "count": number_of_records,
-        "data": [trial_balance_records],
-        "parameters": {parameters_used}
+        "data": [trial_balance_records]
     }
     """
     try:
-        # Get parameters from request
-        if request.method == 'GET':
-            ccy_code_id = request.GET.get('ccy_code_id', '').strip().upper()
-            m_segment = request.GET.get('m_segment', '').strip().upper()
-            fin_year_id = request.GET.get('fin_year_id', '').strip()
-            period_code_id = request.GET.get('period_code_id', '').strip()
-        else:  # POST
-            ccy_code_id = request.data.get('ccy_code_id', '').strip().upper()
-            m_segment = request.data.get('m_segment', '').strip().upper()
-            fin_year_id = request.data.get('fin_year_id', '').strip()
-            period_code_id = request.data.get('period_code_id', '').strip()
-        
-        # Validate parameters
-        is_valid, error_message = validate_trial_balance_params(ccy_code_id, m_segment, fin_year_id, period_code_id)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[MainTrialBalance] Executing procedure with params: "
-                   f"CCy={ccy_code_id}, Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
+        logger.info(f"[MainTrialBalance-AllCurrency] Executing procedure for all currencies")
         
         # Execute stored procedure
-        result = run_trial_balance_all_currency_proc(ccy_code_id, m_segment, fin_year_id, period_code_id)
+        result = run_trial_balance_all_currency_proc()
         
-        logger.info(f"[MainTrialBalance] Procedure completed successfully. Records: {len(result)}")
+        logger.info(f"[MainTrialBalance-AllCurrency] Procedure completed successfully. Records: {len(result)}")
         
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນ Trial Balance ທຸກສະກຸນເງິນສຳເລັດ (Main trial balance retrieved successfully)",
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ທຸກສະກຸນເງິນສຳເລັດ (Main trial balance for all currencies retrieved successfully)",
             "count": len(result),
-            "data": result,
-            "parameters": {
-                "ccy_code_id": ccy_code_id,
-                "m_segment": m_segment,
-                "fin_year_id": fin_year_id,
-                "period_code_id": period_code_id
-            }
+            "data": result
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.exception(f"[MainTrialBalance] Error executing stored procedure: {str(e)}")
+        logger.exception(f"[MainTrialBalance-AllCurrency] Error executing stored procedure: {str(e)}")
         
         return Response({
             "status": "error",
@@ -20520,78 +20023,292 @@ def main_trial_balance_all_currency_view(request):
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@api_view(['GET', 'POST'])
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def trial_balance_by_currency_view(request):
+def main_trial_balance_by_currency_view(request):
     """
-    API endpoint for trial balance by specific currency
+    API endpoint for main trial balance by specific currency
     
-    Required parameters:
-    - ccy_code_id: Currency code (LAK, USD, THB, etc.)
-    - m_segment: Market segment (LCY, FCY)
-    - fin_year_id: Financial year (e.g., 2025)
-    - period_code_id: Period code (e.g., 202508)
+    Expected payload:
+    {
+        "currency": "LAK|USD|THB|etc"
+    }
     
     Returns:
     {
         "status": "success|error",
         "message": "Description",
+        "currency": "currency_code",
         "count": number_of_records,
-        "data": [trial_balance_records],
-        "parameters": {parameters_used}
+        "data": [trial_balance_records]
     }
     """
+    # Extract currency parameter from request
+    currency = request.data.get("currency")
+    
+    # Validate required parameter
+    if not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີຂໍ້ມູນສະກຸນເງິນ: currency ແມ່ນຕ້ອງການ (Missing required parameter: currency is required)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    currency = currency.upper()
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
-        # Get parameters from request
-        if request.method == 'GET':
-            ccy_code_id = request.GET.get('ccy_code_id', '').strip().upper()
-            m_segment = request.GET.get('m_segment', '').strip().upper()
-            fin_year_id = request.GET.get('fin_year_id', '').strip()
-            period_code_id = request.GET.get('period_code_id', '').strip()
-        else:  # POST
-            ccy_code_id = request.data.get('ccy_code_id', '').strip().upper()
-            m_segment = request.data.get('m_segment', '').strip().upper()
-            fin_year_id = request.data.get('fin_year_id', '').strip()
-            period_code_id = request.data.get('period_code_id', '').strip()
-        
-        # Validate parameters
-        is_valid, error_message = validate_trial_balance_params(ccy_code_id, m_segment, fin_year_id, period_code_id)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[TrialBalance-ByCurrency] Executing procedure with params: "
-                   f"CCy={ccy_code_id}, Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
+        logger.info(f"[MainTrialBalance-ByCurrency] Executing procedure for currency={currency}")
         
         # Execute stored procedure
-        result = run_trial_balance_by_currency_proc(ccy_code_id, m_segment, fin_year_id, period_code_id)
+        result = run_trial_balance_by_currency_proc(currency)
         
-        logger.info(f"[TrialBalance-ByCurrency] Procedure completed successfully. Records: {len(result)}")
+        logger.info(f"[MainTrialBalance-ByCurrency] Procedure completed successfully. Currency: {currency}, Records: {len(result)}")
         
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສະກຸນເງິນ {ccy_code_id} ສຳເລັດ (Trial balance for {ccy_code_id} retrieved successfully)",
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສຳລັບ {currency} ສຳເລັດ (Main trial balance data for {currency} retrieved successfully)",
+            "currency": currency,
             "count": len(result),
-            "data": result,
-            "parameters": {
-                "ccy_code_id": ccy_code_id,
-                "m_segment": m_segment,
-                "fin_year_id": fin_year_id,
-                "period_code_id": period_code_id
-            }
+            "data": result
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.exception(f"[TrialBalance-ByCurrency] Error executing stored procedure: {str(e)}")
+        logger.exception(f"[MainTrialBalance-ByCurrency] Error executing stored procedure: {str(e)}")
         
         return Response({
             "status": "error",
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def main_trial_balance_by_currency_get_view(request):
+    """
+    GET endpoint for main trial balance by currency (using query parameters)
+    
+    Query parameters:
+    - currency: Currency code (LAK, USD, THB, etc.)
+    """
+    # Extract currency parameter from query params
+    currency = request.query_params.get("currency")
+    
+    # Validate required parameter
+    if not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີ query parameter ສະກຸນເງິນ: currency (Missing required query parameter: currency)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    currency = currency.upper()
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code. Supported: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[MainTrialBalance-ByCurrency-GET] Executing procedure for currency={currency}")
+        
+        # Execute stored procedure
+        result = run_trial_balance_by_currency_proc(currency)
+        
+        logger.info(f"[MainTrialBalance-ByCurrency-GET] Procedure completed successfully. Currency: {currency}, Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສຳລັບ {currency} ສຳເລັດ",
+            "currency": currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[MainTrialBalance-ByCurrency-GET] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Optional: ViewSet approach for more advanced functionality
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
+class MainTrialBalanceViewSet(viewsets.ViewSet):
+    """
+    ViewSet for Main Trial Balance operations
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['get', 'post'])
+    def all_currencies(self, request):
+        """
+        Get main trial balance for all currencies
+        
+        GET/POST: Returns all currencies data
+        """
+        return main_trial_balance_all_currency_view(request)
+    
+    @action(detail=False, methods=['post', 'get'])
+    def by_currency(self, request):
+        """
+        Get main trial balance by specific currency
+        
+        POST: Use request body
+        GET: Use query parameters
+        """
+        if request.method == 'POST':
+            return main_trial_balance_by_currency_view(request)
+        else:
+            return main_trial_balance_by_currency_get_view(request)
+    
+    @action(detail=False, methods=['get'])
+    def supported_currencies(self, request):
+        """
+        Get list of supported currencies for main trial balance
+        """
+        currencies = ['LAK', 'USD', 'THB']
+        
+        currency_details = {
+            'LAK': 'ກີບລາວ (Lao Kip)',
+            'USD': 'ໂດລາສະຫະລັດ (US Dollar)', 
+            'THB': 'ບາດໄທ (Thai Baht)'
+        }
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງລາຍການສະກຸນເງິນທີ່ຮອງຮັບສຳເລັດ (Supported currencies retrieved successfully)",
+            "count": len(currencies),
+            "data": {
+                "currencies": currencies,
+                "currency_details": currency_details
+            }
+        }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['post'])
+    def compare_currencies(self, request):
+        """
+        Compare trial balance data between multiple currencies
+        
+        Expected payload:
+        {
+            "currencies": ["USD", "THB", "EUR"]
+        }
+        """
+        currencies = request.data.get("currencies", [])
+        
+        if not currencies or not isinstance(currencies, list):
+            return Response({
+                "status": "error",
+                "message": "ບໍ່ມີລາຍການສະກຸນເງິນ ກະລຸນາໃຫ້ລາຍການສະກຸນເງິນ (Missing currencies list. Please provide array of currencies)",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate all currencies
+        invalid_currencies = []
+        for currency in currencies:
+            if not validate_currency_code(currency):
+                invalid_currencies.append(currency)
+        
+        if invalid_currencies:
+            return Response({
+                "status": "error",
+                "message": f"ສະກຸນເງິນບໍ່ຖືກຕ້ອງ: {', '.join(invalid_currencies)} (Invalid currencies)",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            comparison_data = {}
+            
+            # Get data for each currency
+            for currency in currencies:
+                currency = currency.upper()
+                result = run_trial_balance_by_currency_proc(currency)
+                comparison_data[currency] = {
+                    "count": len(result),
+                    "data": result
+                }
+            
+            return Response({
+                "status": "success",
+                "message": f"ສົມທຽບຂໍ້ມູນ Trial Balance ສຳລັບ {', '.join(currencies)} ສຳເລັດ",
+                "currencies": currencies,
+                "data": comparison_data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.exception(f"[MainTrialBalance-Compare] Error comparing currencies: {str(e)}")
+            
+            return Response({
+                "status": "error",
+                "message": "ເກີດຂໍ້ຜິດພາດໃນການສົມທຽບຂໍ້ມູນ (Error in comparison operation)",
+                "data": None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """
+        Get statistics summary for all currencies
+        """
+        try:
+            # Get all currency data
+            all_data = run_trial_balance_all_currency_proc()
+            
+            # Calculate statistics
+            total_records = len(all_data)
+            
+            # Group by currency if CCy_Code_id field exists
+            currency_stats = {}
+            category_stats = {}
+            
+            for record in all_data:
+                # Currency statistics
+                currency = record.get('CCy_Code_id', 'Unknown')
+                if currency not in currency_stats:
+                    currency_stats[currency] = 0
+                currency_stats[currency] += 1
+                
+                # Category statistics
+                category = record.get('Category', 'Unknown')
+                if category not in category_stats:
+                    category_stats[category] = 0
+                category_stats[category] += 1
+            
+            return Response({
+                "status": "success",
+                "message": "ດຶງສະຖິຕິ Trial Balance ສຳເລັດ (Trial balance statistics retrieved successfully)",
+                "data": {
+                    "total_records": total_records,
+                    "currency_breakdown": currency_stats,
+                    "category_breakdown": category_stats,
+                    "supported_currencies": ['LAK', 'USD', 'THB']
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.exception(f"[MainTrialBalance-Statistics] Error getting statistics: {str(e)}")
+            
+            return Response({
+                "status": "error",
+                "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງສະຖິຕິ (Error retrieving statistics)",
+                "data": None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -20603,18 +20320,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
-def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: str):
+def run_income_statement_acc_proc(segment: str, currency: str):
     """
     Execute the income statement ACC stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-        period_code_id (str): Period code in YYYYMM format
     
     Returns:
         list: Query results as list of dictionaries
@@ -20623,13 +20338,12 @@ def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: s
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated_afterEOC
+                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s,
-                    @period_code_id = %s
+                    @currency = %s
             """
             
-            cursor.execute(sql, [segment, currency, period_code_id])
+            cursor.execute(sql, [segment, currency])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20643,14 +20357,13 @@ def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: s
         logger.error(f"Error executing income statement ACC procedure: {str(e)}")
         raise
 
-def run_income_statement_mfi_proc(segment: str, currency: str, period_code_id: str):
+def run_income_statement_mfi_proc(segment: str, currency: str):
     """
     Execute the income statement MFI stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-        period_code_id (str): Period code in YYYYMM format
     
     Returns:
         list: Query results as list of dictionaries
@@ -20659,13 +20372,12 @@ def run_income_statement_mfi_proc(segment: str, currency: str, period_code_id: s
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated_afterEOC
+                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s,
-                    @period_code_id = %s
+                    @currency = %s
             """
             
-            cursor.execute(sql, [segment, currency, period_code_id])
+            cursor.execute(sql, [segment, currency])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20717,46 +20429,6 @@ def validate_currency_code(currency_code: str) -> bool:
     
     return currency_code.upper() in allowed_currencies
 
-def validate_period_code(period_code: str) -> bool:
-    """
-    Validate period code format (YYYYMM)
-    
-    Args:
-        period_code (str): Period code to validate
-    
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    if not period_code or not isinstance(period_code, str):
-        return False
-    
-    # Check if exactly 6 characters
-    if len(period_code) != 6:
-        return False
-    
-    # Check if format is YYYYMM using regex
-    pattern = r'^20\d{2}(0[1-9]|1[0-2])$'
-    if not re.match(pattern, period_code):
-        return False
-    
-    # Additional validation: check if it's a reasonable year and month
-    try:
-        year = int(period_code[:4])
-        month = int(period_code[4:6])
-        
-        # Check reasonable year range (2020-2030)
-        if year < 2020 or year > 2030:
-            return False
-            
-        # Check valid month (1-12)
-        if month < 1 or month > 12:
-            return False
-            
-        return True
-        
-    except ValueError:
-        return False
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def income_statement_acc_view(request):
@@ -20766,8 +20438,7 @@ def income_statement_acc_view(request):
     Expected payload:
     {
         "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB|etc",
-        "period_code_id": "YYYYMM"
+        "currency": "LAK|USD|THB|etc"
     }
     
     Returns:
@@ -20776,7 +20447,6 @@ def income_statement_acc_view(request):
         "message": "Description",
         "segment": "segment_type",
         "currency": "currency_code",
-        "period_code_id": "YYYYMM",
         "type": "ACC",
         "count": number_of_records,
         "data": [income_statement_records]
@@ -20785,20 +20455,18 @@ def income_statement_acc_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
-    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency or not period_code_id:
+    if not segment or not currency:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment, currency ແລະ period_code_id ແມ່ນຕ້ອງການ (Missing required parameters: segment, currency and period_code_id are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
-    period_code_id = str(period_code_id).strip()
     
     # Validate segment
     if not validate_segment(segment):
@@ -20816,37 +20484,22 @@ def income_statement_acc_view(request):
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate period code
-    if not validate_period_code(period_code_id):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດຊ່ວງເວລາບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ຮູບແບບ YYYYMM (ເຊັ່ນ: 202508) (Invalid period code. Please use YYYYMM format, e.g., 202508)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
-        logger.info(f"[IncomeStatement-ACC] Executing procedure for segment={segment}, currency={currency}, period={period_code_id}")
+        logger.info(f"[IncomeStatement-ACC] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_income_statement_acc_proc(segment, currency, period_code_id)
+        result = run_income_statement_acc_proc(segment, currency)
         
-        logger.info(f"[IncomeStatement-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period: {period_code_id}, Records: {len(result)}")
+        logger.info(f"[IncomeStatement-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
         
-        # Format period for display
-        year = period_code_id[:4]
-        month = period_code_id[4:6]
-        period_display = f"{month}/{year}"
-        
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບ {display_currency} ຊ່ວງ {period_display} ສຳເລັດ (Income statement ACC data retrieved successfully - {display_currency} for period {period_display})",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບ {display_currency} ສຳເລັດ (Income statement ACC data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
-            "period_code_id": period_code_id,
-            "period_display": period_display,
             "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
@@ -20858,7 +20511,7 @@ def income_statement_acc_view(request):
         
         return Response({
             "status": "error",
-            "message": f"ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບຊ່ວງ {period_code_id} (Internal server error occurred while retrieving income statement ACC data for period {period_code_id})",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC (Internal server error occurred while retrieving income statement ACC data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -20871,8 +20524,7 @@ def income_statement_mfi_view(request):
     Expected payload:
     {
         "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB|etc",
-        "period_code_id": "YYYYMM"
+        "currency": "LAK|USD|THB|etc"
     }
     
     Returns:
@@ -20881,7 +20533,6 @@ def income_statement_mfi_view(request):
         "message": "Description",
         "segment": "segment_type",
         "currency": "currency_code",
-        "period_code_id": "YYYYMM",
         "type": "MFI",
         "count": number_of_records,
         "data": [income_statement_records]
@@ -20890,20 +20541,18 @@ def income_statement_mfi_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
-    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency or not period_code_id:
+    if not segment or not currency:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment, currency ແລະ period_code_id ແມ່ນຕ້ອງການ (Missing required parameters: segment, currency and period_code_id are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
-    period_code_id = str(period_code_id).strip()
     
     # Validate segment
     if not validate_segment(segment):
@@ -20921,37 +20570,22 @@ def income_statement_mfi_view(request):
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate period code
-    if not validate_period_code(period_code_id):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດຊ່ວງເວລາບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ຮູບແບບ YYYYMM (ເຊັ່ນ: 202508) (Invalid period code. Please use YYYYMM format, e.g., 202508)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
-        logger.info(f"[IncomeStatement-MFI] Executing procedure for segment={segment}, currency={currency}, period={period_code_id}")
+        logger.info(f"[IncomeStatement-MFI] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_income_statement_mfi_proc(segment, currency, period_code_id)
+        result = run_income_statement_mfi_proc(segment, currency)
         
-        logger.info(f"[IncomeStatement-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period: {period_code_id}, Records: {len(result)}")
+        logger.info(f"[IncomeStatement-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
         
-        # Format period for display
-        year = period_code_id[:4]
-        month = period_code_id[4:6]
-        period_display = f"{month}/{year}"
-        
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບ {display_currency} ຊ່ວງ {period_display} ສຳເລັດ (Income statement MFI data retrieved successfully - {display_currency} for period {period_display})",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບ {display_currency} ສຳເລັດ (Income statement MFI data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
-            "period_code_id": period_code_id,
-            "period_display": period_display,
             "type": "MFI",
             "display_currency": display_currency,
             "count": len(result),
@@ -20963,7 +20597,7 @@ def income_statement_mfi_view(request):
         
         return Response({
             "status": "error",
-            "message": f"ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບຊ່ວງ {period_code_id} (Internal server error occurred while retrieving income statement MFI data for period {period_code_id})",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI (Internal server error occurred while retrieving income statement MFI data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -24980,7 +24614,6 @@ def bulk_insert_somtop_trial_balancesheet(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-<<<<<<< HEAD
 
 
 
@@ -25138,1987 +24771,3 @@ class AssetSummaryView(View):
             }, status=500)
 
 
-# ===============================
-# ໄຟລ์: asset_api.py
-# ຟັງຊັ້ນສຳລັບ API ດຶງຂໍ້ມູນຊັບສິນ
-# ===============================
-
-from django.http import JsonResponse
-from django.views import View
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.dateparse import parse_datetime
-from django.db import connection
-import json
-from datetime import datetime
-
-# ===============================
-# ຟັງຊັ້ນຫຼັກສຳລັບເອີ້ນ Stored Procedure
-# ===============================
-
-def get_asset_depreciation_report(asset_list_id=None, asset_type_id=None, 
-                                asset_status=None, start_date=None, end_date=None):
-    """
-    ຟັງຊັ້ນເອີ້ນ Stored Procedure ເພື່ອດຶງຂໍ້ມູນບົດລາຍງານຊັບສິນ
-    
-    Parameters:
-    - asset_list_id: ລະຫັດຊັບສິນສະເພາະ (ຖ້າຕ້ອງການ)
-    - asset_type_id: ປະເພດຊັບສິນ (1001, 1002, ...)
-    - asset_status: ສະຖານະຊັບສິນ (AC, UC, IA, ...)
-    - start_date: ວັນທີ່ເລີ່ມຕົ້ນ
-    - end_date: ວັນທີ່ສິ້ນສຸດ
-    
-    Returns:
-    - List ຂອງຂໍ້ມູນຊັບສິນ
-    """
-    try:
-        with connection.cursor() as cursor:
-            # ເອີ້ນ Stored Procedure
-            cursor.execute("""
-                EXEC [dbo].[Asset_List_GetAllList_Depreciation_Monthly] 
-                @asset_list_id_id = %s,
-                @asset_type_id = %s,
-                @asset_status = %s,
-                @startDate = %s,
-                @Enddate = %s
-            """, [asset_list_id, asset_type_id, asset_status, start_date, end_date])
-            
-            # ດຶງຊື່ຖັນ (columns)
-            columns = [col[0] for col in cursor.description]
-            
-            # ດຶງຂໍ້ມູນທັງໝົດ
-            rows = cursor.fetchall()
-            
-            # ປ່ຽນເປັນ list of dictionaries
-            result = []
-            for row in rows:
-                row_dict = dict(zip(columns, row))
-                
-                # ປ່ຽນ datetime objects ເປັນ string ສຳລັບ JSON
-                for key, value in row_dict.items():
-                    if isinstance(value, datetime):
-                        row_dict[key] = value.isoformat()
-                
-                result.append(row_dict)
-            
-            return result
-            
-    except Exception as e:
-        print(f"Error in get_asset_depreciation_report: {str(e)}")
-        raise e
-
-# ===============================
-# ຟັງຊັ້ນຄິດໄລ່ຄ່າລວມ
-# ===============================
-
-def calculate_asset_totals(asset_data):
-    """
-    ຄິດໄລ່ຄ່າລວມຕ່າງໆ ຈາກຂໍ້ມູນຊັບສິນ
-    
-    Parameters:
-    - asset_data: List ຂອງຂໍ້ມູນຊັບສິນ
-    
-    Returns:
-    - Dictionary ທີ່ມີຄ່າລວມຕ່າງໆ
-    """
-    totals = {
-        'total_asset_value': 0,
-        'total_depreciation_value': 0,
-        'total_remaining_value': 0,
-        'total_monthly_depreciation': 0,
-        'asset_count': len(asset_data)
-    }
-    
-    for asset in asset_data:
-        # ປ່ຽນ string ເປັນ float ຖ້າຈຳເປັນ
-        asset_value = float(asset.get('asset_value', 0) or 0)
-        accu_depreciation = float(asset.get('asset_accu_dpca_value', 0) or 0)
-        remaining_value = float(asset.get('asset_value_remain', 0) or 0)
-        monthly_depreciation = float(asset.get('asset_value_remainMonth', 0) or 0)
-        
-        totals['total_asset_value'] += asset_value
-        totals['total_depreciation_value'] += accu_depreciation
-        totals['total_remaining_value'] += remaining_value
-        totals['total_monthly_depreciation'] += monthly_depreciation
-    
-    return totals
-
-
-
-def parse_date_parameter(date_string):
-    """
-    ປັບແຕ່ງ date string ເປັນ datetime object
-    
-    Parameters:
-    - date_string: ວັນທີ່ໃນຮູບແບບ string
-    
-    Returns:
-    - datetime object ຫຼື None
-    """
-    if not date_string:
-        return None
-        
-   
-    try:
-       
-        return parse_datetime(date_string)
-    except:
-        try:
-          
-            return datetime.strptime(date_string, '%Y-%m-%d')
-        except:
-            try:
-              
-                return datetime.strptime(date_string, '%d/%m/%Y')
-            except:
-                return None
-
-
-
-@method_decorator(csrf_exempt, name='dispatch')
-class AssetDepreciationReportView(View):
-    """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ"""
-    
-    def get(self, request):
-        """GET method - ໃຊ້ query parameters"""
-        try:
-            # ດຶງ parameters ຈາກ URL
-            asset_list_id = request.GET.get('asset_list_id')
-            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
-            asset_status = request.GET.get('asset_status') or request.GET.get('status')
-            start_date_str = request.GET.get('start_date') or request.GET.get('start')
-            end_date_str = request.GET.get('end_date') or request.GET.get('end')
-            
-            # ປັບແຕ່ງວັນທີ່
-            start_date = parse_date_parameter(start_date_str)
-            end_date = parse_date_parameter(end_date_str)
-            
-            # ກວດສອບຮູບແບບວັນທີ່
-            if start_date_str and not start_date:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Invalid start_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
-                }, status=400)
-            
-            if end_date_str and not end_date:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Invalid end_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
-                }, status=400)
-            
-            # ດຶງຂໍ້ມູນຈາກ Stored Procedure
-            assets = get_asset_depreciation_report(
-                asset_list_id=asset_list_id,
-                asset_type_id=asset_type_id,
-                asset_status=asset_status,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            # ຄິດໄລ່ຄ່າລວມ
-            totals = calculate_asset_totals(assets)
-            
-            return JsonResponse({
-                'success': True,
-                'data': assets,
-                'totals': totals,
-                'filters': {
-                    'asset_list_id': asset_list_id,
-                    'asset_type_id': asset_type_id,
-                    'asset_status': asset_status,
-                    'start_date': start_date_str,
-                    'end_date': end_date_str
-                },
-                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
-            })
-            
-        except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
-            }, status=500)
-    
-    def post(self, request):
-        """POST method - ໃຊ້ JSON payload"""
-        try:
-            data = json.loads(request.body)
-            
-            # ດຶງຂໍ້ມູນຈາກ JSON
-            asset_list_id = data.get('asset_list_id')
-            asset_type_id = data.get('asset_type_id') or data.get('type')
-            asset_status = data.get('asset_status') or data.get('status')
-            start_date_str = data.get('start_date') or data.get('start')
-            end_date_str = data.get('end_date') or data.get('end')
-            
-            # ປັບແຕ່ງວັນທີ່
-            start_date = parse_date_parameter(start_date_str)
-            end_date = parse_date_parameter(end_date_str)
-            
-            # ດຶງຂໍ້ມູນ
-            assets = get_asset_depreciation_report(
-                asset_list_id=asset_list_id,
-                asset_type_id=asset_type_id,
-                asset_status=asset_status,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            # ຄິດໄລ່ຄ່າລວມ
-            totals = calculate_asset_totals(assets)
-            
-            return JsonResponse({
-                'success': True,
-                'data': assets,
-                'totals': totals,
-                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
-            })
-            
-        except json.JSONDecodeError:
-            return JsonResponse({
-                'success': False,
-                'error': 'JSON format ບໍ່ຖືກຕ້ອງ'
-            }, status=400)
-        except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
-            }, status=500)
-
-# ===============================
-# ຟັງຊັ້ນເສີມສຳລັບສະຖິຕິ
-# ===============================
-
-def get_asset_statistics(asset_type_id=None, start_date=None, end_date=None):
-    """
-    ດຶງສະຖິຕິສະຫຼຸບຂອງຊັບສິນ
-    """
-    try:
-        # ດຶງຂໍ້ມູນທັງໝົດ
-        assets = get_asset_depreciation_report(
-            asset_type_id=asset_type_id,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        # ສະຖິຕິຕາມສະຖານະ
-        status_stats = {}
-        type_stats = {}
-        
-        for asset in assets:
-            status = asset.get('asset_status', 'ບໍ່ລະບຸ')
-            asset_type = asset.get('asset_type_id_id', 'ບໍ່ລະບຸ')
-            
-            # ນັບຕາມສະຖານະ
-            if status in status_stats:
-                status_stats[status] += 1
-            else:
-                status_stats[status] = 1
-            
-            # ນັບຕາມປະເພດ
-            if asset_type in type_stats:
-                type_stats[asset_type] += 1
-            else:
-                type_stats[asset_type] = 1
-        
-        # ຄິດໄລ່ຄ່າລວມ
-        totals = calculate_asset_totals(assets)
-        
-        return {
-            'total_count': len(assets),
-            'status_breakdown': status_stats,
-            'type_breakdown': type_stats,
-            'financial_summary': totals
-        }
-        
-    except Exception as e:
-        print(f"Error in get_asset_statistics: {str(e)}")
-        raise e
-
-# ===============================
-# API View ສຳລັບສະຖິຕິ
-# ===============================
-
-class AssetStatisticsView(View):
-    """API View ສຳລັບສະຖິຕິສະຫຼຸບຊັບສິນ"""
-    
-    def get(self, request):
-        try:
-            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
-            start_date_str = request.GET.get('start_date') or request.GET.get('start')
-            end_date_str = request.GET.get('end_date') or request.GET.get('end')
-            
-            # ປັບແຕ່ງວັນທີ່
-            start_date = parse_date_parameter(start_date_str)
-            end_date = parse_date_parameter(end_date_str)
-            
-            # ດຶງສະຖິຕິ
-            stats = get_asset_statistics(
-                asset_type_id=asset_type_id,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            return JsonResponse({
-                'success': True,
-                'statistics': stats,
-                'filters': {
-                    'asset_type_id': asset_type_id,
-                    'start_date': start_date_str,
-                    'end_date': end_date_str
-                }
-            })
-            
-        except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
-            }, status=500)
-
-
-
-=======
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def bulk_insert_monthly_balancesheet_acc(request):
-    """
-    Clear Monthly_Balancesheet_acc records for specific period and insert fresh data 
-    from stored procedure for both LCY and FCY segments with multiple currencies
-    
-    Expected payload:
-    {
-        "date_end": "YYYY-MM-DD"
-    }
-    
-    Note: 
-    - period_code is automatically calculated from date_end (YYYYMM format)
-    - Only clears existing records for the calculated period, not the entire table
-    
-    Data Sources:
-    - LCY segment: LAK currency only
-    - FCY segment: LAK, USD, THB currencies
-    """
-    try:
-        # Validate request data
-        date_end = request.data.get("date_end")
-        
-        if not date_end:
-            return Response({
-                'status': 'error',
-                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ສິ້ນສຸດ (Missing required parameter: date_end)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Date validation and period_code calculation
-        try:
-            end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
-            period_code = end_date_obj.strftime('%Y%m')
-        except ValueError:
-            return Response({
-                'status': 'error',
-                'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        logger.info(f"[BulkInsertMonthlyBalancesheet] Starting operation for period: {period_code}")
-
-        # Statistics tracking
-        stats = {
-            'cleared_records': 0,
-            'lcy_records': 0,
-            'fcy_lak_records': 0,
-            'fcy_usd_records': 0,
-            'fcy_thb_records': 0,
-            'total_inserted': 0,
-            'total_failed': 0
-        }
-        
-        failed_records = []
-        created_records = []
-        
-        # Define segments and currencies to process
-        segments_config = [
-            {'segment': 'LCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'USD'},
-            {'segment': 'FCY', 'currency': 'THB'}
-        ]
-
-        with transaction.atomic():
-            # Step 1: Clear existing data for this specific period only
-            try:
-                from .models import Monthly_Balancesheet_acc
-                
-                logger.info(f"Checking for existing Monthly_Balancesheet_acc data for period {period_code}...")
-                existing_records = Monthly_Balancesheet_acc.objects.filter(period_code=period_code)
-                stats['cleared_records'] = existing_records.count()
-                
-                if stats['cleared_records'] > 0:
-                    logger.info(f"Found {stats['cleared_records']} existing records for period {period_code}, clearing them...")
-                    existing_records.delete()
-                    logger.info(f"Successfully cleared {stats['cleared_records']} existing records for period {period_code}")
-                else:
-                    logger.info(f"No existing records found for period {period_code}, proceeding with fresh insert")
-                
-            except Exception as e:
-                logger.error(f"Error clearing Monthly_Balancesheet_acc data for period {period_code}: {str(e)}")
-                return Response({
-                    'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າສຳລັບຊ່ວງ {period_code}: {str(e)} (Error clearing existing data for period {period_code})'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Step 2: Process each segment and currency combination
-            for config in segments_config:
-                segment = config['segment']
-                currency = config['currency']
-                
-                logger.info(f"Processing {segment} segment with {currency} currency...")
-                
-                try:
-                    with connection.cursor() as cursor:
-                        # Execute stored procedure
-                        sp_query = """
-                            EXEC [dbo].[balancesheet_acc_By_Currency_And_Consolidated_afterEOC]
-                                @segment = %s,
-                                @currency = %s,
-                                @period_code_id = %s
-                        """
-                        cursor.execute(sp_query, [segment, currency, period_code])
-                        
-                        # Get column names and results
-                        columns = [col[0] for col in cursor.description]
-                        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                        
-                        logger.info(f"{segment}-{currency}: Fetched {len(results)} records")
-                        
-                        # Insert records
-                        for index, item in enumerate(results):
-                            try:
-                                # Create Monthly_Balancesheet_acc record
-                                balance_record = Monthly_Balancesheet_acc(
-                                    no=item.get('no', ''),
-                                    report_number=item.get('report_number', ''),
-                                    description=item.get('description', ''),
-                                    total_Amount_Opening=str(item.get('total_Amount_Opening', 0)) if item.get('total_Amount_Opening') is not None else '0',
-                                    total_Amount_Current=str(item.get('total_Amount_Current', 0)) if item.get('total_Amount_Current') is not None else '0',
-                                    total_net_amount=str(item.get('total_net_amount', 0)) if item.get('total_net_amount') is not None else '0',
-                                    currency_display=item.get('currency_display', ''),
-                                    segment_type=item.get('segment_type', ''),
-                                    period_code=item.get('period_code', period_code)
-                                )
-                                
-                                balance_record.full_clean()
-                                balance_record.save()
-                                
-                                # Update statistics
-                                if segment == 'LCY':
-                                    stats['lcy_records'] += 1
-                                elif segment == 'FCY':
-                                    if currency == 'LAK':
-                                        stats['fcy_lak_records'] += 1
-                                    elif currency == 'USD':
-                                        stats['fcy_usd_records'] += 1
-                                    elif currency == 'THB':
-                                        stats['fcy_thb_records'] += 1
-                                
-                                stats['total_inserted'] += 1
-                                created_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'no': item.get('no', ''),
-                                    'description': item.get('description', '')[:50] + '...' if len(str(item.get('description', ''))) > 50 else item.get('description', '')
-                                })
-                                
-                            except Exception as e:
-                                stats['total_failed'] += 1
-                                error_msg = f"{segment}-{currency} record {index} error: {str(e)}"
-                                logger.error(error_msg)
-                                failed_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'index': index,
-                                    'no': item.get('no', 'Unknown'),
-                                    'error': error_msg
-                                })
-                                
-                except Exception as e:
-                    logger.error(f"Error executing stored procedure for {segment}-{currency}: {str(e)}")
-                    return Response({
-                        'status': 'error',
-                        'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ stored procedure ສຳລັບ {segment}-{currency}: {str(e)}'
-                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Prepare response
-        response_data = {
-            'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າຊ່ວງ {period_code}: {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records for period {period_code}, inserted {stats["total_inserted"]} new records)',
-            'period_code': period_code,
-            'date_end': date_end,
-            'statistics': {
-                'cleared_records': stats['cleared_records'],
-                'segments': {
-                    'lcy_records': stats['lcy_records'],
-                    'fcy_lak_records': stats['fcy_lak_records'],
-                    'fcy_usd_records': stats['fcy_usd_records'],
-                    'fcy_thb_records': stats['fcy_thb_records']
-                },
-                'totals': {
-                    'inserted': stats['total_inserted'],
-                    'failed': stats['total_failed']
-                }
-            },
-            'sample_created_records': created_records[:5] if created_records else []
-        }
-
-        if failed_records:
-            response_data['failed_records_sample'] = failed_records[:5]
-            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
-
-        logger.info(f"Monthly balancesheet insert operation completed successfully:")
-        logger.info(f"- Period: {period_code}")
-        logger.info(f"- Cleared existing records for period {period_code}: {stats['cleared_records']} records")
-        logger.info(f"- LCY: {stats['lcy_records']} records")
-        logger.info(f"- FCY-LAK: {stats['fcy_lak_records']} records")
-        logger.info(f"- FCY-USD: {stats['fcy_usd_records']} records")
-        logger.info(f"- FCY-THB: {stats['fcy_thb_records']} records")
-        logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
-
-        return Response(response_data, status=status.HTTP_201_CREATED)
-
-    except Exception as e:
-        logger.error(f"Bulk insert monthly balancesheet error: {str(e)}")
-        return Response({
-            'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def bulk_insert_monthly_balancesheet_mfi(request):
-    """
-    Clear Monthly_Balancesheet_mfi records for specific period and insert fresh data 
-    from stored procedure for both LCY and FCY segments with multiple currencies
-    
-    Expected payload:
-    {
-        "date_end": "YYYY-MM-DD"
-    }
-    
-    Note: 
-    - period_code is automatically calculated from date_end (YYYYMM format)
-    - Only clears existing records for the calculated period, not the entire table
-    
-    Data Sources:
-    - LCY segment: LAK currency only
-    - FCY segment: LAK, USD, THB currencies
-    """
-    try:
-        # Validate request data
-        date_end = request.data.get("date_end")
-        
-        if not date_end:
-            return Response({
-                'status': 'error',
-                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ສິ້ນສຸດ (Missing required parameter: date_end)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Date validation and period_code calculation
-        try:
-            end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
-            period_code = end_date_obj.strftime('%Y%m')
-        except ValueError:
-            return Response({
-                'status': 'error',
-                'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        logger.info(f"[BulkInsertMonthlyBalancesheetMFI] Starting operation for period: {period_code}")
-
-        # Statistics tracking
-        stats = {
-            'cleared_records': 0,
-            'lcy_records': 0,
-            'fcy_lak_records': 0,
-            'fcy_usd_records': 0,
-            'fcy_thb_records': 0,
-            'total_inserted': 0,
-            'total_failed': 0
-        }
-        
-        failed_records = []
-        created_records = []
-        
-        # Define segments and currencies to process
-        segments_config = [
-            {'segment': 'LCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'USD'},
-            {'segment': 'FCY', 'currency': 'THB'}
-        ]
-
-        with transaction.atomic():
-            # Step 1: Clear existing data for this specific period only
-            try:
-                from .models import Monthly_Balancesheet_mfi
-                
-                logger.info(f"Checking for existing Monthly_Balancesheet_mfi data for period {period_code}...")
-                existing_records = Monthly_Balancesheet_mfi.objects.filter(period_code=period_code)
-                stats['cleared_records'] = existing_records.count()
-                
-                if stats['cleared_records'] > 0:
-                    logger.info(f"Found {stats['cleared_records']} existing records for period {period_code}, clearing them...")
-                    existing_records.delete()
-                    logger.info(f"Successfully cleared {stats['cleared_records']} existing records for period {period_code}")
-                else:
-                    logger.info(f"No existing records found for period {period_code}, proceeding with fresh insert")
-                
-            except Exception as e:
-                logger.error(f"Error clearing Monthly_Balancesheet_mfi data for period {period_code}: {str(e)}")
-                return Response({
-                    'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າສຳລັບຊ່ວງ {period_code}: {str(e)} (Error clearing existing data for period {period_code})'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Step 2: Process each segment and currency combination
-            for config in segments_config:
-                segment = config['segment']
-                currency = config['currency']
-                
-                logger.info(f"Processing MFI {segment} segment with {currency} currency...")
-                
-                try:
-                    with connection.cursor() as cursor:
-                        # Execute stored procedure
-                        sp_query = """
-                            EXEC [dbo].[balancesheet_mfi_By_Currency_And_Consolidated_afterEOC]
-                                @segment = %s,
-                                @currency = %s,
-                                @period_code_id = %s
-                        """
-                        cursor.execute(sp_query, [segment, currency, period_code])
-                        
-                        # Get column names and results
-                        columns = [col[0] for col in cursor.description]
-                        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                        
-                        logger.info(f"MFI {segment}-{currency}: Fetched {len(results)} records")
-                        
-                        # Insert records
-                        for index, item in enumerate(results):
-                            try:
-                                # Create Monthly_Balancesheet_mfi record
-                                balance_record = Monthly_Balancesheet_mfi(
-                                    no=item.get('no', ''),
-                                    report_number=item.get('report_number', ''),
-                                    description=item.get('description', ''),
-                                    total_Amount_Opening=str(item.get('total_Amount_Opening', 0)) if item.get('total_Amount_Opening') is not None else '0',
-                                    total_Amount_Current=str(item.get('total_Amount_Current', 0)) if item.get('total_Amount_Current') is not None else '0',
-                                    total_net_amount=str(item.get('total_net_amount', 0)) if item.get('total_net_amount') is not None else '0',
-                                    currency_display=item.get('currency_display', ''),
-                                    segment_type=item.get('segment_type', ''),
-                                    period_code=item.get('period_code', period_code)
-                                )
-                                
-                                balance_record.full_clean()
-                                balance_record.save()
-                                
-                                # Update statistics
-                                if segment == 'LCY':
-                                    stats['lcy_records'] += 1
-                                elif segment == 'FCY':
-                                    if currency == 'LAK':
-                                        stats['fcy_lak_records'] += 1
-                                    elif currency == 'USD':
-                                        stats['fcy_usd_records'] += 1
-                                    elif currency == 'THB':
-                                        stats['fcy_thb_records'] += 1
-                                
-                                stats['total_inserted'] += 1
-                                created_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'no': item.get('no', ''),
-                                    'description': item.get('description', '')[:50] + '...' if len(str(item.get('description', ''))) > 50 else item.get('description', '')
-                                })
-                                
-                            except Exception as e:
-                                stats['total_failed'] += 1
-                                error_msg = f"MFI {segment}-{currency} record {index} error: {str(e)}"
-                                logger.error(error_msg)
-                                failed_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'index': index,
-                                    'no': item.get('no', 'Unknown'),
-                                    'error': error_msg
-                                })
-                                
-                except Exception as e:
-                    logger.error(f"Error executing MFI stored procedure for {segment}-{currency}: {str(e)}")
-                    return Response({
-                        'status': 'error',
-                        'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ MFI stored procedure ສຳລັບ {segment}-{currency}: {str(e)}'
-                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Prepare response
-        response_data = {
-            'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານ MFI ສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າຊ່ວງ {period_code}: {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (MFI Operation completed successfully! Cleared {stats["cleared_records"]} old records for period {period_code}, inserted {stats["total_inserted"]} new records)',
-            'period_code': period_code,
-            'date_end': date_end,
-            'report_type': 'MFI Balance Sheet',
-            'statistics': {
-                'cleared_records': stats['cleared_records'],
-                'segments': {
-                    'lcy_records': stats['lcy_records'],
-                    'fcy_lak_records': stats['fcy_lak_records'],
-                    'fcy_usd_records': stats['fcy_usd_records'],
-                    'fcy_thb_records': stats['fcy_thb_records']
-                },
-                'totals': {
-                    'inserted': stats['total_inserted'],
-                    'failed': stats['total_failed']
-                }
-            },
-            'sample_created_records': created_records[:5] if created_records else []
-        }
-
-        if failed_records:
-            response_data['failed_records_sample'] = failed_records[:5]
-            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
-
-        logger.info(f"Monthly MFI balancesheet insert operation completed successfully:")
-        logger.info(f"- Period: {period_code}")
-        logger.info(f"- Cleared existing MFI records for period {period_code}: {stats['cleared_records']} records")
-        logger.info(f"- MFI LCY: {stats['lcy_records']} records")
-        logger.info(f"- MFI FCY-LAK: {stats['fcy_lak_records']} records")
-        logger.info(f"- MFI FCY-USD: {stats['fcy_usd_records']} records")
-        logger.info(f"- MFI FCY-THB: {stats['fcy_thb_records']} records")
-        logger.info(f"- MFI Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
-
-        return Response(response_data, status=status.HTTP_201_CREATED)
-
-    except Exception as e:
-        logger.error(f"Bulk insert monthly MFI balancesheet error: {str(e)}")
-        return Response({
-            'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ MFI: {str(e)} (Error in MFI operation)'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def bulk_insert_monthly_incomestatement_acc(request):
-    """
-    Clear Monthly_Incomestatement_acc records for specific period and insert fresh data 
-    from stored procedure for both LCY and FCY segments with multiple currencies
-    
-    Expected payload:
-    {
-        "date_end": "YYYY-MM-DD"
-    }
-    
-    Note: 
-    - period_code is automatically calculated from date_end (YYYYMM format)
-    - Only clears existing records for the calculated period, not the entire table
-    
-    Data Sources:
-    - LCY segment: LAK currency only
-    - FCY segment: LAK, USD, THB currencies
-    """
-    try:
-        # Validate request data
-        date_end = request.data.get("date_end")
-        
-        if not date_end:
-            return Response({
-                'status': 'error',
-                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ສິ້ນສຸດ (Missing required parameter: date_end)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Date validation and period_code calculation
-        try:
-            end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
-            period_code = end_date_obj.strftime('%Y%m')
-        except ValueError:
-            return Response({
-                'status': 'error',
-                'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        logger.info(f"[BulkInsertMonthlyIncomestatementAcc] Starting operation for period: {period_code}")
-
-        # Statistics tracking
-        stats = {
-            'cleared_records': 0,
-            'lcy_records': 0,
-            'fcy_lak_records': 0,
-            'fcy_usd_records': 0,
-            'fcy_thb_records': 0,
-            'total_inserted': 0,
-            'total_failed': 0
-        }
-        
-        failed_records = []
-        created_records = []
-        
-        # Define segments and currencies to process
-        segments_config = [
-            {'segment': 'LCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'USD'},
-            {'segment': 'FCY', 'currency': 'THB'}
-        ]
-
-        with transaction.atomic():
-            # Step 1: Clear existing data for this specific period only
-            try:
-                from .models import Monthly_Incomestatement_acc
-                
-                logger.info(f"Checking for existing Monthly_Incomestatement_acc data for period {period_code}...")
-                existing_records = Monthly_Incomestatement_acc.objects.filter(period_code=period_code)
-                stats['cleared_records'] = existing_records.count()
-                
-                if stats['cleared_records'] > 0:
-                    logger.info(f"Found {stats['cleared_records']} existing records for period {period_code}, clearing them...")
-                    existing_records.delete()
-                    logger.info(f"Successfully cleared {stats['cleared_records']} existing records for period {period_code}")
-                else:
-                    logger.info(f"No existing records found for period {period_code}, proceeding with fresh insert")
-                
-            except Exception as e:
-                logger.error(f"Error clearing Monthly_Incomestatement_acc data for period {period_code}: {str(e)}")
-                return Response({
-                    'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າສຳລັບຊ່ວງ {period_code}: {str(e)} (Error clearing existing data for period {period_code})'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Step 2: Process each segment and currency combination
-            for config in segments_config:
-                segment = config['segment']
-                currency = config['currency']
-                
-                logger.info(f"Processing Income Statement ACC {segment} segment with {currency} currency...")
-                
-                try:
-                    with connection.cursor() as cursor:
-                        # Execute stored procedure
-                        sp_query = """
-                            EXEC [dbo].[incomestatement_acc_By_Currency_And_Consolidated_afterEOC]
-                                @segment = %s,
-                                @currency = %s,
-                                @period_code_id = %s
-                        """
-                        cursor.execute(sp_query, [segment, currency, period_code])
-                        
-                        # Get column names and results
-                        columns = [col[0] for col in cursor.description]
-                        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                        
-                        logger.info(f"Income Statement ACC {segment}-{currency}: Fetched {len(results)} records")
-                        
-                        # Insert records
-                        for index, item in enumerate(results):
-                            try:
-                                # Create Monthly_Incomestatement_acc record
-                                income_record = Monthly_Incomestatement_acc(
-                                    no=item.get('no', ''),
-                                    report_number=item.get('report_number', ''),
-                                    description=item.get('description', ''),
-                                    previous_month=str(item.get('previous_month', 0)) if item.get('previous_month') is not None else '0',
-                                    current_month=str(item.get('current_month', 0)) if item.get('current_month') is not None else '0',
-                                    net_change=str(item.get('net_change', 0)) if item.get('net_change') is not None else '0',
-                                    currency_display=item.get('currency_display', ''),
-                                    segment_type=item.get('segment_type', ''),
-                                    period_code=item.get('period_code', period_code)
-                                )
-                                
-                                income_record.full_clean()
-                                income_record.save()
-                                
-                                # Update statistics
-                                if segment == 'LCY':
-                                    stats['lcy_records'] += 1
-                                elif segment == 'FCY':
-                                    if currency == 'LAK':
-                                        stats['fcy_lak_records'] += 1
-                                    elif currency == 'USD':
-                                        stats['fcy_usd_records'] += 1
-                                    elif currency == 'THB':
-                                        stats['fcy_thb_records'] += 1
-                                
-                                stats['total_inserted'] += 1
-                                created_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'no': item.get('no', ''),
-                                    'description': item.get('description', '')[:50] + '...' if len(str(item.get('description', ''))) > 50 else item.get('description', '')
-                                })
-                                
-                            except Exception as e:
-                                stats['total_failed'] += 1
-                                error_msg = f"Income ACC {segment}-{currency} record {index} error: {str(e)}"
-                                logger.error(error_msg)
-                                failed_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'index': index,
-                                    'no': item.get('no', 'Unknown'),
-                                    'error': error_msg
-                                })
-                                
-                except Exception as e:
-                    logger.error(f"Error executing Income Statement ACC stored procedure for {segment}-{currency}: {str(e)}")
-                    return Response({
-                        'status': 'error',
-                        'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ Income Statement ACC stored procedure ສຳລັບ {segment}-{currency}: {str(e)}'
-                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Prepare response
-        response_data = {
-            'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານ Income Statement ACC ສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າຊ່ວງ {period_code}: {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Income Statement ACC Operation completed successfully! Cleared {stats["cleared_records"]} old records for period {period_code}, inserted {stats["total_inserted"]} new records)',
-            'period_code': period_code,
-            'date_end': date_end,
-            'report_type': 'Income Statement ACC',
-            'statistics': {
-                'cleared_records': stats['cleared_records'],
-                'segments': {
-                    'lcy_records': stats['lcy_records'],
-                    'fcy_lak_records': stats['fcy_lak_records'],
-                    'fcy_usd_records': stats['fcy_usd_records'],
-                    'fcy_thb_records': stats['fcy_thb_records']
-                },
-                'totals': {
-                    'inserted': stats['total_inserted'],
-                    'failed': stats['total_failed']
-                }
-            },
-            'sample_created_records': created_records[:5] if created_records else []
-        }
-
-        if failed_records:
-            response_data['failed_records_sample'] = failed_records[:5]
-            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
-
-        logger.info(f"Monthly Income Statement ACC insert operation completed successfully:")
-        logger.info(f"- Period: {period_code}")
-        logger.info(f"- Cleared existing Income ACC records for period {period_code}: {stats['cleared_records']} records")
-        logger.info(f"- Income ACC LCY: {stats['lcy_records']} records")
-        logger.info(f"- Income ACC FCY-LAK: {stats['fcy_lak_records']} records")
-        logger.info(f"- Income ACC FCY-USD: {stats['fcy_usd_records']} records")
-        logger.info(f"- Income ACC FCY-THB: {stats['fcy_thb_records']} records")
-        logger.info(f"- Income ACC Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
-
-        return Response(response_data, status=status.HTTP_201_CREATED)
-
-    except Exception as e:
-        logger.error(f"Bulk insert monthly Income Statement ACC error: {str(e)}")
-        return Response({
-            'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ Income Statement ACC: {str(e)} (Error in Income Statement ACC operation)'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def bulk_insert_monthly_incomestatement_mfi(request):
-    """
-    Clear Monthly_Incomestatement_mfi records for specific period and insert fresh data 
-    from stored procedure for both LCY and FCY segments with multiple currencies
-    
-    Expected payload:
-    {
-        "date_end": "YYYY-MM-DD"
-    }
-    
-    Note: 
-    - period_code is automatically calculated from date_end (YYYYMM format)
-    - Only clears existing records for the calculated period, not the entire table
-    
-    Data Sources:
-    - LCY segment: LAK currency only
-    - FCY segment: LAK, USD, THB currencies
-    """
-    try:
-        # Validate request data
-        date_end = request.data.get("date_end")
-        
-        if not date_end:
-            return Response({
-                'status': 'error',
-                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ສິ້ນສຸດ (Missing required parameter: date_end)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Date validation and period_code calculation
-        try:
-            end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
-            period_code = end_date_obj.strftime('%Y%m')
-        except ValueError:
-            return Response({
-                'status': 'error',
-                'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        logger.info(f"[BulkInsertMonthlyIncomestatementMFI] Starting operation for period: {period_code}")
-
-        # Statistics tracking
-        stats = {
-            'cleared_records': 0,
-            'lcy_records': 0,
-            'fcy_lak_records': 0,
-            'fcy_usd_records': 0,
-            'fcy_thb_records': 0,
-            'total_inserted': 0,
-            'total_failed': 0
-        }
-        
-        failed_records = []
-        created_records = []
-        
-        # Define segments and currencies to process
-        segments_config = [
-            {'segment': 'LCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'LAK'},
-            {'segment': 'FCY', 'currency': 'USD'},
-            {'segment': 'FCY', 'currency': 'THB'}
-        ]
-
-        with transaction.atomic():
-            # Step 1: Clear existing data for this specific period only
-            try:
-                from .models import Monthly_Incomestatement_mfi
-                
-                logger.info(f"Checking for existing Monthly_Incomestatement_mfi data for period {period_code}...")
-                existing_records = Monthly_Incomestatement_mfi.objects.filter(period_code=period_code)
-                stats['cleared_records'] = existing_records.count()
-                
-                if stats['cleared_records'] > 0:
-                    logger.info(f"Found {stats['cleared_records']} existing records for period {period_code}, clearing them...")
-                    existing_records.delete()
-                    logger.info(f"Successfully cleared {stats['cleared_records']} existing records for period {period_code}")
-                else:
-                    logger.info(f"No existing records found for period {period_code}, proceeding with fresh insert")
-                
-            except Exception as e:
-                logger.error(f"Error clearing Monthly_Incomestatement_mfi data for period {period_code}: {str(e)}")
-                return Response({
-                    'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າສຳລັບຊ່ວງ {period_code}: {str(e)} (Error clearing existing data for period {period_code})'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Step 2: Process each segment and currency combination
-            for config in segments_config:
-                segment = config['segment']
-                currency = config['currency']
-                
-                logger.info(f"Processing Income Statement MFI {segment} segment with {currency} currency...")
-                
-                try:
-                    with connection.cursor() as cursor:
-                        # Execute stored procedure
-                        sp_query = """
-                            EXEC [dbo].[incomestatement_mfi_By_Currency_And_Consolidated_afterEOC]
-                                @segment = %s,
-                                @currency = %s,
-                                @period_code_id = %s
-                        """
-                        cursor.execute(sp_query, [segment, currency, period_code])
-                        
-                        # Get column names and results
-                        columns = [col[0] for col in cursor.description]
-                        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                        
-                        logger.info(f"Income Statement MFI {segment}-{currency}: Fetched {len(results)} records")
-                        
-                        # Insert records
-                        for index, item in enumerate(results):
-                            try:
-                                # Create Monthly_Incomestatement_mfi record
-                                income_record = Monthly_Incomestatement_mfi(
-                                    no=item.get('no', ''),
-                                    report_number=item.get('report_number', ''),
-                                    description=item.get('description', ''),
-                                    previous_month=str(item.get('previous_month', 0)) if item.get('previous_month') is not None else '0',
-                                    current_month=str(item.get('current_month', 0)) if item.get('current_month') is not None else '0',
-                                    net_change=str(item.get('net_change', 0)) if item.get('net_change') is not None else '0',
-                                    currency_display=item.get('currency_display', ''),
-                                    segment_type=item.get('segment_type', ''),
-                                    period_code=item.get('period_code', period_code)
-                                )
-                                
-                                income_record.full_clean()
-                                income_record.save()
-                                
-                                # Update statistics
-                                if segment == 'LCY':
-                                    stats['lcy_records'] += 1
-                                elif segment == 'FCY':
-                                    if currency == 'LAK':
-                                        stats['fcy_lak_records'] += 1
-                                    elif currency == 'USD':
-                                        stats['fcy_usd_records'] += 1
-                                    elif currency == 'THB':
-                                        stats['fcy_thb_records'] += 1
-                                
-                                stats['total_inserted'] += 1
-                                created_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'no': item.get('no', ''),
-                                    'description': item.get('description', '')[:50] + '...' if len(str(item.get('description', ''))) > 50 else item.get('description', '')
-                                })
-                                
-                            except Exception as e:
-                                stats['total_failed'] += 1
-                                error_msg = f"Income MFI {segment}-{currency} record {index} error: {str(e)}"
-                                logger.error(error_msg)
-                                failed_records.append({
-                                    'segment': segment,
-                                    'currency': currency,
-                                    'index': index,
-                                    'no': item.get('no', 'Unknown'),
-                                    'error': error_msg
-                                })
-                                
-                except Exception as e:
-                    logger.error(f"Error executing Income Statement MFI stored procedure for {segment}-{currency}: {str(e)}")
-                    return Response({
-                        'status': 'error',
-                        'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ Income Statement MFI stored procedure ສຳລັບ {segment}-{currency}: {str(e)}'
-                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Prepare response
-        response_data = {
-            'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານ Income Statement MFI ສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າຊ່ວງ {period_code}: {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Income Statement MFI Operation completed successfully! Cleared {stats["cleared_records"]} old records for period {period_code}, inserted {stats["total_inserted"]} new records)',
-            'period_code': period_code,
-            'date_end': date_end,
-            'report_type': 'Income Statement MFI',
-            'statistics': {
-                'cleared_records': stats['cleared_records'],
-                'segments': {
-                    'lcy_records': stats['lcy_records'],
-                    'fcy_lak_records': stats['fcy_lak_records'],
-                    'fcy_usd_records': stats['fcy_usd_records'],
-                    'fcy_thb_records': stats['fcy_thb_records']
-                },
-                'totals': {
-                    'inserted': stats['total_inserted'],
-                    'failed': stats['total_failed']
-                }
-            },
-            'sample_created_records': created_records[:5] if created_records else []
-        }
-
-        if failed_records:
-            response_data['failed_records_sample'] = failed_records[:5]
-            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
-
-        logger.info(f"Monthly Income Statement MFI insert operation completed successfully:")
-        logger.info(f"- Period: {period_code}")
-        logger.info(f"- Cleared existing Income MFI records for period {period_code}: {stats['cleared_records']} records")
-        logger.info(f"- Income MFI LCY: {stats['lcy_records']} records")
-        logger.info(f"- Income MFI FCY-LAK: {stats['fcy_lak_records']} records")
-        logger.info(f"- Income MFI FCY-USD: {stats['fcy_usd_records']} records")
-        logger.info(f"- Income MFI FCY-THB: {stats['fcy_thb_records']} records")
-        logger.info(f"- Income MFI Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
-
-        return Response(response_data, status=status.HTTP_201_CREATED)
-
-    except Exception as e:
-        logger.error(f"Bulk insert monthly Income Statement MFI error: {str(e)}")
-        return Response({
-            'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ Income Statement MFI: {str(e)} (Error in Income Statement MFI operation)'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-
-# BALANCE SHEET DAIRY - Clean Implementation
-from django.db import connection
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime
-import logging
-
-logger = logging.getLogger(__name__)
-
-# =============================================
-# STORED PROCEDURE EXECUTION FUNCTIONS
-# =============================================
-
-def run_balance_sheet_dairy_acc_proc(segment: str, currency: str):
-    """
-    Execute the balance sheet dairy ACC stored procedure
-    
-    Args:
-        segment (str): FCY or LCY
-        currency (str): Currency code (LAK, USD, THB, etc.)
-    
-    Returns:
-        list: Query results as list of dictionaries
-    """
-    try:
-        with connection.cursor() as cursor:
-            sql = """
-                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated
-                    @segment = %s,
-                    @currency = %s
-            """
-            
-            cursor.execute(sql, [segment, currency])
-            
-            # Get column names and results
-            columns = [col[0] for col in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            return results
-            
-    except Exception as e:
-        logger.error(f"Error executing balance sheet dairy ACC procedure: {str(e)}")
-        raise
-
-def run_balance_sheet_dairy_mfi_proc(segment: str, currency: str):
-    """
-    Execute the balance sheet dairy MFI stored procedure
-    
-    Args:
-        segment (str): FCY or LCY
-        currency (str): Currency code (LAK, USD, THB, etc.)
-    
-    Returns:
-        list: Query results as list of dictionaries
-    """
-    try:
-        with connection.cursor() as cursor:
-            sql = """
-                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated
-                    @segment = %s,
-                    @currency = %s
-            """
-            
-            cursor.execute(sql, [segment, currency])
-            
-            # Get column names and results
-            columns = [col[0] for col in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            return results
-            
-    except Exception as e:
-        logger.error(f"Error executing balance sheet dairy MFI procedure: {str(e)}")
-        raise
-
-# =============================================
-# VALIDATION FUNCTIONS
-# =============================================
-
-def validate_segment_dairy(segment: str) -> bool:
-    """Validate segment parameter (FCY or LCY) for dairy reports"""
-    if not segment or not isinstance(segment, str):
-        return False
-    return segment.upper() in ['FCY', 'LCY']
-
-def validate_currency_code_dairy(currency_code: str) -> bool:
-    """Validate currency code for dairy reports"""
-    if not currency_code or not isinstance(currency_code, str):
-        return False
-    
-    if len(currency_code) < 3 or len(currency_code) > 5:
-        return False
-    
-    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY']
-    return currency_code.upper() in allowed_currencies
-
-def validate_balance_sheet_dairy_params(segment: str, currency: str) -> tuple:
-    """
-    Validate all balance sheet dairy parameters
-    
-    Returns:
-        tuple: (is_valid: bool, error_message: str)
-    """
-    if not segment or not currency:
-        return False, "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)"
-    
-    if not validate_segment_dairy(segment):
-        return False, "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)"
-    
-    if not validate_currency_code_dairy(currency):
-        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)"
-    
-    return True, ""
-
-# =============================================
-# HELPER FUNCTIONS
-# =============================================
-
-def get_display_currency_dairy(segment: str, currency: str) -> str:
-    """Get formatted display currency for dairy reports"""
-    return f"{currency} (FCY)" if segment == 'FCY' else "LAK (ທຽບເທົ່າ)"
-
-def get_dairy_report_type(report_type: str) -> str:
-    """Get formatted dairy report type"""
-    types = {
-        'ACC': 'Accounting',
-        'MFI': 'Microfinance'
-    }
-    return types.get(report_type.upper(), report_type)
-
-# =============================================
-# API ENDPOINTS
-# =============================================
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def balance_sheet_dairy_acc_view(request):
-    """
-    API endpoint for balance sheet dairy ACC data
-    
-    Expected payload:
-    {
-        "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB"
-    }
-    
-    Returns:
-    {
-        "status": "success|error",
-        "message": "Description",
-        "segment": "segment_type",
-        "currency": "currency_code",
-        "type": "ACC",
-        "report_category": "DAIRY",
-        "display_currency": "formatted_currency",
-        "count": number_of_records,
-        "data": [balance_sheet_records]
-    }
-    """
-    try:
-        # Extract and normalize parameters
-        segment = str(request.data.get("segment", "")).strip().upper()
-        currency = str(request.data.get("currency", "")).strip().upper()
-        
-        # Validate parameters
-        is_valid, error_message = validate_balance_sheet_dairy_params(segment, currency)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[BalanceSheet-Dairy-ACC] Executing procedure for segment={segment}, currency={currency}")
-        
-        # Execute stored procedure
-        result = run_balance_sheet_dairy_acc_proc(segment, currency)
-        
-        # Format response
-        display_currency = get_display_currency_dairy(segment, currency)
-        
-        logger.info(f"[BalanceSheet-Dairy-ACC] Procedure completed successfully. Records: {len(result)}")
-        
-        return Response({
-            "status": "success",
-            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy ACC ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet dairy ACC data retrieved successfully - {display_currency})",
-            "segment": segment,
-            "currency": currency,
-            "type": "ACC",
-            "report_category": "DAIRY",
-            "display_currency": display_currency,
-            "count": len(result),
-            "data": result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[BalanceSheet-Dairy-ACC] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy ACC (Internal server error occurred while retrieving balance sheet dairy ACC data)",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def balance_sheet_dairy_mfi_view(request):
-    """
-    API endpoint for balance sheet dairy MFI data
-    
-    Expected payload:
-    {
-        "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB"
-    }
-    
-    Returns:
-    {
-        "status": "success|error",
-        "message": "Description",
-        "segment": "segment_type",
-        "currency": "currency_code",
-        "type": "MFI",
-        "report_category": "DAIRY",
-        "display_currency": "formatted_currency",
-        "count": number_of_records,
-        "data": [balance_sheet_records]
-    }
-    """
-    try:
-        # Extract and normalize parameters
-        segment = str(request.data.get("segment", "")).strip().upper()
-        currency = str(request.data.get("currency", "")).strip().upper()
-        
-        # Validate parameters
-        is_valid, error_message = validate_balance_sheet_dairy_params(segment, currency)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[BalanceSheet-Dairy-MFI] Executing procedure for segment={segment}, currency={currency}")
-        
-        # Execute stored procedure
-        result = run_balance_sheet_dairy_mfi_proc(segment, currency)
-        
-        # Format response
-        display_currency = get_display_currency_dairy(segment, currency)
-        
-        logger.info(f"[BalanceSheet-Dairy-MFI] Procedure completed successfully. Records: {len(result)}")
-        
-        return Response({
-            "status": "success",
-            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy MFI ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet dairy MFI data retrieved successfully - {display_currency})",
-            "segment": segment,
-            "currency": currency,
-            "type": "MFI",
-            "report_category": "DAIRY",
-            "display_currency": display_currency,
-            "count": len(result),
-            "data": result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[BalanceSheet-Dairy-MFI] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy MFI (Internal server error occurred while retrieving balance sheet dairy MFI data)",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# INCOME STATEMENT DAIRY - Clean Implementation
-from django.db import connection
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime
-import logging
-
-logger = logging.getLogger(__name__)
-
-# =============================================
-# STORED PROCEDURE EXECUTION FUNCTIONS
-# =============================================
-
-def run_income_statement_dairy_acc_proc(segment: str, currency: str):
-    """
-    Execute the income statement dairy ACC stored procedure
-    
-    Args:
-        segment (str): FCY or LCY
-        currency (str): Currency code (LAK, USD, THB, etc.)
-    
-    Returns:
-        list: Query results as list of dictionaries
-    """
-    try:
-        with connection.cursor() as cursor:
-            sql = """
-                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated
-                    @segment = %s,
-                    @currency = %s
-            """
-            
-            cursor.execute(sql, [segment, currency])
-            
-            # Get column names and results
-            columns = [col[0] for col in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            return results
-            
-    except Exception as e:
-        logger.error(f"Error executing income statement dairy ACC procedure: {str(e)}")
-        raise
-
-def run_income_statement_dairy_mfi_proc(segment: str, currency: str):
-    """
-    Execute the income statement dairy MFI stored procedure
-    
-    Args:
-        segment (str): FCY or LCY
-        currency (str): Currency code (LAK, USD, THB, etc.)
-    
-    Returns:
-        list: Query results as list of dictionaries
-    """
-    try:
-        with connection.cursor() as cursor:
-            sql = """
-                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated
-                    @segment = %s,
-                    @currency = %s
-            """
-            
-            cursor.execute(sql, [segment, currency])
-            
-            # Get column names and results
-            columns = [col[0] for col in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            return results
-            
-    except Exception as e:
-        logger.error(f"Error executing income statement dairy MFI procedure: {str(e)}")
-        raise
-
-# =============================================
-# VALIDATION FUNCTIONS
-# =============================================
-
-def validate_segment_income_dairy(segment: str) -> bool:
-    """Validate segment parameter (FCY or LCY) for income statement dairy reports"""
-    if not segment or not isinstance(segment, str):
-        return False
-    return segment.upper() in ['FCY', 'LCY']
-
-def validate_currency_code_income_dairy(currency_code: str) -> bool:
-    """Validate currency code for income statement dairy reports"""
-    if not currency_code or not isinstance(currency_code, str):
-        return False
-    
-    if len(currency_code) < 3 or len(currency_code) > 5:
-        return False
-    
-    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY']
-    return currency_code.upper() in allowed_currencies
-
-def validate_income_statement_dairy_params(segment: str, currency: str) -> tuple:
-    """
-    Validate all income statement dairy parameters
-    
-    Returns:
-        tuple: (is_valid: bool, error_message: str)
-    """
-    if not segment or not currency:
-        return False, "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)"
-    
-    if not validate_segment_income_dairy(segment):
-        return False, "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)"
-    
-    if not validate_currency_code_income_dairy(currency):
-        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)"
-    
-    return True, ""
-
-# =============================================
-# HELPER FUNCTIONS
-# =============================================
-
-def get_display_currency_income_dairy(segment: str, currency: str) -> str:
-    """Get formatted display currency for income statement dairy reports"""
-    return f"{currency} (FCY)" if segment == 'FCY' else "LAK (ທຽບເທົ່າ)"
-
-def get_income_dairy_report_type(report_type: str) -> str:
-    """Get formatted income statement dairy report type"""
-    types = {
-        'ACC': 'Accounting',
-        'MFI': 'Microfinance'
-    }
-    return types.get(report_type.upper(), report_type)
-
-# =============================================
-# API ENDPOINTS
-# =============================================
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def income_statement_dairy_acc_view(request):
-    """
-    API endpoint for income statement dairy ACC data
-    
-    Expected payload:
-    {
-        "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB"
-    }
-    
-    Returns:
-    {
-        "status": "success|error",
-        "message": "Description",
-        "segment": "segment_type",
-        "currency": "currency_code",
-        "type": "ACC",
-        "report_category": "DAIRY",
-        "display_currency": "formatted_currency",
-        "count": number_of_records,
-        "data": [income_statement_records]
-    }
-    """
-    try:
-        # Extract and normalize parameters
-        segment = str(request.data.get("segment", "")).strip().upper()
-        currency = str(request.data.get("currency", "")).strip().upper()
-        
-        # Validate parameters
-        is_valid, error_message = validate_income_statement_dairy_params(segment, currency)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[IncomeStatement-Dairy-ACC] Executing procedure for segment={segment}, currency={currency}")
-        
-        # Execute stored procedure
-        result = run_income_statement_dairy_acc_proc(segment, currency)
-        
-        # Format response
-        display_currency = get_display_currency_income_dairy(segment, currency)
-        
-        logger.info(f"[IncomeStatement-Dairy-ACC] Procedure completed successfully. Records: {len(result)}")
-        
-        return Response({
-            "status": "success",
-            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy ACC ສຳລັບ {display_currency} ສຳເລັດ (Income statement dairy ACC data retrieved successfully - {display_currency})",
-            "segment": segment,
-            "currency": currency,
-            "type": "ACC",
-            "report_category": "DAIRY",
-            "display_currency": display_currency,
-            "count": len(result),
-            "data": result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[IncomeStatement-Dairy-ACC] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy ACC (Internal server error occurred while retrieving income statement dairy ACC data)",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def income_statement_dairy_mfi_view(request):
-    """
-    API endpoint for income statement dairy MFI data
-    
-    Expected payload:
-    {
-        "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB"
-    }
-    
-    Returns:
-    {
-        "status": "success|error",
-        "message": "Description",
-        "segment": "segment_type",
-        "currency": "currency_code",
-        "type": "MFI",
-        "report_category": "DAIRY",
-        "display_currency": "formatted_currency",
-        "count": number_of_records,
-        "data": [income_statement_records]
-    }
-    """
-    try:
-        # Extract and normalize parameters
-        segment = str(request.data.get("segment", "")).strip().upper()
-        currency = str(request.data.get("currency", "")).strip().upper()
-        
-        # Validate parameters
-        is_valid, error_message = validate_income_statement_dairy_params(segment, currency)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[IncomeStatement-Dairy-MFI] Executing procedure for segment={segment}, currency={currency}")
-        
-        # Execute stored procedure
-        result = run_income_statement_dairy_mfi_proc(segment, currency)
-        
-        # Format response
-        display_currency = get_display_currency_income_dairy(segment, currency)
-        
-        logger.info(f"[IncomeStatement-Dairy-MFI] Procedure completed successfully. Records: {len(result)}")
-        
-        return Response({
-            "status": "success",
-            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy MFI ສຳລັບ {display_currency} ສຳເລັດ (Income statement dairy MFI data retrieved successfully - {display_currency})",
-            "segment": segment,
-            "currency": currency,
-            "type": "MFI",
-            "report_category": "DAIRY",
-            "display_currency": display_currency,
-            "count": len(result),
-            "data": result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[IncomeStatement-Dairy-MFI] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy MFI (Internal server error occurred while retrieving income statement dairy MFI data)",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# TRIAL BALANCE DAIRY - Clean Implementation
-from django.db import connection
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime
-import logging
-
-logger = logging.getLogger(__name__)
-
-# =============================================
-# STORED PROCEDURE EXECUTION FUNCTIONS
-# =============================================
-
-def run_trial_balance_dairy_proc(ccy_code_id: str, m_segment: str):
-    """
-    Execute the trial balance dairy stored procedure
-    
-    Args:
-        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
-        m_segment (str): Market segment (FCY, LCY)
-    
-    Returns:
-        list: Query results as list of dictionaries
-    """
-    try:
-        with connection.cursor() as cursor:
-            sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated
-                    @CCy_Code_id = %s,
-                    @MSegment = %s
-            """
-            
-            cursor.execute(sql, [ccy_code_id, m_segment])
-            
-            # Get column names and results
-            columns = [col[0] for col in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            return results
-            
-    except Exception as e:
-        logger.error(f"Error executing trial balance dairy procedure: {str(e)}")
-        raise
-
-# =============================================
-# VALIDATION FUNCTIONS
-# =============================================
-
-def validate_segment_trial_dairy(segment: str) -> bool:
-    """Validate segment parameter (FCY or LCY) for trial balance dairy reports"""
-    if not segment or not isinstance(segment, str):
-        return False
-    return segment.upper() in ['FCY', 'LCY']
-
-def validate_currency_code_trial_dairy(currency_code: str) -> bool:
-    """Validate currency code for trial balance dairy reports"""
-    if not currency_code or not isinstance(currency_code, str):
-        return False
-    
-    if len(currency_code) < 3 or len(currency_code) > 5:
-        return False
-    
-    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY']
-    return currency_code.upper() in allowed_currencies
-
-def validate_trial_balance_dairy_params(ccy_code_id: str, m_segment: str) -> tuple:
-    """
-    Validate all trial balance dairy parameters with business logic:
-    - LCY segment: only LAK currency allowed
-    - FCY segment: LAK, USD, THB currencies allowed
-    
-    Returns:
-        tuple: (is_valid: bool, error_message: str)
-    """
-    if not ccy_code_id or not m_segment:
-        return False, "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: ccy_code_id ແລະ m_segment ແມ່ນຕ້ອງການ (Missing required parameters: ccy_code_id and m_segment are required)"
-    
-    if not validate_segment_trial_dairy(m_segment):
-        return False, "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)"
-    
-    # Business logic validation based on segment
-    if m_segment.upper() == 'LCY':
-        if ccy_code_id.upper() != 'LAK':
-            return False, "ສຳລັບ LCY segment ສາມາດໃຊ້ແຕ່ LAK ເທົ່ານັ້ນ (For LCY segment, only LAK currency is allowed)"
-    elif m_segment.upper() == 'FCY':
-        allowed_fcy_currencies = ['LAK', 'USD', 'THB']
-        if ccy_code_id.upper() not in allowed_fcy_currencies:
-            return False, f"ສຳລັບ FCY segment ສາມາດໃຊ້: {', '.join(allowed_fcy_currencies)} (For FCY segment, allowed currencies: {', '.join(allowed_fcy_currencies)})"
-    
-    if not validate_currency_code_trial_dairy(ccy_code_id):
-        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code format)"
-    
-    return True, ""
-
-# =============================================
-# HELPER FUNCTIONS
-# =============================================
-
-def get_display_currency_trial_dairy(m_segment: str, ccy_code_id: str) -> str:
-    """Get formatted display currency for trial balance dairy reports"""
-    return f"{ccy_code_id} (FCY)" if m_segment == 'FCY' else "LAK (ທຽບເທົ່າ)"
-
-def normalize_trial_balance_dairy_data(data: list) -> list:
-    """
-    Normalize trial balance dairy data for consistent output
-    
-    Args:
-        data (list): Raw data from stored procedure
-    
-    Returns:
-        list: Normalized data with consistent field names
-    """
-    normalized_data = []
-    
-    for item in data:
-        normalized_item = {
-            'GL_Code': item.get('gl_code', ''),
-            'Description': item.get('Desc', ''),
-            'Opening_Dr': float(item.get('OP_DR', 0) or 0),
-            'Opening_Cr': float(item.get('OP_CR', 0) or 0),
-            'Flow_Dr': float(item.get('Mo_DR', 0) or 0),
-            'Flow_Cr': float(item.get('Mo_Cr', 0) or 0),
-            'Closing_Dr': float(item.get('C1_DR', 0) or 0),
-            'Closing_Cr': float(item.get('C1_CR', 0) or 0),
-            'Category': int(item.get('Category', 0) or 0),
-            'Currency_Code': item.get('CCy_Code_id', ''),
-            'Market_Segment': item.get('MSegment', ''),
-            'Financial_Year': item.get('Fin_year_id', ''),
-            'Period_Code': item.get('Period_code_id', '')
-        }
-        
-        # Calculate net amounts
-        normalized_item['Opening_Net'] = normalized_item['Opening_Dr'] - normalized_item['Opening_Cr']
-        normalized_item['Flow_Net'] = normalized_item['Flow_Dr'] - normalized_item['Flow_Cr']
-        normalized_item['Closing_Net'] = normalized_item['Closing_Dr'] - normalized_item['Closing_Cr']
-        
-        normalized_data.append(normalized_item)
-    
-    return normalized_data
-
-# =============================================
-# API ENDPOINTS
-# =============================================
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def trial_balance_dairy_view(request):
-    """
-    API endpoint for trial balance dairy data
-    
-    Business Logic:
-    - LCY segment: only LAK currency allowed
-    - FCY segment: LAK, USD, THB currencies allowed
-    
-    Expected payload:
-    {
-        "ccy_code_id": "LAK|USD|THB",
-        "m_segment": "FCY|LCY"
-    }
-    
-    Examples:
-    LCY: {"ccy_code_id": "LAK", "m_segment": "LCY"}
-    FCY: {"ccy_code_id": "USD", "m_segment": "FCY"}
-    
-    Returns:
-    {
-        "status": "success|error",
-        "message": "Description",
-        "ccy_code_id": "currency_code",
-        "m_segment": "segment_type",
-        "report_category": "DAIRY",
-        "display_currency": "formatted_currency",
-        "business_rules": {
-            "lcy_currencies": ["LAK"],
-            "fcy_currencies": ["LAK", "USD", "THB"]
-        },
-        "count": number_of_records,
-        "data": [trial_balance_records]
-    }
-    """
-    try:
-        # Extract and normalize parameters
-        ccy_code_id = str(request.data.get("ccy_code_id", "")).strip().upper()
-        m_segment = str(request.data.get("m_segment", "")).strip().upper()
-        
-        # Validate parameters with business logic
-        is_valid, error_message = validate_trial_balance_dairy_params(ccy_code_id, m_segment)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "business_rules": {
-                    "lcy_currencies": ["LAK"],
-                    "fcy_currencies": ["LAK", "USD", "THB"]
-                },
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[TrialBalance-Dairy] Executing procedure for ccy_code_id={ccy_code_id}, m_segment={m_segment}")
-        
-        # Execute stored procedure
-        result = run_trial_balance_dairy_proc(ccy_code_id, m_segment)
-        
-        # Normalize data for consistent output
-        normalized_result = normalize_trial_balance_dairy_data(result)
-        
-        # Format response
-        display_currency = get_display_currency_trial_dairy(m_segment, ccy_code_id)
-        
-        logger.info(f"[TrialBalance-Dairy] Procedure completed successfully. Records: {len(normalized_result)}")
-        
-        return Response({
-            "status": "success",
-            "message": f"ດຶງຂໍ້ມູນໃບສົມທົບ Dairy ສຳລັບ {display_currency} ສຳເລັດ (Trial balance dairy data retrieved successfully - {display_currency})",
-            "ccy_code_id": ccy_code_id,
-            "m_segment": m_segment,
-            "report_category": "DAIRY",
-            "display_currency": display_currency,
-            "business_rules": {
-                "lcy_currencies": ["LAK"],
-                "fcy_currencies": ["LAK", "USD", "THB"]
-            },
-            "count": len(normalized_result),
-            "data": normalized_result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[TrialBalance-Dairy] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ Dairy (Internal server error occurred while retrieving trial balance dairy data)",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
->>>>>>> 1bb96b6b77120b5cb371dd79aa1520ce4c2cdc03
