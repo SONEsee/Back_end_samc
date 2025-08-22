@@ -2133,3 +2133,14 @@ class Monthly_Incomestatement_mfi(models.Model):
     
     def __str__(self):
         return f"Income MFI {self.no} - {self.description} ({self.period_code})"
+    
+class Report_Cashflow(models.Model):
+    RID = models.AutoField(primary_key=True)
+    Report_number = models.CharField(max_length=10, null=True, blank=True)
+    org_formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
+    Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
+    TypeOfReport = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
+    
+    class Meta:
+        verbose_name_plural = 'Report_Cashflow'
