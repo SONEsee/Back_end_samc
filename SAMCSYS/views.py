@@ -20256,6 +20256,7 @@ class CompanyProfileViewSet(viewsets.ModelViewSet):
 
 
 # Main Trial Balance
+# Main Trial Balance
 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
@@ -20267,19 +20268,31 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_trial_balance_all_currency_proc():
+def run_trial_balance_all_currency_proc(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str):
     """
-    Execute the trial balance all currency stored procedure
+    Execute the trial balance by currency stored procedure (used for both single and all currency queries)
+    
+    Args:
+        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
+        m_segment (str): Market segment (LCY, FCY)
+        fin_year_id (str): Financial year (e.g., 2025)
+        period_code_id (str): Period code (e.g., 202508)
     
     Returns:
         list: Query results as list of dictionaries
     """
     try:
         with connection.cursor() as cursor:
-            # Execute stored procedure without parameters
-            sql = "EXEC dbo.Trial_Balance_All_Currency_afterEOC"
+            # Use the same procedure that has the correct parameter structure
+            sql = """
+                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
+                    @CCy_Code_id = %s,
+                    @MSegment = %s,
+                    @Fin_year_id = %s,
+                    @Period_code_id = %s
+            """
             
-            cursor.execute(sql)
+            cursor.execute(sql, [ccy_code_id, m_segment, fin_year_id, period_code_id])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20290,15 +20303,18 @@ def run_trial_balance_all_currency_proc():
             return results
             
     except Exception as e:
-        logger.error(f"Error executing trial balance all currency procedure: {str(e)}")
+        logger.error(f"Error executing trial balance procedure: {str(e)}")
         raise
 
-def run_trial_balance_by_currency_proc(currency: str):
+def run_trial_balance_by_currency_proc(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str):
     """
     Execute the trial balance by currency stored procedure
     
     Args:
-        currency (str): Currency code (LAK, USD, THB, etc.)
+        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
+        m_segment (str): Market segment (LCY, FCY)
+        fin_year_id (str): Financial year (e.g., 2025)
+        period_code_id (str): Period code (e.g., 202508)
     
     Returns:
         list: Query results as list of dictionaries
@@ -20308,10 +20324,13 @@ def run_trial_balance_by_currency_proc(currency: str):
             # Use parameterized SQL to prevent SQL injection
             sql = """
                 EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
-                    @Currency = %s
+                    @CCy_Code_id = %s,
+                    @MSegment = %s,
+                    @Fin_year_id = %s,
+                    @Period_code_id = %s
             """
             
-            cursor.execute(sql, [currency])
+            cursor.execute(sql, [ccy_code_id, m_segment, fin_year_id, period_code_id])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20338,8 +20357,8 @@ def validate_currency_code(currency_code: str) -> bool:
     if not currency_code or not isinstance(currency_code, str):
         return False
     
-    # Check length (should be 3-5 characters)
-    if len(currency_code) < 3 or len(currency_code) > 5:
+    # Check length (should be 3-4 characters)
+    if len(currency_code) < 3 or len(currency_code) > 4:
         return False
     
     # Common currency codes supported
@@ -20347,332 +20366,232 @@ def validate_currency_code(currency_code: str) -> bool:
     
     return currency_code.upper() in allowed_currencies
 
+def validate_market_segment(m_segment: str) -> bool:
+    """
+    Validate market segment
+    
+    Args:
+        m_segment (str): Market segment to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not m_segment or not isinstance(m_segment, str):
+        return False
+    
+    allowed_segments = ['LCY', 'FCY']
+    return m_segment.upper() in allowed_segments
+
+def validate_financial_year(fin_year: str) -> bool:
+    """
+    Validate financial year format
+    
+    Args:
+        fin_year (str): Financial year to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not fin_year or not isinstance(fin_year, str):
+        return False
+    
+    # Should be 4 digits and reasonable year range
+    try:
+        year = int(fin_year)
+        return 2020 <= year <= 2050 and len(fin_year) == 4
+    except ValueError:
+        return False
+
+def validate_period_code(period_code: str) -> bool:
+    """
+    Validate period code format (YYYYMM)
+    
+    Args:
+        period_code (str): Period code to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not period_code or not isinstance(period_code, str):
+        return False
+    
+    # Should be 6 digits (YYYYMM format)
+    if len(period_code) != 6:
+        return False
+    
+    try:
+        year = int(period_code[:4])
+        month = int(period_code[4:6])
+        return 2020 <= year <= 2050 and 1 <= month <= 12
+    except ValueError:
+        return False
+
+def validate_trial_balance_params(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str) -> tuple:
+    """
+    Validate all trial balance parameters
+    
+    Returns:
+        tuple: (is_valid: bool, error_message: str)
+    """
+    if not validate_currency_code(ccy_code_id):
+        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code)"
+    
+    if not validate_market_segment(m_segment):
+        return False, "ປະເພດຕະຫຼາດບໍ່ຖືກຕ້ອງ (ຕ້ອງເປັນ LCY ຫຼື FCY) (Invalid market segment, must be LCY or FCY)"
+    
+    if not validate_financial_year(fin_year_id):
+        return False, "ປີການເງິນບໍ່ຖືກຕ້ອງ (Invalid financial year)"
+    
+    if not validate_period_code(period_code_id):
+        return False, "ລະຫັດງວດບໍ່ຖືກຕ້ອງ (ຮູບແບບ: YYYYMM) (Invalid period code format: YYYYMM)"
+    
+    return True, ""
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def main_trial_balance_all_currency_view(request):
     """
-    API endpoint for main trial balance all currencies (GL codes <= 5 digits)
+    API endpoint for main trial balance by currency and segment (Category <= 5)
     
-    This endpoint doesn't require any parameters as it returns all currencies
+    Required parameters:
+    - ccy_code_id: Currency code (LAK, USD, THB, etc.)
+    - m_segment: Market segment (LCY, FCY)
+    - fin_year_id: Financial year (e.g., 2025)
+    - period_code_id: Period code (e.g., 202508)
     
     Returns:
     {
         "status": "success|error",
         "message": "Description",
         "count": number_of_records,
-        "data": [trial_balance_records]
+        "data": [trial_balance_records],
+        "parameters": {parameters_used}
     }
     """
     try:
-        logger.info(f"[MainTrialBalance-AllCurrency] Executing procedure for all currencies")
+        # Get parameters from request
+        if request.method == 'GET':
+            ccy_code_id = request.GET.get('ccy_code_id', '').strip().upper()
+            m_segment = request.GET.get('m_segment', '').strip().upper()
+            fin_year_id = request.GET.get('fin_year_id', '').strip()
+            period_code_id = request.GET.get('period_code_id', '').strip()
+        else:  # POST
+            ccy_code_id = request.data.get('ccy_code_id', '').strip().upper()
+            m_segment = request.data.get('m_segment', '').strip().upper()
+            fin_year_id = request.data.get('fin_year_id', '').strip()
+            period_code_id = request.data.get('period_code_id', '').strip()
+        
+        # Validate parameters
+        is_valid, error_message = validate_trial_balance_params(ccy_code_id, m_segment, fin_year_id, period_code_id)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[MainTrialBalance] Executing procedure with params: "
+                   f"CCy={ccy_code_id}, Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
         
         # Execute stored procedure
-        result = run_trial_balance_all_currency_proc()
+        result = run_trial_balance_all_currency_proc(ccy_code_id, m_segment, fin_year_id, period_code_id)
         
-        logger.info(f"[MainTrialBalance-AllCurrency] Procedure completed successfully. Records: {len(result)}")
+        logger.info(f"[MainTrialBalance] Procedure completed successfully. Records: {len(result)}")
         
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນ Trial Balance ທຸກສະກຸນເງິນສຳເລັດ (Main trial balance for all currencies retrieved successfully)",
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ທຸກສະກຸນເງິນສຳເລັດ (Main trial balance retrieved successfully)",
             "count": len(result),
-            "data": result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[MainTrialBalance-AllCurrency] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def main_trial_balance_by_currency_view(request):
-    """
-    API endpoint for main trial balance by specific currency
-    
-    Expected payload:
-    {
-        "currency": "LAK|USD|THB|etc"
-    }
-    
-    Returns:
-    {
-        "status": "success|error",
-        "message": "Description",
-        "currency": "currency_code",
-        "count": number_of_records,
-        "data": [trial_balance_records]
-    }
-    """
-    # Extract currency parameter from request
-    currency = request.data.get("currency")
-    
-    # Validate required parameter
-    if not currency:
-        return Response({
-            "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນສະກຸນເງິນ: currency ແມ່ນຕ້ອງການ (Missing required parameter: currency is required)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Convert to uppercase for consistency
-    currency = currency.upper()
-    
-    # Validate currency code
-    if not validate_currency_code(currency):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        logger.info(f"[MainTrialBalance-ByCurrency] Executing procedure for currency={currency}")
-        
-        # Execute stored procedure
-        result = run_trial_balance_by_currency_proc(currency)
-        
-        logger.info(f"[MainTrialBalance-ByCurrency] Procedure completed successfully. Currency: {currency}, Records: {len(result)}")
-        
-        return Response({
-            "status": "success",
-            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສຳລັບ {currency} ສຳເລັດ (Main trial balance data for {currency} retrieved successfully)",
-            "currency": currency,
-            "count": len(result),
-            "data": result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[MainTrialBalance-ByCurrency] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def main_trial_balance_by_currency_get_view(request):
-    """
-    GET endpoint for main trial balance by currency (using query parameters)
-    
-    Query parameters:
-    - currency: Currency code (LAK, USD, THB, etc.)
-    """
-    # Extract currency parameter from query params
-    currency = request.query_params.get("currency")
-    
-    # Validate required parameter
-    if not currency:
-        return Response({
-            "status": "error",
-            "message": "ບໍ່ມີ query parameter ສະກຸນເງິນ: currency (Missing required query parameter: currency)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Convert to uppercase for consistency
-    currency = currency.upper()
-    
-    # Validate currency code
-    if not validate_currency_code(currency):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code. Supported: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        logger.info(f"[MainTrialBalance-ByCurrency-GET] Executing procedure for currency={currency}")
-        
-        # Execute stored procedure
-        result = run_trial_balance_by_currency_proc(currency)
-        
-        logger.info(f"[MainTrialBalance-ByCurrency-GET] Procedure completed successfully. Currency: {currency}, Records: {len(result)}")
-        
-        return Response({
-            "status": "success",
-            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສຳລັບ {currency} ສຳເລັດ",
-            "currency": currency,
-            "count": len(result),
-            "data": result
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.exception(f"[MainTrialBalance-ByCurrency-GET] Error executing stored procedure: {str(e)}")
-        
-        return Response({
-            "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance",
-            "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# Optional: ViewSet approach for more advanced functionality
-from rest_framework import viewsets
-from rest_framework.decorators import action
-
-class MainTrialBalanceViewSet(viewsets.ViewSet):
-    """
-    ViewSet for Main Trial Balance operations
-    """
-    permission_classes = [IsAuthenticated]
-    
-    @action(detail=False, methods=['get', 'post'])
-    def all_currencies(self, request):
-        """
-        Get main trial balance for all currencies
-        
-        GET/POST: Returns all currencies data
-        """
-        return main_trial_balance_all_currency_view(request)
-    
-    @action(detail=False, methods=['post', 'get'])
-    def by_currency(self, request):
-        """
-        Get main trial balance by specific currency
-        
-        POST: Use request body
-        GET: Use query parameters
-        """
-        if request.method == 'POST':
-            return main_trial_balance_by_currency_view(request)
-        else:
-            return main_trial_balance_by_currency_get_view(request)
-    
-    @action(detail=False, methods=['get'])
-    def supported_currencies(self, request):
-        """
-        Get list of supported currencies for main trial balance
-        """
-        currencies = ['LAK', 'USD', 'THB']
-        
-        currency_details = {
-            'LAK': 'ກີບລາວ (Lao Kip)',
-            'USD': 'ໂດລາສະຫະລັດ (US Dollar)', 
-            'THB': 'ບາດໄທ (Thai Baht)'
-        }
-        
-        return Response({
-            "status": "success",
-            "message": "ດຶງລາຍການສະກຸນເງິນທີ່ຮອງຮັບສຳເລັດ (Supported currencies retrieved successfully)",
-            "count": len(currencies),
-            "data": {
-                "currencies": currencies,
-                "currency_details": currency_details
+            "data": result,
+            "parameters": {
+                "ccy_code_id": ccy_code_id,
+                "m_segment": m_segment,
+                "fin_year_id": fin_year_id,
+                "period_code_id": period_code_id
             }
         }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[MainTrialBalance] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def trial_balance_by_currency_view(request):
+    """
+    API endpoint for trial balance by specific currency
     
-    @action(detail=False, methods=['post'])
-    def compare_currencies(self, request):
-        """
-        Compare trial balance data between multiple currencies
+    Required parameters:
+    - ccy_code_id: Currency code (LAK, USD, THB, etc.)
+    - m_segment: Market segment (LCY, FCY)
+    - fin_year_id: Financial year (e.g., 2025)
+    - period_code_id: Period code (e.g., 202508)
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "count": number_of_records,
+        "data": [trial_balance_records],
+        "parameters": {parameters_used}
+    }
+    """
+    try:
+        # Get parameters from request
+        if request.method == 'GET':
+            ccy_code_id = request.GET.get('ccy_code_id', '').strip().upper()
+            m_segment = request.GET.get('m_segment', '').strip().upper()
+            fin_year_id = request.GET.get('fin_year_id', '').strip()
+            period_code_id = request.GET.get('period_code_id', '').strip()
+        else:  # POST
+            ccy_code_id = request.data.get('ccy_code_id', '').strip().upper()
+            m_segment = request.data.get('m_segment', '').strip().upper()
+            fin_year_id = request.data.get('fin_year_id', '').strip()
+            period_code_id = request.data.get('period_code_id', '').strip()
         
-        Expected payload:
-        {
-            "currencies": ["USD", "THB", "EUR"]
-        }
-        """
-        currencies = request.data.get("currencies", [])
-        
-        if not currencies or not isinstance(currencies, list):
+        # Validate parameters
+        is_valid, error_message = validate_trial_balance_params(ccy_code_id, m_segment, fin_year_id, period_code_id)
+        if not is_valid:
             return Response({
                 "status": "error",
-                "message": "ບໍ່ມີລາຍການສະກຸນເງິນ ກະລຸນາໃຫ້ລາຍການສະກຸນເງິນ (Missing currencies list. Please provide array of currencies)",
+                "message": error_message,
                 "data": None
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validate all currencies
-        invalid_currencies = []
-        for currency in currencies:
-            if not validate_currency_code(currency):
-                invalid_currencies.append(currency)
+        logger.info(f"[TrialBalance-ByCurrency] Executing procedure with params: "
+                   f"CCy={ccy_code_id}, Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
         
-        if invalid_currencies:
-            return Response({
-                "status": "error",
-                "message": f"ສະກຸນເງິນບໍ່ຖືກຕ້ອງ: {', '.join(invalid_currencies)} (Invalid currencies)",
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Execute stored procedure
+        result = run_trial_balance_by_currency_proc(ccy_code_id, m_segment, fin_year_id, period_code_id)
         
-        try:
-            comparison_data = {}
-            
-            # Get data for each currency
-            for currency in currencies:
-                currency = currency.upper()
-                result = run_trial_balance_by_currency_proc(currency)
-                comparison_data[currency] = {
-                    "count": len(result),
-                    "data": result
-                }
-            
-            return Response({
-                "status": "success",
-                "message": f"ສົມທຽບຂໍ້ມູນ Trial Balance ສຳລັບ {', '.join(currencies)} ສຳເລັດ",
-                "currencies": currencies,
-                "data": comparison_data
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.exception(f"[MainTrialBalance-Compare] Error comparing currencies: {str(e)}")
-            
-            return Response({
-                "status": "error",
-                "message": "ເກີດຂໍ້ຜິດພາດໃນການສົມທຽບຂໍ້ມູນ (Error in comparison operation)",
-                "data": None
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    @action(detail=False, methods=['get'])
-    def statistics(self, request):
-        """
-        Get statistics summary for all currencies
-        """
-        try:
-            # Get all currency data
-            all_data = run_trial_balance_all_currency_proc()
-            
-            # Calculate statistics
-            total_records = len(all_data)
-            
-            # Group by currency if CCy_Code_id field exists
-            currency_stats = {}
-            category_stats = {}
-            
-            for record in all_data:
-                # Currency statistics
-                currency = record.get('CCy_Code_id', 'Unknown')
-                if currency not in currency_stats:
-                    currency_stats[currency] = 0
-                currency_stats[currency] += 1
-                
-                # Category statistics
-                category = record.get('Category', 'Unknown')
-                if category not in category_stats:
-                    category_stats[category] = 0
-                category_stats[category] += 1
-            
-            return Response({
-                "status": "success",
-                "message": "ດຶງສະຖິຕິ Trial Balance ສຳເລັດ (Trial balance statistics retrieved successfully)",
-                "data": {
-                    "total_records": total_records,
-                    "currency_breakdown": currency_stats,
-                    "category_breakdown": category_stats,
-                    "supported_currencies": ['LAK', 'USD', 'THB']
-                }
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.exception(f"[MainTrialBalance-Statistics] Error getting statistics: {str(e)}")
-            
-            return Response({
-                "status": "error",
-                "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງສະຖິຕິ (Error retrieving statistics)",
-                "data": None
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.info(f"[TrialBalance-ByCurrency] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສະກຸນເງິນ {ccy_code_id} ສຳເລັດ (Trial balance for {ccy_code_id} retrieved successfully)",
+            "count": len(result),
+            "data": result,
+            "parameters": {
+                "ccy_code_id": ccy_code_id,
+                "m_segment": m_segment,
+                "fin_year_id": fin_year_id,
+                "period_code_id": period_code_id
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[TrialBalance-ByCurrency] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -25912,4 +25831,796 @@ def bulk_insert_monthly_incomestatement_mfi(request):
         return Response({
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ Income Statement MFI: {str(e)} (Error in Income Statement MFI operation)'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+# BALANCE SHEET DAIRY - Clean Implementation
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+# =============================================
+# STORED PROCEDURE EXECUTION FUNCTIONS
+# =============================================
+
+def run_balance_sheet_dairy_acc_proc(segment: str, currency: str):
+    """
+    Execute the balance sheet dairy ACC stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+                EXEC dbo.balancesheet_acc_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names and results
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing balance sheet dairy ACC procedure: {str(e)}")
+        raise
+
+def run_balance_sheet_dairy_mfi_proc(segment: str, currency: str):
+    """
+    Execute the balance sheet dairy MFI stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+                EXEC dbo.balancesheet_mfi_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names and results
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing balance sheet dairy MFI procedure: {str(e)}")
+        raise
+
+# =============================================
+# VALIDATION FUNCTIONS
+# =============================================
+
+def validate_segment_dairy(segment: str) -> bool:
+    """Validate segment parameter (FCY or LCY) for dairy reports"""
+    if not segment or not isinstance(segment, str):
+        return False
+    return segment.upper() in ['FCY', 'LCY']
+
+def validate_currency_code_dairy(currency_code: str) -> bool:
+    """Validate currency code for dairy reports"""
+    if not currency_code or not isinstance(currency_code, str):
+        return False
+    
+    if len(currency_code) < 3 or len(currency_code) > 5:
+        return False
+    
+    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY']
+    return currency_code.upper() in allowed_currencies
+
+def validate_balance_sheet_dairy_params(segment: str, currency: str) -> tuple:
+    """
+    Validate all balance sheet dairy parameters
+    
+    Returns:
+        tuple: (is_valid: bool, error_message: str)
+    """
+    if not segment or not currency:
+        return False, "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)"
+    
+    if not validate_segment_dairy(segment):
+        return False, "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)"
+    
+    if not validate_currency_code_dairy(currency):
+        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)"
+    
+    return True, ""
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def get_display_currency_dairy(segment: str, currency: str) -> str:
+    """Get formatted display currency for dairy reports"""
+    return f"{currency} (FCY)" if segment == 'FCY' else "LAK (ທຽບເທົ່າ)"
+
+def get_dairy_report_type(report_type: str) -> str:
+    """Get formatted dairy report type"""
+    types = {
+        'ACC': 'Accounting',
+        'MFI': 'Microfinance'
+    }
+    return types.get(report_type.upper(), report_type)
+
+# =============================================
+# API ENDPOINTS
+# =============================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def balance_sheet_dairy_acc_view(request):
+    """
+    API endpoint for balance sheet dairy ACC data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "type": "ACC",
+        "report_category": "DAIRY",
+        "display_currency": "formatted_currency",
+        "count": number_of_records,
+        "data": [balance_sheet_records]
+    }
+    """
+    try:
+        # Extract and normalize parameters
+        segment = str(request.data.get("segment", "")).strip().upper()
+        currency = str(request.data.get("currency", "")).strip().upper()
+        
+        # Validate parameters
+        is_valid, error_message = validate_balance_sheet_dairy_params(segment, currency)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[BalanceSheet-Dairy-ACC] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_balance_sheet_dairy_acc_proc(segment, currency)
+        
+        # Format response
+        display_currency = get_display_currency_dairy(segment, currency)
+        
+        logger.info(f"[BalanceSheet-Dairy-ACC] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy ACC ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet dairy ACC data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "type": "ACC",
+            "report_category": "DAIRY",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[BalanceSheet-Dairy-ACC] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy ACC (Internal server error occurred while retrieving balance sheet dairy ACC data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def balance_sheet_dairy_mfi_view(request):
+    """
+    API endpoint for balance sheet dairy MFI data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "type": "MFI",
+        "report_category": "DAIRY",
+        "display_currency": "formatted_currency",
+        "count": number_of_records,
+        "data": [balance_sheet_records]
+    }
+    """
+    try:
+        # Extract and normalize parameters
+        segment = str(request.data.get("segment", "")).strip().upper()
+        currency = str(request.data.get("currency", "")).strip().upper()
+        
+        # Validate parameters
+        is_valid, error_message = validate_balance_sheet_dairy_params(segment, currency)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[BalanceSheet-Dairy-MFI] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_balance_sheet_dairy_mfi_proc(segment, currency)
+        
+        # Format response
+        display_currency = get_display_currency_dairy(segment, currency)
+        
+        logger.info(f"[BalanceSheet-Dairy-MFI] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy MFI ສຳລັບ {display_currency} ສຳເລັດ (Balance sheet dairy MFI data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "type": "MFI",
+            "report_category": "DAIRY",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[BalanceSheet-Dairy-MFI] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສະຫຼຸບຊັບສິນ Dairy MFI (Internal server error occurred while retrieving balance sheet dairy MFI data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# INCOME STATEMENT DAIRY - Clean Implementation
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+# =============================================
+# STORED PROCEDURE EXECUTION FUNCTIONS
+# =============================================
+
+def run_income_statement_dairy_acc_proc(segment: str, currency: str):
+    """
+    Execute the income statement dairy ACC stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names and results
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing income statement dairy ACC procedure: {str(e)}")
+        raise
+
+def run_income_statement_dairy_mfi_proc(segment: str, currency: str):
+    """
+    Execute the income statement dairy MFI stored procedure
+    
+    Args:
+        segment (str): FCY or LCY
+        currency (str): Currency code (LAK, USD, THB, etc.)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated
+                    @segment = %s,
+                    @currency = %s
+            """
+            
+            cursor.execute(sql, [segment, currency])
+            
+            # Get column names and results
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing income statement dairy MFI procedure: {str(e)}")
+        raise
+
+# =============================================
+# VALIDATION FUNCTIONS
+# =============================================
+
+def validate_segment_income_dairy(segment: str) -> bool:
+    """Validate segment parameter (FCY or LCY) for income statement dairy reports"""
+    if not segment or not isinstance(segment, str):
+        return False
+    return segment.upper() in ['FCY', 'LCY']
+
+def validate_currency_code_income_dairy(currency_code: str) -> bool:
+    """Validate currency code for income statement dairy reports"""
+    if not currency_code or not isinstance(currency_code, str):
+        return False
+    
+    if len(currency_code) < 3 or len(currency_code) > 5:
+        return False
+    
+    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY']
+    return currency_code.upper() in allowed_currencies
+
+def validate_income_statement_dairy_params(segment: str, currency: str) -> tuple:
+    """
+    Validate all income statement dairy parameters
+    
+    Returns:
+        tuple: (is_valid: bool, error_message: str)
+    """
+    if not segment or not currency:
+        return False, "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)"
+    
+    if not validate_segment_income_dairy(segment):
+        return False, "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)"
+    
+    if not validate_currency_code_income_dairy(currency):
+        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)"
+    
+    return True, ""
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def get_display_currency_income_dairy(segment: str, currency: str) -> str:
+    """Get formatted display currency for income statement dairy reports"""
+    return f"{currency} (FCY)" if segment == 'FCY' else "LAK (ທຽບເທົ່າ)"
+
+def get_income_dairy_report_type(report_type: str) -> str:
+    """Get formatted income statement dairy report type"""
+    types = {
+        'ACC': 'Accounting',
+        'MFI': 'Microfinance'
+    }
+    return types.get(report_type.upper(), report_type)
+
+# =============================================
+# API ENDPOINTS
+# =============================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def income_statement_dairy_acc_view(request):
+    """
+    API endpoint for income statement dairy ACC data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "type": "ACC",
+        "report_category": "DAIRY",
+        "display_currency": "formatted_currency",
+        "count": number_of_records,
+        "data": [income_statement_records]
+    }
+    """
+    try:
+        # Extract and normalize parameters
+        segment = str(request.data.get("segment", "")).strip().upper()
+        currency = str(request.data.get("currency", "")).strip().upper()
+        
+        # Validate parameters
+        is_valid, error_message = validate_income_statement_dairy_params(segment, currency)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[IncomeStatement-Dairy-ACC] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_income_statement_dairy_acc_proc(segment, currency)
+        
+        # Format response
+        display_currency = get_display_currency_income_dairy(segment, currency)
+        
+        logger.info(f"[IncomeStatement-Dairy-ACC] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy ACC ສຳລັບ {display_currency} ສຳເລັດ (Income statement dairy ACC data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "type": "ACC",
+            "report_category": "DAIRY",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[IncomeStatement-Dairy-ACC] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy ACC (Internal server error occurred while retrieving income statement dairy ACC data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def income_statement_dairy_mfi_view(request):
+    """
+    API endpoint for income statement dairy MFI data
+    
+    Expected payload:
+    {
+        "segment": "FCY|LCY",
+        "currency": "LAK|USD|THB"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "segment": "segment_type",
+        "currency": "currency_code",
+        "type": "MFI",
+        "report_category": "DAIRY",
+        "display_currency": "formatted_currency",
+        "count": number_of_records,
+        "data": [income_statement_records]
+    }
+    """
+    try:
+        # Extract and normalize parameters
+        segment = str(request.data.get("segment", "")).strip().upper()
+        currency = str(request.data.get("currency", "")).strip().upper()
+        
+        # Validate parameters
+        is_valid, error_message = validate_income_statement_dairy_params(segment, currency)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[IncomeStatement-Dairy-MFI] Executing procedure for segment={segment}, currency={currency}")
+        
+        # Execute stored procedure
+        result = run_income_statement_dairy_mfi_proc(segment, currency)
+        
+        # Format response
+        display_currency = get_display_currency_income_dairy(segment, currency)
+        
+        logger.info(f"[IncomeStatement-Dairy-MFI] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy MFI ສຳລັບ {display_currency} ສຳເລັດ (Income statement dairy MFI data retrieved successfully - {display_currency})",
+            "segment": segment,
+            "currency": currency,
+            "type": "MFI",
+            "report_category": "DAIRY",
+            "display_currency": display_currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[IncomeStatement-Dairy-MFI] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ Dairy MFI (Internal server error occurred while retrieving income statement dairy MFI data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# TRIAL BALANCE DAIRY - Clean Implementation
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+# =============================================
+# STORED PROCEDURE EXECUTION FUNCTIONS
+# =============================================
+
+def run_trial_balance_dairy_proc(ccy_code_id: str, m_segment: str):
+    """
+    Execute the trial balance dairy stored procedure
+    
+    Args:
+        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
+        m_segment (str): Market segment (FCY, LCY)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated
+                    @CCy_Code_id = %s,
+                    @MSegment = %s
+            """
+            
+            cursor.execute(sql, [ccy_code_id, m_segment])
+            
+            # Get column names and results
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing trial balance dairy procedure: {str(e)}")
+        raise
+
+# =============================================
+# VALIDATION FUNCTIONS
+# =============================================
+
+def validate_segment_trial_dairy(segment: str) -> bool:
+    """Validate segment parameter (FCY or LCY) for trial balance dairy reports"""
+    if not segment or not isinstance(segment, str):
+        return False
+    return segment.upper() in ['FCY', 'LCY']
+
+def validate_currency_code_trial_dairy(currency_code: str) -> bool:
+    """Validate currency code for trial balance dairy reports"""
+    if not currency_code or not isinstance(currency_code, str):
+        return False
+    
+    if len(currency_code) < 3 or len(currency_code) > 5:
+        return False
+    
+    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY']
+    return currency_code.upper() in allowed_currencies
+
+def validate_trial_balance_dairy_params(ccy_code_id: str, m_segment: str) -> tuple:
+    """
+    Validate all trial balance dairy parameters with business logic:
+    - LCY segment: only LAK currency allowed
+    - FCY segment: LAK, USD, THB currencies allowed
+    
+    Returns:
+        tuple: (is_valid: bool, error_message: str)
+    """
+    if not ccy_code_id or not m_segment:
+        return False, "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: ccy_code_id ແລະ m_segment ແມ່ນຕ້ອງການ (Missing required parameters: ccy_code_id and m_segment are required)"
+    
+    if not validate_segment_trial_dairy(m_segment):
+        return False, "ຄ່າ segment ບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້: FCY ຫຼື LCY (Invalid segment. Supported values: FCY, LCY)"
+    
+    # Business logic validation based on segment
+    if m_segment.upper() == 'LCY':
+        if ccy_code_id.upper() != 'LAK':
+            return False, "ສຳລັບ LCY segment ສາມາດໃຊ້ແຕ່ LAK ເທົ່ານັ້ນ (For LCY segment, only LAK currency is allowed)"
+    elif m_segment.upper() == 'FCY':
+        allowed_fcy_currencies = ['LAK', 'USD', 'THB']
+        if ccy_code_id.upper() not in allowed_fcy_currencies:
+            return False, f"ສຳລັບ FCY segment ສາມາດໃຊ້: {', '.join(allowed_fcy_currencies)} (For FCY segment, allowed currencies: {', '.join(allowed_fcy_currencies)})"
+    
+    if not validate_currency_code_trial_dairy(ccy_code_id):
+        return False, "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code format)"
+    
+    return True, ""
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def get_display_currency_trial_dairy(m_segment: str, ccy_code_id: str) -> str:
+    """Get formatted display currency for trial balance dairy reports"""
+    return f"{ccy_code_id} (FCY)" if m_segment == 'FCY' else "LAK (ທຽບເທົ່າ)"
+
+def normalize_trial_balance_dairy_data(data: list) -> list:
+    """
+    Normalize trial balance dairy data for consistent output
+    
+    Args:
+        data (list): Raw data from stored procedure
+    
+    Returns:
+        list: Normalized data with consistent field names
+    """
+    normalized_data = []
+    
+    for item in data:
+        normalized_item = {
+            'GL_Code': item.get('gl_code', ''),
+            'Description': item.get('Desc', ''),
+            'Opening_Dr': float(item.get('OP_DR', 0) or 0),
+            'Opening_Cr': float(item.get('OP_CR', 0) or 0),
+            'Flow_Dr': float(item.get('Mo_DR', 0) or 0),
+            'Flow_Cr': float(item.get('Mo_Cr', 0) or 0),
+            'Closing_Dr': float(item.get('C1_DR', 0) or 0),
+            'Closing_Cr': float(item.get('C1_CR', 0) or 0),
+            'Category': int(item.get('Category', 0) or 0),
+            'Currency_Code': item.get('CCy_Code_id', ''),
+            'Market_Segment': item.get('MSegment', ''),
+            'Financial_Year': item.get('Fin_year_id', ''),
+            'Period_Code': item.get('Period_code_id', '')
+        }
+        
+        # Calculate net amounts
+        normalized_item['Opening_Net'] = normalized_item['Opening_Dr'] - normalized_item['Opening_Cr']
+        normalized_item['Flow_Net'] = normalized_item['Flow_Dr'] - normalized_item['Flow_Cr']
+        normalized_item['Closing_Net'] = normalized_item['Closing_Dr'] - normalized_item['Closing_Cr']
+        
+        normalized_data.append(normalized_item)
+    
+    return normalized_data
+
+# =============================================
+# API ENDPOINTS
+# =============================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trial_balance_dairy_view(request):
+    """
+    API endpoint for trial balance dairy data
+    
+    Business Logic:
+    - LCY segment: only LAK currency allowed
+    - FCY segment: LAK, USD, THB currencies allowed
+    
+    Expected payload:
+    {
+        "ccy_code_id": "LAK|USD|THB",
+        "m_segment": "FCY|LCY"
+    }
+    
+    Examples:
+    LCY: {"ccy_code_id": "LAK", "m_segment": "LCY"}
+    FCY: {"ccy_code_id": "USD", "m_segment": "FCY"}
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "ccy_code_id": "currency_code",
+        "m_segment": "segment_type",
+        "report_category": "DAIRY",
+        "display_currency": "formatted_currency",
+        "business_rules": {
+            "lcy_currencies": ["LAK"],
+            "fcy_currencies": ["LAK", "USD", "THB"]
+        },
+        "count": number_of_records,
+        "data": [trial_balance_records]
+    }
+    """
+    try:
+        # Extract and normalize parameters
+        ccy_code_id = str(request.data.get("ccy_code_id", "")).strip().upper()
+        m_segment = str(request.data.get("m_segment", "")).strip().upper()
+        
+        # Validate parameters with business logic
+        is_valid, error_message = validate_trial_balance_dairy_params(ccy_code_id, m_segment)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "business_rules": {
+                    "lcy_currencies": ["LAK"],
+                    "fcy_currencies": ["LAK", "USD", "THB"]
+                },
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[TrialBalance-Dairy] Executing procedure for ccy_code_id={ccy_code_id}, m_segment={m_segment}")
+        
+        # Execute stored procedure
+        result = run_trial_balance_dairy_proc(ccy_code_id, m_segment)
+        
+        # Normalize data for consistent output
+        normalized_result = normalize_trial_balance_dairy_data(result)
+        
+        # Format response
+        display_currency = get_display_currency_trial_dairy(m_segment, ccy_code_id)
+        
+        logger.info(f"[TrialBalance-Dairy] Procedure completed successfully. Records: {len(normalized_result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນໃບສົມທົບ Dairy ສຳລັບ {display_currency} ສຳເລັດ (Trial balance dairy data retrieved successfully - {display_currency})",
+            "ccy_code_id": ccy_code_id,
+            "m_segment": m_segment,
+            "report_category": "DAIRY",
+            "display_currency": display_currency,
+            "business_rules": {
+                "lcy_currencies": ["LAK"],
+                "fcy_currencies": ["LAK", "USD", "THB"]
+            },
+            "count": len(normalized_result),
+            "data": normalized_result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[TrialBalance-Dairy] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ Dairy (Internal server error occurred while retrieving trial balance dairy data)",
+            "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
