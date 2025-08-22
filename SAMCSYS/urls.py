@@ -103,10 +103,8 @@ from .views import (
     bulk_insert_dairy_reports,
     CompanyProfileViewSet,
     BalanceSheetViewSet,
-    MainTrialBalanceViewSet,
     main_trial_balance_all_currency_view,
-    main_trial_balance_by_currency_view,
-    main_trial_balance_by_currency_get_view,
+    trial_balance_by_currency_view,
     income_statement_acc_view,
     income_statement_acc_get_view,
     income_statement_mfi_get_view,
@@ -122,7 +120,17 @@ from .views import (
     JRNLLogViewSetAsset,
     DETB_JRNL_LOG_MASTER_ARD_ViewSet,
     JournalARDViewSet,
-    bulk_insert_somtop_trial_balancesheet
+    bulk_insert_somtop_trial_balancesheet,
+    bulk_insert_monthly_balancesheet_acc,
+    bulk_insert_monthly_balancesheet_mfi,
+    bulk_insert_monthly_incomestatement_acc,
+    bulk_insert_monthly_incomestatement_mfi,
+    trial_balance_dairy_view,
+    balance_sheet_dairy_acc_view,
+    balance_sheet_dairy_mfi_view,
+    income_statement_dairy_mfi_view,
+    income_statement_dairy_acc_view,
+
     
 
 
@@ -188,7 +196,6 @@ router.register(r'master-types', MasterTypeViewSet)
 router.register(r'master-codes', MasterCodeViewSet)
 router.register(r'trial-balance-fcy', TrialBalanceFCYViewSet, basename='trial-balance-fcy')
 router.register(r'companies', CompanyProfileViewSet, basename='company-profile')
-router.register(r'main-trial-balance', MainTrialBalanceViewSet, basename='main-trial-balance')
 router.register(r'income-statement', IncomeStatementViewSet, basename='income-statement')
 router.register(r'asset_audit', FAAssetAuditViewSet, basename='FAAssetAudit')
 # router.register(r'dairy-report', DairyReportViewSet)
@@ -239,15 +246,31 @@ urlpatterns = [
     # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
 
-    # Store Procedure <---- Balance Sheet For DairyReport------>
+    # Store Procedure <---- Bulk Insert For DairyReport------>
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
     # Store Procedure <---- Bulk Insert Sub Trial Balance ------>
     path('api/somtop-trial-balance/bulk-insert/', bulk_insert_somtop_trial_balancesheet, name='bulk-insert-somtop-trial-balancesheet'),
-
+    # Store Procedure <----  Balance Sheets ------>
+    path('api/balancesheet/acc/bulk-insert/', bulk_insert_monthly_balancesheet_acc, name='bulk_insert_monthly_balancesheet_acc'),
+    path('api/balancesheet/mfi/bulk-insert/', bulk_insert_monthly_balancesheet_mfi, name='bulk_insert_monthly_balancesheet_mfi'),
+    # Store Procedure <----  Income Statement ------>
+    path('api/incomestatement/acc/bulk-insert/', bulk_insert_monthly_incomestatement_acc, name='bulk_insert_incomestatement_acc'),
+    path('api/incomestatement/mfi/bulk-insert/', bulk_insert_monthly_incomestatement_mfi, name='bulk_insert_incomestatement_mfi'),
     # Store Procedure <---- Main Trial Balance ------>
     path('api/main-trial-balance/all-currencies/', main_trial_balance_all_currency_view, name='main-trial-balance-all'),
-    path('api/main-trial-balance/by-currency/', main_trial_balance_by_currency_view, name='main-trial-balance-by-currency-post'),
-    path('api/main-trial-balance/by-currency/get/', main_trial_balance_by_currency_get_view, name='main-trial-balance-by-currency-get'),
+    path('api/trial-balance/by-currency/', trial_balance_by_currency_view, name='trial-balance-by-currency'),
+
+
+    # Dairy Report <---- Components ------>
+    path('api/main-trial-balance/all-currencies/dairy-report/', trial_balance_dairy_view, name='main-trial-balance-all-currencies-dairy-report'),
+
+
+    path('api/income-statement/acc/dairy-report/', income_statement_dairy_acc_view, name='income-statement-acc-post-dairy-report'),
+    path('api/income-statement/mfi/dairy-report/', income_statement_dairy_mfi_view, name='income-statement-mfi-post-dairy-report'),
+
+
+    path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
+    path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
 
     # Store Procedure <---- Sub Trail Balance ------>
