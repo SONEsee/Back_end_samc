@@ -140,7 +140,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
     
 )
-
+from . import views
 router = routers.DefaultRouter()
 router.register(r"users", MTTBUserViewSet, basename="user"),
 router.register(r'divisions', MTTBDivisionViewSet, basename='division'),
@@ -309,7 +309,8 @@ urlpatterns = [
     path('api/retroactive/', retroactive_depreciation_api, name='retroactive-depreciation-api'),
     path('api/overdue/', overdue_depreciation_api, name='overdue_api'),
     path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
-    
+    path('api/assets/', views.AssetListAPIView.as_view(), name='asset_list_api'),
+    path('api/assets/summary/', views.AssetSummaryView.as_view(), name='asset_summary_api'),
     
     
     path('api/depreciation/', calculate_depreciation_api),

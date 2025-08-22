@@ -24980,6 +24980,7 @@ def bulk_insert_somtop_trial_balancesheet(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+<<<<<<< HEAD
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_monthly_balancesheet_acc(request):
@@ -26624,3 +26625,160 @@ def trial_balance_dairy_view(request):
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ Dairy (Internal server error occurred while retrieving trial balance dairy data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+=======
+
+
+
+# sone__________________________________________________________________________________________________________________________________________________________________________
+from django.http import JsonResponse
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.dateparse import parse_datetime
+from .services import AssetService  # import service
+import json
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AssetListAPIView(View):
+    """API View ສຳລັບດຶງລາຍການ Asset"""
+    
+    def get(self, request):
+        """GET method - ໃຊ້ query parameters"""
+        try:
+            # Get parameters from query string
+            asset_type_id = request.GET.get('asset_type_id')
+            asset_status = request.GET.get('asset_status') 
+            start_date_str = request.GET.get('start_date')
+            end_date_str = request.GET.get('end_date')
+            
+            # Parse dates if provided
+            start_date = None
+            end_date = None
+            
+            if start_date_str:
+                start_date = parse_datetime(start_date_str)
+                if not start_date:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Invalid start_date format. Use ISO format: YYYY-MM-DDTHH:MM:SS'
+                    }, status=400)
+            
+            if end_date_str:
+                end_date = parse_datetime(end_date_str)
+                if not end_date:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Invalid end_date format. Use ISO format: YYYY-MM-DDTHH:MM:SS'
+                    }, status=400)
+            
+            # Call service method
+            assets = AssetService.get_asset_list_by_criteria(
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'count': len(assets),
+                'filters': {
+                    'asset_type_id': asset_type_id,
+                    'asset_status': asset_status,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                }
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+    
+    def post(self, request):
+        """POST method - ໃຊ້ JSON payload"""
+        try:
+            data = json.loads(request.body)
+            
+            asset_type_id = data.get('asset_type_id')
+            asset_status = data.get('asset_status')
+            start_date_str = data.get('start_date')
+            end_date_str = data.get('end_date')
+            
+            # Parse dates
+            start_date = None
+            end_date = None
+            
+            if start_date_str:
+                start_date = parse_datetime(start_date_str)
+            if end_date_str:
+                end_date = parse_datetime(end_date_str)
+            
+            # Call service
+            assets = AssetService.get_asset_list_by_criteria(
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'count': len(assets)
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid JSON data'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+
+class AssetSummaryView(View):
+    """API View ສຳລັບສະຖິຕິສະຫຼຸບ"""
+    
+    def get(self, request):
+        try:
+            asset_type_id = request.GET.get('asset_type_id')
+            start_date_str = request.GET.get('start_date')
+            end_date_str = request.GET.get('end_date')
+            
+            # Parse dates
+            start_date = None
+            end_date = None
+            
+            if start_date_str:
+                start_date = parse_datetime(start_date_str)
+            if end_date_str:
+                end_date = parse_datetime(end_date_str)
+            
+            # Get summary stats
+            summary = AssetService.get_asset_summary_stats(
+                asset_type_id=asset_type_id,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'summary': {
+                    'total_count': summary['total_count'],
+                    'status_breakdown': summary['status_breakdown'],
+                    'type_breakdown': summary['type_breakdown']
+                }
+                # ບໍ່ສົ່ງ raw_data ໃນ summary
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+>>>>>>> ee015dcf91cbd8142b4c84f16fe98e33370c839e
