@@ -24980,7 +24980,6 @@ def bulk_insert_somtop_trial_balancesheet(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-<<<<<<< HEAD
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_monthly_balancesheet_acc(request):
@@ -26625,7 +26624,6 @@ def trial_balance_dairy_view(request):
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ Dairy (Internal server error occurred while retrieving trial balance dairy data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-=======
 
 
 
@@ -26781,4 +26779,3 @@ class AssetSummaryView(View):
                 'success': False,
                 'error': str(e)
             }, status=500)
->>>>>>> ee015dcf91cbd8142b4c84f16fe98e33370c839e
