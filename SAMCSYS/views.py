@@ -24633,13 +24633,13 @@ class AssetListAPIView(View):
     def get(self, request):
         """GET method - ໃຊ້ query parameters"""
         try:
-            # Get parameters from query string
+            
             asset_type_id = request.GET.get('asset_type_id')
             asset_status = request.GET.get('asset_status') 
             start_date_str = request.GET.get('start_date')
             end_date_str = request.GET.get('end_date')
             
-            # Parse dates if provided
+            
             start_date = None
             end_date = None
             
@@ -24659,7 +24659,7 @@ class AssetListAPIView(View):
                         'error': 'Invalid end_date format. Use ISO format: YYYY-MM-DDTHH:MM:SS'
                     }, status=400)
             
-            # Call service method
+           
             assets = AssetService.get_asset_list_by_criteria(
                 asset_type_id=asset_type_id,
                 asset_status=asset_status,
@@ -24695,7 +24695,7 @@ class AssetListAPIView(View):
             start_date_str = data.get('start_date')
             end_date_str = data.get('end_date')
             
-            # Parse dates
+          
             start_date = None
             end_date = None
             
@@ -24704,7 +24704,7 @@ class AssetListAPIView(View):
             if end_date_str:
                 end_date = parse_datetime(end_date_str)
             
-            # Call service
+           
             assets = AssetService.get_asset_list_by_criteria(
                 asset_type_id=asset_type_id,
                 asset_status=asset_status,
@@ -24769,3 +24769,343 @@ class AssetSummaryView(View):
                 'success': False,
                 'error': str(e)
             }, status=500)
+
+
+# ===============================
+# ໄຟລ์: asset_api.py
+# ຟັງຊັ້ນສຳລັບ API ດຶງຂໍ້ມູນຊັບສິນ
+# ===============================
+
+from django.http import JsonResponse
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.dateparse import parse_datetime
+from django.db import connection
+import json
+from datetime import datetime
+
+# ===============================
+# ຟັງຊັ້ນຫຼັກສຳລັບເອີ້ນ Stored Procedure
+# ===============================
+
+def get_asset_depreciation_report(asset_list_id=None, asset_type_id=None, 
+                                asset_status=None, start_date=None, end_date=None):
+    """
+    ຟັງຊັ້ນເອີ້ນ Stored Procedure ເພື່ອດຶງຂໍ້ມູນບົດລາຍງານຊັບສິນ
+    
+    Parameters:
+    - asset_list_id: ລະຫັດຊັບສິນສະເພາະ (ຖ້າຕ້ອງການ)
+    - asset_type_id: ປະເພດຊັບສິນ (1001, 1002, ...)
+    - asset_status: ສະຖານະຊັບສິນ (AC, UC, IA, ...)
+    - start_date: ວັນທີ່ເລີ່ມຕົ້ນ
+    - end_date: ວັນທີ່ສິ້ນສຸດ
+    
+    Returns:
+    - List ຂອງຂໍ້ມູນຊັບສິນ
+    """
+    try:
+        with connection.cursor() as cursor:
+            # ເອີ້ນ Stored Procedure
+            cursor.execute("""
+                EXEC [dbo].[Asset_List_GetAllList_Depreciation_Monthly] 
+                @asset_list_id_id = %s,
+                @asset_type_id = %s,
+                @asset_status = %s,
+                @startDate = %s,
+                @Enddate = %s
+            """, [asset_list_id, asset_type_id, asset_status, start_date, end_date])
+            
+            # ດຶງຊື່ຖັນ (columns)
+            columns = [col[0] for col in cursor.description]
+            
+            # ດຶງຂໍ້ມູນທັງໝົດ
+            rows = cursor.fetchall()
+            
+            # ປ່ຽນເປັນ list of dictionaries
+            result = []
+            for row in rows:
+                row_dict = dict(zip(columns, row))
+                
+                # ປ່ຽນ datetime objects ເປັນ string ສຳລັບ JSON
+                for key, value in row_dict.items():
+                    if isinstance(value, datetime):
+                        row_dict[key] = value.isoformat()
+                
+                result.append(row_dict)
+            
+            return result
+            
+    except Exception as e:
+        print(f"Error in get_asset_depreciation_report: {str(e)}")
+        raise e
+
+# ===============================
+# ຟັງຊັ້ນຄິດໄລ່ຄ່າລວມ
+# ===============================
+
+def calculate_asset_totals(asset_data):
+    """
+    ຄິດໄລ່ຄ່າລວມຕ່າງໆ ຈາກຂໍ້ມູນຊັບສິນ
+    
+    Parameters:
+    - asset_data: List ຂອງຂໍ້ມູນຊັບສິນ
+    
+    Returns:
+    - Dictionary ທີ່ມີຄ່າລວມຕ່າງໆ
+    """
+    totals = {
+        'total_asset_value': 0,
+        'total_depreciation_value': 0,
+        'total_remaining_value': 0,
+        'total_monthly_depreciation': 0,
+        'asset_count': len(asset_data)
+    }
+    
+    for asset in asset_data:
+        # ປ່ຽນ string ເປັນ float ຖ້າຈຳເປັນ
+        asset_value = float(asset.get('asset_value', 0) or 0)
+        accu_depreciation = float(asset.get('asset_accu_dpca_value', 0) or 0)
+        remaining_value = float(asset.get('asset_value_remain', 0) or 0)
+        monthly_depreciation = float(asset.get('asset_value_remainMonth', 0) or 0)
+        
+        totals['total_asset_value'] += asset_value
+        totals['total_depreciation_value'] += accu_depreciation
+        totals['total_remaining_value'] += remaining_value
+        totals['total_monthly_depreciation'] += monthly_depreciation
+    
+    return totals
+
+
+
+def parse_date_parameter(date_string):
+    """
+    ປັບແຕ່ງ date string ເປັນ datetime object
+    
+    Parameters:
+    - date_string: ວັນທີ່ໃນຮູບແບບ string
+    
+    Returns:
+    - datetime object ຫຼື None
+    """
+    if not date_string:
+        return None
+        
+   
+    try:
+       
+        return parse_datetime(date_string)
+    except:
+        try:
+          
+            return datetime.strptime(date_string, '%Y-%m-%d')
+        except:
+            try:
+              
+                return datetime.strptime(date_string, '%d/%m/%Y')
+            except:
+                return None
+
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AssetDepreciationReportView(View):
+    """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ"""
+    
+    def get(self, request):
+        """GET method - ໃຊ້ query parameters"""
+        try:
+            # ດຶງ parameters ຈາກ URL
+            asset_list_id = request.GET.get('asset_list_id')
+            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
+            asset_status = request.GET.get('asset_status') or request.GET.get('status')
+            start_date_str = request.GET.get('start_date') or request.GET.get('start')
+            end_date_str = request.GET.get('end_date') or request.GET.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ກວດສອບຮູບແບບວັນທີ່
+            if start_date_str and not start_date:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid start_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
+                }, status=400)
+            
+            if end_date_str and not end_date:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid end_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
+                }, status=400)
+            
+            # ດຶງຂໍ້ມູນຈາກ Stored Procedure
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຄິດໄລ່ຄ່າລວມ
+            totals = calculate_asset_totals(assets)
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'totals': totals,
+                'filters': {
+                    'asset_list_id': asset_list_id,
+                    'asset_type_id': asset_type_id,
+                    'asset_status': asset_status,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                },
+                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+    
+    def post(self, request):
+        """POST method - ໃຊ້ JSON payload"""
+        try:
+            data = json.loads(request.body)
+            
+            # ດຶງຂໍ້ມູນຈາກ JSON
+            asset_list_id = data.get('asset_list_id')
+            asset_type_id = data.get('asset_type_id') or data.get('type')
+            asset_status = data.get('asset_status') or data.get('status')
+            start_date_str = data.get('start_date') or data.get('start')
+            end_date_str = data.get('end_date') or data.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ດຶງຂໍ້ມູນ
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຄິດໄລ່ຄ່າລວມ
+            totals = calculate_asset_totals(assets)
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'totals': totals,
+                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'JSON format ບໍ່ຖືກຕ້ອງ'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+
+# ===============================
+# ຟັງຊັ້ນເສີມສຳລັບສະຖິຕິ
+# ===============================
+
+def get_asset_statistics(asset_type_id=None, start_date=None, end_date=None):
+    """
+    ດຶງສະຖິຕິສະຫຼຸບຂອງຊັບສິນ
+    """
+    try:
+        # ດຶງຂໍ້ມູນທັງໝົດ
+        assets = get_asset_depreciation_report(
+            asset_type_id=asset_type_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        # ສະຖິຕິຕາມສະຖານະ
+        status_stats = {}
+        type_stats = {}
+        
+        for asset in assets:
+            status = asset.get('asset_status', 'ບໍ່ລະບຸ')
+            asset_type = asset.get('asset_type_id_id', 'ບໍ່ລະບຸ')
+            
+            # ນັບຕາມສະຖານະ
+            if status in status_stats:
+                status_stats[status] += 1
+            else:
+                status_stats[status] = 1
+            
+            # ນັບຕາມປະເພດ
+            if asset_type in type_stats:
+                type_stats[asset_type] += 1
+            else:
+                type_stats[asset_type] = 1
+        
+        # ຄິດໄລ່ຄ່າລວມ
+        totals = calculate_asset_totals(assets)
+        
+        return {
+            'total_count': len(assets),
+            'status_breakdown': status_stats,
+            'type_breakdown': type_stats,
+            'financial_summary': totals
+        }
+        
+    except Exception as e:
+        print(f"Error in get_asset_statistics: {str(e)}")
+        raise e
+
+# ===============================
+# API View ສຳລັບສະຖິຕິ
+# ===============================
+
+class AssetStatisticsView(View):
+    """API View ສຳລັບສະຖິຕິສະຫຼຸບຊັບສິນ"""
+    
+    def get(self, request):
+        try:
+            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
+            start_date_str = request.GET.get('start_date') or request.GET.get('start')
+            end_date_str = request.GET.get('end_date') or request.GET.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ດຶງສະຖິຕິ
+            stats = get_asset_statistics(
+                asset_type_id=asset_type_id,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'statistics': stats,
+                'filters': {
+                    'asset_type_id': asset_type_id,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                }
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+
+
+
