@@ -7311,7 +7311,6 @@ def submit_eod_journal(request):
 #         logger.error(error_message)
 #         return False, error_message
 
-
 from django.db import transaction
 from django.core.exceptions import ValidationError
 import logging
@@ -7343,7 +7342,7 @@ def execute_bulk_journal(eod_function, user):
                     logger.debug(f"Processing log ID {log.ac_entry_sr_no}")
                     
                     # Extract ForeignKey values properly
-                    # Module field
+                    # Module field -> module_id
                     module_value = ''
                     if log.module:
                         module_value = str(getattr(log.module, 'module_code', 
@@ -7353,16 +7352,14 @@ def execute_bulk_journal(eod_function, user):
                     if not module_value:
                         module_value = 'GL'  # Default module
                     
-                    # Transaction reference number - from DETB_JRNL_LOG ForeignKey
+                    # Transaction reference number - keep as is
                     trn_ref_no_value = ''
                     if log.trn_ref_no:
-                        trn_ref_no_value = str(getattr(log.trn_ref_no, 'Reference_No', 
-                                             getattr(log.trn_ref_no, 'JRNLLog_id',
-                                             getattr(log.trn_ref_no, 'id', ''))))[:35]  # Max 35 chars
-                    if not trn_ref_no_value:
+                        trn_ref_no_value = str(log.trn_ref_no)[:35]  # Max 35 chars
+                    else:
                         trn_ref_no_value = f'TRN{log.ac_entry_sr_no}'[:35]
                     
-                    # Account number - from MTTB_GLSub ForeignKey
+                    # Account number -> ac_no_id
                     ac_no_value = ''
                     if log.ac_no:
                         ac_no_value = str(getattr(log.ac_no, 'gl_sub_code', 
@@ -7373,7 +7370,7 @@ def execute_bulk_journal(eod_function, user):
                     if not ac_no_value:
                         ac_no_value = f'AC{log.ac_entry_sr_no}'[:50]
                     
-                    # Currency - from MTTB_Ccy_DEFN ForeignKey
+                    # Currency -> ac_ccy_id
                     ac_ccy_value = ''
                     if log.ac_ccy:
                         ac_ccy_value = str(getattr(log.ac_ccy, 'ccy_code', 
@@ -7383,7 +7380,7 @@ def execute_bulk_journal(eod_function, user):
                     if not ac_ccy_value:
                         ac_ccy_value = 'LAK'  # Default currency
                     
-                    # Transaction code - from MTTB_TRN_Code ForeignKey
+                    # Transaction code -> trn_code_id
                     trn_code_value = ''
                     if log.trn_code:
                         trn_code_value = str(getattr(log.trn_code, 'trn_code', 
@@ -7393,7 +7390,7 @@ def execute_bulk_journal(eod_function, user):
                     if not trn_code_value:
                         trn_code_value = 'GL'  # Default transaction code
                     
-                    # Financial cycle - from MTTB_Fin_Cycle ForeignKey
+                    # Financial cycle -> financial_cycle_id
                     financial_cycle_value = ''
                     if log.financial_cycle:
                         financial_cycle_value = str(getattr(log.financial_cycle, 'fin_cycle', 
@@ -7403,7 +7400,7 @@ def execute_bulk_journal(eod_function, user):
                     if not financial_cycle_value:
                         financial_cycle_value = '2025'  # Default financial cycle
                     
-                    # Period code - from MTTB_Per_Code ForeignKey
+                    # Period code -> period_code_id
                     period_code_value = ''
                     if log.period_code:
                         period_code_value = str(getattr(log.period_code, 'per_code', 
@@ -7411,41 +7408,51 @@ def execute_bulk_journal(eod_function, user):
                                               getattr(log.period_code, 'code', 
                                               getattr(log.period_code, 'id', '')))))[:6]  # Max 6 chars
                     if not period_code_value:
-                        period_code_value = f'{log.trn_dt.year}{log.trn_dt.month:02d}' if log.trn_dt else '202507'
+                        period_code_value = f'{log.trn_dt.year}{log.trn_dt.month:02d}' if log.trn_dt else '202508'
                     
-                    # Maker ID - from MTTB_Users ForeignKey
+                    # Maker ID -> Maker_id_id
                     maker_id_value = ''
                     if log.Maker_id:
                         maker_id_value = str(getattr(log.Maker_id, 'user_id', 
                                            getattr(log.Maker_id, 'user_name', 
-                                           getattr(log.Maker_id, 'id', ''))))[:12]  # Max 12 chars
+                                           getattr(log.Maker_id, 'username',
+                                           getattr(log.Maker_id, 'id', '')))))[:12]  # Max 12 chars
                     
-                    # Checker ID - from MTTB_Users ForeignKey
+                    # Checker ID -> Checker_id_id
                     checker_id_value = ''
                     if log.Checker_id:
                         checker_id_value = str(getattr(log.Checker_id, 'user_id', 
                                              getattr(log.Checker_id, 'user_name', 
-                                             getattr(log.Checker_id, 'id', ''))))[:12]  # Max 12 chars
+                                             getattr(log.Checker_id, 'username',
+                                             getattr(log.Checker_id, 'id', '')))))[:12]  # Max 12 chars
+                    
+                    # GL ID -> glid_id
+                    glid_value = ''
+                    if log.glid:
+                        glid_value = str(getattr(log.glid, 'gl_code', 
+                                       getattr(log.glid, 'account_code',
+                                       getattr(log.glid, 'code', 
+                                       getattr(log.glid, 'id', '')))))[:50]  # Max 50 chars
                     
                     # Handle event_sr_no conversion from BigInt to Int
                     event_sr_no_value = log.event_sr_no or 0
                     if event_sr_no_value > 2147483647:  # Max int value
                         event_sr_no_value = 2147483647
                     
-                    # Create STTB_EOC_DAILY_LOG object
+                    # Create STTB_EOC_DAILY_LOG object with correct field names
                     eoc_log = STTB_EOC_DAILY_LOG(
                         # Note: ac_entry_sr_no is AutoField, so we don't set it
-                        module=module_value,
+                        module_id=module_value,                    # Fixed: module -> module_id
                         trn_ref_no=trn_ref_no_value,
                         trn_ref_sub_no=log.trn_ref_sub_no or '',
                         event_sr_no=event_sr_no_value,
                         event=log.event or '',
-                        ac_no=ac_no_value,
+                        ac_no_id=ac_no_value,                     # Fixed: ac_no -> ac_no_id
                         ac_no_full=log.ac_no_full or '',
-                        gl_acc_relative=log.ac_relative or '',  # ACTB.ac_relative -> EOC.gl_acc_relative
-                        ac_ccy=ac_ccy_value,
+                        ac_relative=log.ac_relative or '',        # Fixed: gl_acc_relative -> ac_relative
+                        ac_ccy_id=ac_ccy_value,                   # Fixed: ac_ccy -> ac_ccy_id
                         drcr_ind=log.drcr_ind or 'D',
-                        trn_code=trn_code_value,
+                        trn_code_id=trn_code_value,               # Fixed: trn_code -> trn_code_id
                         fcy_dr=log.fcy_dr or 0,
                         fcy_cr=log.fcy_cr or 0,
                         lcy_dr=log.lcy_dr or 0,
@@ -7457,18 +7464,20 @@ def execute_bulk_journal(eod_function, user):
                         addl_text=log.addl_text or '',
                         addl_sub_text=log.addl_sub_text or '',
                         trn_dt=log.trn_dt,
-                        type=log.glType or '',  # ACTB.glType -> EOC.type
+                        glid_id=glid_value,                       # Fixed: Added glid_id field
+                        glType=log.glType or '',                  # Fixed: type -> glType
                         category=log.category or '',
                         value_dt=log.value_dt,
-                        financial_cycle=financial_cycle_value,
-                        period_code=period_code_value,
-                        Maker_id=maker_id_value,
+                        financial_cycle_id=financial_cycle_value,  # Fixed: financial_cycle -> financial_cycle_id
+                        period_code_id=period_code_value,         # Fixed: period_code -> period_code_id
+                        Maker_id_id=maker_id_value,               # Fixed: Maker_id -> Maker_id_id
                         Maker_DT_Stamp=log.Maker_DT_Stamp,
-                        Checker_id=checker_id_value,
+                        Checker_id_id=checker_id_value,           # Fixed: Checker_id -> Checker_id_id
                         Checker_DT_Stamp=log.Checker_DT_Stamp,
                         Auth_Status=log.Auth_Status or 'U',
                         product=log.product or '',
-                        entry_seq_no=log.entry_seq_no
+                        entry_seq_no=log.entry_seq_no,
+                        delete_stat=log.delete_stat or ''         # Added delete_stat field
                     )
                     
                     # Validate the object before adding to bulk list
@@ -7488,14 +7497,45 @@ def execute_bulk_journal(eod_function, user):
             if not eoc_logs:
                 return False, "ບໍ່ສາມາດປະມວນຜົນ journal ໃດໆໄດ້"
             
+            # Check for existing records to avoid duplicates (optional)
+            # You can uncomment this if you want to prevent duplicates
+            # existing_ids = set(STTB_EOC_DAILY_LOG.objects.filter(
+            #     trn_ref_no__in=[log.trn_ref_no for log in eoc_logs]
+            # ).values_list('trn_ref_no', flat=True))
+            # eoc_logs = [log for log in eoc_logs if log.trn_ref_no not in existing_ids]
+            
             # Bulk create records in STTB_EOC_DAILY_LOG
-            created_records = STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
+            try:
+                created_records = STTB_EOC_DAILY_LOG.objects.bulk_create(eoc_logs)
+                logger.info(f"Successfully bulk created {len(created_records)} records")
+            except Exception as bulk_error:
+                logger.warning(f"Bulk create failed: {str(bulk_error)}, trying individual inserts...")
+                # Fallback to individual creates if bulk create fails
+                created_records = []
+                failed_individual = []
+                
+                for i, eoc_log in enumerate(eoc_logs):
+                    try:
+                        eoc_log.save()
+                        created_records.append(eoc_log)
+                    except Exception as individual_error:
+                        logger.error(f"Failed to create individual record {i}: {str(individual_error)}")
+                        failed_individual.append(i)
+                        # Remove this ID from processed_ids since it failed
+                        if i < len(processed_ids):
+                            processed_ids.remove(processed_ids[i])
+                
+                if failed_individual:
+                    logger.warning(f"Failed to create {len(failed_individual)} individual records")
+                    
+                if not created_records:
+                    return False, "ບໍ່ສາມາດບັນທຶກຂໍ້ມູນໃດໆໄດ້"
             
             # Update source records to prevent reprocessing
             # Mark as processed
-            ACTB_DAIRY_LOG.objects.filter(
-                ac_entry_sr_no__in=processed_ids
-            ).update(Auth_Status='P')  # P for Processed
+            # ACTB_DAIRY_LOG.objects.filter(
+            #     ac_entry_sr_no__in=processed_ids
+            # ).update(Auth_Status='P')  # P for Processed
             
             # Alternative: Delete processed records (uncomment if needed)
             # ACTB_DAIRY_LOG.objects.filter(
@@ -19835,35 +19875,110 @@ def get_gltype_lookup_dict():
 #             'status': 'error',
 #             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
 #         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+from django.db import transaction, connection
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime, date
+import logging
+import re
+
+logger = logging.getLogger(__name__)
+
+# EOD Integration Function for FN004
+def execute_dairy_somtop_trailbalance(eod_function, user, processing_date=None):
+    """
+    Execute FN004: Dairy and Somtop Trail Balance for EOD processing.
+    This function integrates with the EOD system to use the current processing date.
+    """
+    try:
+        # Get current processing date from system or use provided date
+        if not processing_date:
+            from .models import MTTB_System_Date  # Replace with actual import
+            try:
+                system_date_obj = MTTB_System_Date.objects.get(active=True)
+                processing_date = system_date_obj.current_date
+            except MTTB_System_Date.DoesNotExist:
+                processing_date = date.today()
+        
+        # Convert to string format if it's a date object
+        if isinstance(processing_date, date):
+            date_str = processing_date.strftime('%Y-%m-%d')
+        else:
+            date_str = str(processing_date)
+        
+        logger.info(f"[FN004] Starting Dairy Somtop Trail Balance for processing date: {date_str}")
+        
+        # Create request-like object for the bulk_insert function
+        class MockRequest:
+            def __init__(self, user, date_str):
+                self.user = user
+                self.data = {
+                    'date_start': date_str,
+                    'date_end': date_str,
+                    'category': 'TRIAL_BALANCE'
+                }
+        
+        mock_request = MockRequest(user, date_str)
+        
+        # Execute the bulk insert function
+        result = bulk_insert_dairy_reports_internal(mock_request)
+        
+        if result.get('status') == 'success':
+            message = f"FN004 ສຳເລັດ: {result.get('statistics', {}).get('totals', {}).get('inserted', 0)} ລາຍການ"
+            logger.info(f"[FN004] Completed successfully for {date_str}")
+            return True, message
+        else:
+            error_message = result.get('message', 'Unknown error')
+            logger.error(f"[FN004] Failed for {date_str}: {error_message}")
+            return False, f"FN004 ຜິດພາດ: {error_message}"
+            
+    except Exception as e:
+        logger.error(f"[FN004] Error in EOD execution: {str(e)}", exc_info=True)
+        return False, f"FN004 ຂໍ້ຜິດພາດ: {str(e)}"
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_dairy_reports(request):
     """
-    Clear Dairy_Report table and insert data from both FCY and LCY stored procedures
+    API endpoint for bulk inserting dairy reports.
+    This is the public API that can be called directly or through EOD processing.
+    """
+    result = bulk_insert_dairy_reports_internal(request)
     
-    Expected payload:
+    if result['status'] == 'success':
+        return Response(result, status=status.HTTP_201_CREATED)
+    else:
+        return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def bulk_insert_dairy_reports_internal(request):
+    """
+    Internal function for bulk inserting dairy reports.
+    This can be called by both the API endpoint and EOD processing.
+    
+    Expected payload in request.data:
     {
         "date_start": "YYYY-MM-DD",
         "date_end": "YYYY-MM-DD", 
         "category": "TRIAL_BALANCE"
     }
-    
-    Note: 
-    - period_code is automatically calculated from date_end (YYYYMM format)
-    - fin_year is automatically calculated from date_end (YYYY format)
     """
     try:
         # Validate request data
         date_start = request.data.get("date_start")
         date_end = request.data.get("date_end")
-        fin_year = request.data.get("fin_year", "2025")
         default_category = request.data.get("category", "TRIAL_BALANCE")
 
         if not all([date_start, date_end]):
-            return Response({
+            return {
                 'status': 'error',
                 'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }
 
         # Date validation and period_code calculation
         try:
@@ -19871,22 +19986,21 @@ def bulk_insert_dairy_reports(request):
             end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
             
             if start_date_obj > end_date_obj:
-                return Response({
+                return {
                     'status': 'error',
                     'message': 'ວັນທີເລີ່ມຕົ້ນຕ້ອງນ້ອຍກວ່າວັນທີສິ້ນສຸດ (Start date must be before end date)'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
+                }
+
             # Auto-calculate period_code from date_end (YYYYMM format)
             period_code = end_date_obj.strftime('%Y%m')
-            
-            # Auto-calculate fin_year from date_end (YYYY format)
+            # Auto-calculate fin_year from date_end (YYYY format) 
             fin_year = end_date_obj.strftime('%Y')
-                
+            
         except ValueError:
-            return Response({
+            return {
                 'status': 'error',
                 'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }
 
         logger.info(f"[BulkInsertDairyReports] Starting bulk insert operation from {date_start} to {date_end}, period: {period_code}, fin_year: {fin_year}")
 
@@ -19915,7 +20029,7 @@ def bulk_insert_dairy_reports(request):
         ccy_objects = {}
         fin_year_obj = None
         period_obj = None
-
+        
         try:
             if fin_year:
                 from .models import MTTB_Fin_Cycle  # Replace with actual import
@@ -19934,32 +20048,28 @@ def bulk_insert_dairy_reports(request):
             # Step 1: Clear existing Dairy_Report data
             try:
                 from .models import Dairy_Report  # Replace with actual import
-                
                 logger.info("Clearing existing Dairy_Report data...")
                 stats['cleared_records'] = Dairy_Report.objects.all().count()
                 Dairy_Report.objects.all().delete()
                 logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
-                
             except Exception as e:
                 logger.error(f"Error clearing Dairy_Report data: {str(e)}")
-                return Response({
+                return {
                     'status': 'error',
                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                }
 
             # Step 2: Execute FCY stored procedure and insert FCY data
             logger.info("Executing FCY stored procedure...")
             try:
                 with connection.cursor() as cursor:
                     fcy_query = """
-                        EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy
-                            @DateStart = %s,
-                            @DateEnd = %s
+                    EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy @DateStart = %s, @DateEnd = %s
                     """
                     cursor.execute(fcy_query, [date_start, date_end])
                     fcy_columns = [col[0] for col in cursor.description]
                     fcy_results = [dict(zip(fcy_columns, row)) for row in cursor.fetchall()]
-
+                    
                 stats['fcy_records_fetched'] = len(fcy_results)
                 logger.info(f"FCY stored procedure completed. Rows fetched: {stats['fcy_records_fetched']}")
 
@@ -20022,7 +20132,6 @@ def bulk_insert_dairy_reports(request):
                         
                         dairy_report.full_clean()
                         dairy_report.save()
-                        
                         stats['fcy_records_inserted'] += 1
                         created_records.append({
                             'type': 'FCY',
@@ -20045,24 +20154,22 @@ def bulk_insert_dairy_reports(request):
 
             except Exception as e:
                 logger.error(f"Error executing FCY stored procedure: {str(e)}")
-                return Response({
+                return {
                     'status': 'error',
                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ FCY stored procedure: {str(e)}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                }
 
             # Step 3: Execute LCY stored procedure and insert LCY data
             logger.info("Executing LCY consolidated stored procedure...")
             try:
                 with connection.cursor() as cursor:
                     lcy_query = """
-                        EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy
-                            @DateStart = %s,
-                            @DateEnd = %s
+                    EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy @DateStart = %s, @DateEnd = %s
                     """
                     cursor.execute(lcy_query, [date_start, date_end])
                     lcy_columns = [col[0] for col in cursor.description]
                     lcy_results = [dict(zip(lcy_columns, row)) for row in cursor.fetchall()]
-
+                    
                 stats['lcy_records_fetched'] = len(lcy_results)
                 logger.info(f"LCY stored procedure completed. Rows fetched: {stats['lcy_records_fetched']}")
 
@@ -20103,27 +20210,26 @@ def bulk_insert_dairy_reports(request):
                             StartDate=start_date_obj,
                             EndDate=end_date_obj,
                             Category=record_gltype,
-                            # FCY fields set to 0 for LCY records
+                            # Using LCY data for main fields (assuming this is what you want)
                             OP_DR=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
                             OP_CR=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
                             Mo_DR=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
                             Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
                             C1_DR=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
                             C1_CR=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
-                            # LCY fields from stored procedure
-                            OP_DR_lcy=safe_decimal_convert(0),
-                            OP_CR_lcy=safe_decimal_convert(0),
-                            Mo_DR_lcy=safe_decimal_convert(0),
-                            Mo_Cr_lcy=safe_decimal_convert(0),
-                            C1_DR_lcy=safe_decimal_convert(0),
-                            C1_CR_lcy=safe_decimal_convert(0),
+                            # LCY fields - you might want to use the same values or set to 0
+                            OP_DR_lcy=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
+                            OP_CR_lcy=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
+                            Mo_DR_lcy=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
+                            Mo_Cr_lcy=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
+                            C1_DR_lcy=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
+                            C1_CR_lcy=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
                             Maker_Id=request.user,
                             MSegment=item.get('MSegment', '')
                         )
                         
                         dairy_report.full_clean()
                         dairy_report.save()
-                        
                         stats['lcy_records_inserted'] += 1
                         created_records.append({
                             'type': 'LCY',
@@ -20146,10 +20252,10 @@ def bulk_insert_dairy_reports(request):
 
             except Exception as e:
                 logger.error(f"Error executing LCY stored procedure: {str(e)}")
-                return Response({
+                return {
                     'status': 'error',
                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ LCY stored procedure: {str(e)}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                }
 
         # Calculate totals
         stats['total_inserted'] = stats['fcy_records_inserted'] + stats['lcy_records_inserted']
@@ -20193,15 +20299,14 @@ def bulk_insert_dairy_reports(request):
         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
 
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        return response_data
 
     except Exception as e:
         logger.error(f"Bulk insert dairy reports error: {str(e)}")
-        return Response({
+        return {
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        }
 
 
 from rest_framework import viewsets, status
@@ -20446,6 +20551,7 @@ def validate_trial_balance_params(ccy_code_id: str, m_segment: str, fin_year_id:
         return False, "ລະຫັດງວດບໍ່ຖືກຕ້ອງ (ຮູບແບບ: YYYYMM) (Invalid period code format: YYYYMM)"
     
     return True, ""
+ 
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -20519,7 +20625,8 @@ def main_trial_balance_all_currency_view(request):
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+ 
+# Trail Balance by Currency <--- using hai sone pherm
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def trial_balance_by_currency_view(request):
@@ -20583,7 +20690,7 @@ def trial_balance_by_currency_view(request):
                 "period_code_id": period_code_id
             }
         }, status=status.HTTP_200_OK)
-        
+          
     except Exception as e:
         logger.exception(f"[TrialBalance-ByCurrency] Error executing stored procedure: {str(e)}")
         
@@ -20591,9 +20698,7 @@ def trial_balance_by_currency_view(request):
             "status": "error",
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
 
 # Store Procedure IncomeStatement ------> 
 from django.db import connection
@@ -22152,17 +22257,37 @@ def execute_eod_process(user, processing_date, is_back_date=False):
     except Exception as e:
         return False, f"Error in EOD process execution: {str(e)}"
 
-def execute_eod_function(eod_function, user, processing_date):
+
+
+def execute_eod_function(eod_function, user, processing_date=None, is_back_date=False):
     """
-    Execute a specific EOD function (placeholder for actual implementation).
+    Execute a specific EOD function based on its function_id mapping.
     """
     function_id = eod_function.function_id.function_id
-    logger.info(f"Executing function {function_id} for {processing_date}")
+    context = f"back-date for {processing_date}" if is_back_date else f"normal for {processing_date or 'today'}"
+    logger.info(f"Executing function {function_id} ({context})")
+
     try:
-        # Placeholder for actual function execution
-        return True, f"Function {function_id} executed successfully"
+        # Map function IDs to their corresponding execution methods
+        function_mapping = {
+            'FN006': execute_bulk_journal,        # Bulk Journal Processing
+            'FN004': lambda eod_func, usr: execute_dairy_somtop_trailbalance(eod_func, usr, processing_date),  # Updated FN004
+            'EOD_INTEREST': execute_interest_calculation,
+            'EOD_REPORT': execute_report_generation,
+            'EOD_BACKUP': execute_backup_process,
+            # Add more mappings as needed
+        }
+
+        if function_id in function_mapping:
+            # Execute the mapped function
+            return function_mapping[function_id](eod_function, user)
+        else:
+            # Generic execution for unmapped functions
+            return execute_generic_function(eod_function, user)
+
     except Exception as e:
-        return False, f"Error executing function {function_id}: {str(e)}"
+        logger.error(f"Error executing function {function_id}: {str(e)}", exc_info=True)
+        return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ {function_id}: {str(e)}"
 
 def complete_normal_eod_and_create_next(user, processing_date):
     """
@@ -24980,7 +25105,6 @@ def bulk_insert_somtop_trial_balancesheet(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-<<<<<<< HEAD
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_monthly_balancesheet_acc(request):
@@ -26625,7 +26749,6 @@ def trial_balance_dairy_view(request):
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ Dairy (Internal server error occurred while retrieving trial balance dairy data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-=======
 
 
 
@@ -26781,4 +26904,3 @@ class AssetSummaryView(View):
                 'success': False,
                 'error': str(e)
             }, status=500)
->>>>>>> ee015dcf91cbd8142b4c84f16fe98e33370c839e
