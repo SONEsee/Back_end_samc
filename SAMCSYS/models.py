@@ -1905,6 +1905,8 @@ class Cashflow_Acc(models.Model):
     category = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
     is_subtotal = models.BooleanField(default=False, null=True, blank=True)
     is_total = models.BooleanField(default=False)
+    Extensions = models.CharField(max_length=255, null=True, blank=True)  # ຈຳນວນສູນທີ່ເພີ່ມໃນລາຍງານ
+    Reductions = models.CharField(max_length=255, null=True, blank=True)  # ຈຳນວນສູນທີ່ລົບໃນລາຍງານ
     class Meta:
         verbose_name_plural = 'Cashflow_Acc'
 
@@ -2013,11 +2015,21 @@ class Monthly_Balancesheet_acc(models.Model):
     total_Amount_Opening = models.CharField(max_length=50, null=True, blank=True)
     total_Amount_Current = models.CharField(max_length=50, null=True, blank=True)
     total_net_amount = models.CharField(max_length=50, null=True, blank=True)
-    currency_display = models.CharField(max_length=10, null=True, blank=True)
+    currency_display = models.CharField(max_length=50, null=True, blank=True)
     segment_type = models.CharField(max_length=20, null=True, blank=True)
     period_code = models.CharField(max_length=10, null=True, blank=True)
     class Meta:
         verbose_name_plural = 'Monthly_Balancesheet_acc'
+        db_table = 'SAMCSYS_monthly_balancesheet_acc'
+        indexes = [
+            models.Index(fields=['period_code']),
+            models.Index(fields=['segment_type']),
+            models.Index(fields=['currency_display']),
+            models.Index(fields=['period_code', 'segment_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.no} - {self.description} ({self.period_code})"
 
 class Monthly_Balancesheet_mfi(models.Model):
     mb_mfi_id = models.AutoField(primary_key=True)
@@ -2027,11 +2039,49 @@ class Monthly_Balancesheet_mfi(models.Model):
     total_Amount_Opening = models.CharField(max_length=50, null=True, blank=True)
     total_Amount_Current = models.CharField(max_length=50, null=True, blank=True)
     total_net_amount = models.CharField(max_length=50, null=True, blank=True)
-    currency_display = models.CharField(max_length=10, null=True, blank=True)
+    currency_display = models.CharField(max_length=50, null=True, blank=True)
     segment_type = models.CharField(max_length=20, null=True, blank=True)
     period_code = models.CharField(max_length=10, null=True, blank=True)
     class Meta:
         verbose_name_plural = 'Monthly_Balancesheet_mfi'
+        db_table = 'SAMCSYS_monthly_balancesheet_mfi'
+        indexes = [
+            models.Index(fields=['period_code']),
+            models.Index(fields=['segment_type']),
+            models.Index(fields=['currency_display']),
+            models.Index(fields=['period_code', 'segment_type']),
+        ]
+    
+    def __str__(self):
+        return f"MFI {self.no} - {self.description} ({self.period_code})"
+
+# class Monthly_Incomestatement_acc(models.Model):
+#     mi_acc_id = models.AutoField(primary_key=True)
+#     no = models.CharField(max_length=20, null=True, blank=True)
+#     report_number = models.CharField(max_length=20, null=True, blank=True)
+#     description = models.CharField(max_length=500, null=True, blank=True)
+#     previous_month = models.CharField(max_length=50, null=True, blank=True)
+#     current_month = models.CharField(max_length=50, null=True, blank=True)
+#     net_change = models.CharField(max_length=50, null=True, blank=True)
+#     currency_display = models.CharField(max_length=50, null=True, blank=True)
+#     segment_type = models.CharField(max_length=20, null=True, blank=True)
+#     period_code = models.CharField(max_length=10, null=True, blank=True)
+#     class Meta:
+#         verbose_name_plural = 'Monthly_Incomestatement_acc'
+
+# class Monthly_Incomestatement_mfi(models.Model):
+#     mi_mfi_id = models.AutoField(primary_key=True)
+#     no = models.CharField(max_length=20, null=True, blank=True)
+#     report_number = models.CharField(max_length=20, null=True, blank=True)
+#     description = models.CharField(max_length=500, null=True, blank=True)
+#     previous_month = models.CharField(max_length=50, null=True, blank=True)
+#     current_month = models.CharField(max_length=50, null=True, blank=True)
+#     net_change = models.CharField(max_length=50, null=True, blank=True)
+#     currency_display = models.CharField(max_length=50, null=True, blank=True)
+#     segment_type = models.CharField(max_length=20, null=True, blank=True)
+#     period_code = models.CharField(max_length=10, null=True, blank=True)
+#     class Meta:
+#         verbose_name_plural = 'Monthly_Incomestatement_mfi'
 
 class Monthly_Incomestatement_acc(models.Model):
     mi_acc_id = models.AutoField(primary_key=True)
@@ -2041,11 +2091,23 @@ class Monthly_Incomestatement_acc(models.Model):
     previous_month = models.CharField(max_length=50, null=True, blank=True)
     current_month = models.CharField(max_length=50, null=True, blank=True)
     net_change = models.CharField(max_length=50, null=True, blank=True)
-    currency_display = models.CharField(max_length=10, null=True, blank=True)
+    currency_display = models.CharField(max_length=50, null=True, blank=True)
     segment_type = models.CharField(max_length=20, null=True, blank=True)
     period_code = models.CharField(max_length=10, null=True, blank=True)
+    
     class Meta:
         verbose_name_plural = 'Monthly_Incomestatement_acc'
+        db_table = 'SAMCSYS_monthly_incomestatement_acc'
+        indexes = [
+            models.Index(fields=['period_code']),
+            models.Index(fields=['segment_type']),
+            models.Index(fields=['currency_display']),
+            models.Index(fields=['period_code', 'segment_type']),
+        ]
+    
+    def __str__(self):
+        return f"Income ACC {self.no} - {self.description} ({self.period_code})"
+
 
 class Monthly_Incomestatement_mfi(models.Model):
     mi_mfi_id = models.AutoField(primary_key=True)
@@ -2055,8 +2117,30 @@ class Monthly_Incomestatement_mfi(models.Model):
     previous_month = models.CharField(max_length=50, null=True, blank=True)
     current_month = models.CharField(max_length=50, null=True, blank=True)
     net_change = models.CharField(max_length=50, null=True, blank=True)
-    currency_display = models.CharField(max_length=10, null=True, blank=True)
+    currency_display = models.CharField(max_length=50, null=True, blank=True)
     segment_type = models.CharField(max_length=20, null=True, blank=True)
     period_code = models.CharField(max_length=10, null=True, blank=True)
+    
     class Meta:
         verbose_name_plural = 'Monthly_Incomestatement_mfi'
+        db_table = 'SAMCSYS_monthly_incomestatement_mfi'
+        indexes = [
+            models.Index(fields=['period_code']),
+            models.Index(fields=['segment_type']),
+            models.Index(fields=['currency_display']),
+            models.Index(fields=['period_code', 'segment_type']),
+        ]
+    
+    def __str__(self):
+        return f"Income MFI {self.no} - {self.description} ({self.period_code})"
+    
+class Report_Cashflow(models.Model):
+    RID = models.AutoField(primary_key=True)
+    Report_number = models.CharField(max_length=20, null=True, blank=True)
+    org_formula = models.TextField(null=True, blank=True)
+    Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
+    Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
+    TypeOfReport = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
+    
+    class Meta:
+        verbose_name_plural = 'Report_Cashflow'
