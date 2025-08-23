@@ -19521,8 +19521,6 @@ def get_gltype_lookup_dict():
         logger.error(f"Error creating glType lookup dictionary: {str(e)}")
         return {}
 
-<<<<<<< HEAD
-=======
 # @api_view(['POST'])
 # @permission_classes([IsAuthenticated])
 # def bulk_insert_dairy_reports(request):
@@ -19945,7 +19943,6 @@ def execute_dairy_somtop_trailbalance(eod_function, user, processing_date=None):
         return False, f"FN004 ຂໍ້ຜິດພາດ: {str(e)}"
 
 
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_dairy_reports(request):
@@ -19979,11 +19976,6 @@ def bulk_insert_dairy_reports_internal(request):
         # Validate request data
         date_start = request.data.get("date_start")
         date_end = request.data.get("date_end")
-<<<<<<< HEAD
-        fin_year = request.data.get("fin_year", "2025")
-        period_code = request.data.get("period_code", "")
-=======
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
         default_category = request.data.get("category", "TRIAL_BALANCE")
 
         if not all([date_start, date_end]):
@@ -20001,10 +19993,6 @@ def bulk_insert_dairy_reports_internal(request):
                 return {
                     'status': 'error',
                     'message': 'ວັນທີເລີ່ມຕົ້ນຕ້ອງນ້ອຍກວ່າວັນທີສິ້ນສຸດ (Start date must be before end date)'
-<<<<<<< HEAD
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-=======
                 }
 
             # Auto-calculate period_code from date_end (YYYYMM format)
@@ -20012,7 +20000,6 @@ def bulk_insert_dairy_reports_internal(request):
             # Auto-calculate fin_year from date_end (YYYY format) 
             fin_year = end_date_obj.strftime('%Y')
             
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
         except ValueError:
             return {
                 'status': 'error',
@@ -20466,8 +20453,6 @@ def validate_currency_code(currency_code: str) -> bool:
     
     return currency_code.upper() in allowed_currencies
 
-<<<<<<< HEAD
-=======
 def validate_market_segment(m_segment: str) -> bool:
     """
     Validate market segment
@@ -20550,7 +20535,6 @@ def validate_trial_balance_params(ccy_code_id: str, m_segment: str, fin_year_id:
     return True, ""
  
 
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def main_trial_balance_all_currency_view(request):
@@ -20590,14 +20574,9 @@ def main_trial_balance_all_currency_view(request):
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-<<<<<<< HEAD
-
-@api_view(['POST'])
-=======
  
 # Trail Balance by Currency <--- using hai sone pherm
 @api_view(['GET', 'POST'])
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
 @permission_classes([IsAuthenticated])
 def main_trial_balance_by_currency_view(request):
     """
@@ -20662,234 +20641,79 @@ def main_trial_balance_by_currency_view(request):
             "status": "error",
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
-<<<<<<< HEAD
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['GET'])
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
-def main_trial_balance_by_currency_get_view(request):
+def trial_balance_by_currency_view(request):
     """
-    GET endpoint for main trial balance by currency (using query parameters)
+    API endpoint for trial balance by specific currency
     
-    Query parameters:
-    - currency: Currency code (LAK, USD, THB, etc.)
+    Required parameters:
+    - ccy_code_id: Currency code (LAK, USD, THB, etc.)
+    - m_segment: Market segment (LCY, FCY)
+    - fin_year_id: Financial year (e.g., 2025)
+    - period_code_id: Period code (e.g., 202508)
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "count": number_of_records,
+        "data": [trial_balance_records],
+        "parameters": {parameters_used}
+    }
     """
-    # Extract currency parameter from query params
-    currency = request.query_params.get("currency")
-    
-    # Validate required parameter
-    if not currency:
-        return Response({
-            "status": "error",
-            "message": "ບໍ່ມີ query parameter ສະກຸນເງິນ: currency (Missing required query parameter: currency)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Convert to uppercase for consistency
-    currency = currency.upper()
-    
-    # Validate currency code
-    if not validate_currency_code(currency):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ (Invalid currency code. Supported: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
-        logger.info(f"[MainTrialBalance-ByCurrency-GET] Executing procedure for currency={currency}")
+        # Get parameters from request
+        if request.method == 'GET':
+            ccy_code_id = request.GET.get('ccy_code_id', '').strip().upper()
+            m_segment = request.GET.get('m_segment', '').strip().upper()
+            fin_year_id = request.GET.get('fin_year_id', '').strip()
+            period_code_id = request.GET.get('period_code_id', '').strip()
+        else:  # POST
+            ccy_code_id = request.data.get('ccy_code_id', '').strip().upper()
+            m_segment = request.data.get('m_segment', '').strip().upper()
+            fin_year_id = request.data.get('fin_year_id', '').strip()
+            period_code_id = request.data.get('period_code_id', '').strip()
+        
+        # Validate parameters
+        is_valid, error_message = validate_trial_balance_params(ccy_code_id, m_segment, fin_year_id, period_code_id)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[TrialBalance-ByCurrency] Executing procedure with params: "
+                   f"CCy={ccy_code_id}, Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
         
         # Execute stored procedure
-        result = run_trial_balance_by_currency_proc(currency)
+        result = run_trial_balance_by_currency_proc(ccy_code_id, m_segment, fin_year_id, period_code_id)
         
-        logger.info(f"[MainTrialBalance-ByCurrency-GET] Procedure completed successfully. Currency: {currency}, Records: {len(result)}")
+        logger.info(f"[TrialBalance-ByCurrency] Procedure completed successfully. Records: {len(result)}")
         
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສຳລັບ {currency} ສຳເລັດ",
-            "currency": currency,
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສະກຸນເງິນ {ccy_code_id} ສຳເລັດ (Trial balance for {ccy_code_id} retrieved successfully)",
             "count": len(result),
-            "data": result
+            "data": result,
+            "parameters": {
+                "ccy_code_id": ccy_code_id,
+                "m_segment": m_segment,
+                "fin_year_id": fin_year_id,
+                "period_code_id": period_code_id
+            }
         }, status=status.HTTP_200_OK)
-        
+          
     except Exception as e:
-        logger.exception(f"[MainTrialBalance-ByCurrency-GET] Error executing stored procedure: {str(e)}")
+        logger.exception(f"[TrialBalance-ByCurrency] Error executing stored procedure: {str(e)}")
         
         return Response({
             "status": "error",
-            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# Optional: ViewSet approach for more advanced functionality
-from rest_framework import viewsets
-from rest_framework.decorators import action
-
-class MainTrialBalanceViewSet(viewsets.ViewSet):
-    """
-    ViewSet for Main Trial Balance operations
-    """
-    permission_classes = [IsAuthenticated]
-    
-    @action(detail=False, methods=['get', 'post'])
-    def all_currencies(self, request):
-        """
-        Get main trial balance for all currencies
-        
-        GET/POST: Returns all currencies data
-        """
-        return main_trial_balance_all_currency_view(request)
-    
-    @action(detail=False, methods=['post', 'get'])
-    def by_currency(self, request):
-        """
-        Get main trial balance by specific currency
-        
-        POST: Use request body
-        GET: Use query parameters
-        """
-        if request.method == 'POST':
-            return main_trial_balance_by_currency_view(request)
-        else:
-            return main_trial_balance_by_currency_get_view(request)
-    
-    @action(detail=False, methods=['get'])
-    def supported_currencies(self, request):
-        """
-        Get list of supported currencies for main trial balance
-        """
-        currencies = ['LAK', 'USD', 'THB']
-        
-        currency_details = {
-            'LAK': 'ກີບລາວ (Lao Kip)',
-            'USD': 'ໂດລາສະຫະລັດ (US Dollar)', 
-            'THB': 'ບາດໄທ (Thai Baht)'
-        }
-        
-        return Response({
-            "status": "success",
-            "message": "ດຶງລາຍການສະກຸນເງິນທີ່ຮອງຮັບສຳເລັດ (Supported currencies retrieved successfully)",
-            "count": len(currencies),
-            "data": {
-                "currencies": currencies,
-                "currency_details": currency_details
-            }
-        }, status=status.HTTP_200_OK)
-    
-    @action(detail=False, methods=['post'])
-    def compare_currencies(self, request):
-        """
-        Compare trial balance data between multiple currencies
-        
-        Expected payload:
-        {
-            "currencies": ["USD", "THB", "EUR"]
-        }
-        """
-        currencies = request.data.get("currencies", [])
-        
-        if not currencies or not isinstance(currencies, list):
-            return Response({
-                "status": "error",
-                "message": "ບໍ່ມີລາຍການສະກຸນເງິນ ກະລຸນາໃຫ້ລາຍການສະກຸນເງິນ (Missing currencies list. Please provide array of currencies)",
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate all currencies
-        invalid_currencies = []
-        for currency in currencies:
-            if not validate_currency_code(currency):
-                invalid_currencies.append(currency)
-        
-        if invalid_currencies:
-            return Response({
-                "status": "error",
-                "message": f"ສະກຸນເງິນບໍ່ຖືກຕ້ອງ: {', '.join(invalid_currencies)} (Invalid currencies)",
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            comparison_data = {}
-            
-            # Get data for each currency
-            for currency in currencies:
-                currency = currency.upper()
-                result = run_trial_balance_by_currency_proc(currency)
-                comparison_data[currency] = {
-                    "count": len(result),
-                    "data": result
-                }
-            
-            return Response({
-                "status": "success",
-                "message": f"ສົມທຽບຂໍ້ມູນ Trial Balance ສຳລັບ {', '.join(currencies)} ສຳເລັດ",
-                "currencies": currencies,
-                "data": comparison_data
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.exception(f"[MainTrialBalance-Compare] Error comparing currencies: {str(e)}")
-            
-            return Response({
-                "status": "error",
-                "message": "ເກີດຂໍ້ຜິດພາດໃນການສົມທຽບຂໍ້ມູນ (Error in comparison operation)",
-                "data": None
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    @action(detail=False, methods=['get'])
-    def statistics(self, request):
-        """
-        Get statistics summary for all currencies
-        """
-        try:
-            # Get all currency data
-            all_data = run_trial_balance_all_currency_proc()
-            
-            # Calculate statistics
-            total_records = len(all_data)
-            
-            # Group by currency if CCy_Code_id field exists
-            currency_stats = {}
-            category_stats = {}
-            
-            for record in all_data:
-                # Currency statistics
-                currency = record.get('CCy_Code_id', 'Unknown')
-                if currency not in currency_stats:
-                    currency_stats[currency] = 0
-                currency_stats[currency] += 1
-                
-                # Category statistics
-                category = record.get('Category', 'Unknown')
-                if category not in category_stats:
-                    category_stats[category] = 0
-                category_stats[category] += 1
-            
-            return Response({
-                "status": "success",
-                "message": "ດຶງສະຖິຕິ Trial Balance ສຳເລັດ (Trial balance statistics retrieved successfully)",
-                "data": {
-                    "total_records": total_records,
-                    "currency_breakdown": currency_stats,
-                    "category_breakdown": category_stats,
-                    "supported_currencies": ['LAK', 'USD', 'THB']
-                }
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.exception(f"[MainTrialBalance-Statistics] Error getting statistics: {str(e)}")
-            
-            return Response({
-                "status": "error",
-                "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງສະຖິຕິ (Error retrieving statistics)",
-                "data": None
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-=======
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
-
 # Store Procedure IncomeStatement ------> 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
@@ -25212,8 +25036,6 @@ def bulk_insert_somtop_trial_balancesheet(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-<<<<<<< HEAD
-=======
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_monthly_balancesheet_acc(request):
@@ -26858,7 +26680,6 @@ def trial_balance_dairy_view(request):
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນໃບສົມທົບ Dairy (Internal server error occurred while retrieving trial balance dairy data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
 
 
 
@@ -27014,8 +26835,377 @@ class AssetSummaryView(View):
                 'success': False,
                 'error': str(e)
             }, status=500)
-<<<<<<< HEAD
 
 
-=======
->>>>>>> 8709408a4cd9f110f31541ac5c7ae9e15165cb6e
+# ===============================
+# ໄຟລ์: asset_api.py
+# ຟັງຊັ້ນສຳລັບ API ດຶງຂໍ້ມູນຊັບສິນ
+# ===============================
+
+from django.http import JsonResponse
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.dateparse import parse_datetime
+from django.db import connection
+import json
+from datetime import datetime
+
+# ===============================
+# ຟັງຊັ້ນຫຼັກສຳລັບເອີ້ນ Stored Procedure
+# ===============================
+
+def get_asset_depreciation_report(asset_list_id=None, asset_type_id=None, 
+                                asset_status=None, start_date=None, end_date=None):
+    """
+    ຟັງຊັ້ນເອີ້ນ Stored Procedure ເພື່ອດຶງຂໍ້ມູນບົດລາຍງານຊັບສິນ
+    
+    Parameters:
+    - asset_list_id: ລະຫັດຊັບສິນສະເພາະ (ຖ້າຕ້ອງການ)
+    - asset_type_id: ປະເພດຊັບສິນ (1001, 1002, ...)
+    - asset_status: ສະຖານະຊັບສິນ (AC, UC, IA, ...)
+    - start_date: ວັນທີ່ເລີ່ມຕົ້ນ
+    - end_date: ວັນທີ່ສິ້ນສຸດ
+    
+    Returns:
+    - List ຂອງຂໍ້ມູນຊັບສິນ
+    """
+    try:
+        with connection.cursor() as cursor:
+            # ເອີ້ນ Stored Procedure
+            cursor.execute("""
+                EXEC [dbo].[Asset_List_GetAllList_Depreciation_Monthly] 
+                @asset_list_id_id = %s,
+                @asset_type_id = %s,
+                @asset_status = %s,
+                @startDate = %s,
+                @Enddate = %s
+            """, [asset_list_id, asset_type_id, asset_status, start_date, end_date])
+            
+            # ດຶງຊື່ຖັນ (columns)
+            columns = [col[0] for col in cursor.description]
+            
+            # ດຶງຂໍ້ມູນທັງໝົດ
+            rows = cursor.fetchall()
+            
+            # ປ່ຽນເປັນ list of dictionaries
+            result = []
+            for row in rows:
+                row_dict = dict(zip(columns, row))
+                
+                # ປ່ຽນ datetime objects ເປັນ string ສຳລັບ JSON
+                for key, value in row_dict.items():
+                    if isinstance(value, datetime):
+                        row_dict[key] = value.isoformat()
+                
+                result.append(row_dict)
+            
+            return result
+            
+    except Exception as e:
+        print(f"Error in get_asset_depreciation_report: {str(e)}")
+        raise e
+
+# ===============================
+# ຟັງຊັ້ນຄິດໄລ່ຄ່າລວມ
+# ===============================
+
+def calculate_asset_totals(asset_data):
+    """
+    ຄິດໄລ່ຄ່າລວມຕ່າງໆ ຈາກຂໍ້ມູນຊັບສິນ
+    
+    Parameters:
+    - asset_data: List ຂອງຂໍ້ມູນຊັບສິນ
+    
+    Returns:
+    - Dictionary ທີ່ມີຄ່າລວມຕ່າງໆ
+    """
+    totals = {
+        'total_asset_value': 0,
+        'total_depreciation_value': 0,
+        'total_remaining_value': 0,
+        'total_monthly_depreciation': 0,
+        'asset_count': len(asset_data)
+    }
+    
+    for asset in asset_data:
+        # ປ່ຽນ string ເປັນ float ຖ້າຈຳເປັນ
+        asset_value = float(asset.get('asset_value', 0) or 0)
+        accu_depreciation = float(asset.get('asset_accu_dpca_value', 0) or 0)
+        remaining_value = float(asset.get('asset_value_remain', 0) or 0)
+        monthly_depreciation = float(asset.get('asset_value_remainMonth', 0) or 0)
+        
+        totals['total_asset_value'] += asset_value
+        totals['total_depreciation_value'] += accu_depreciation
+        totals['total_remaining_value'] += remaining_value
+        totals['total_monthly_depreciation'] += monthly_depreciation
+    
+    return totals
+
+# ===============================
+# ຟັງຊັ້ນປັບແຕ່ງວັນທີ່
+# ===============================
+
+def parse_date_parameter(date_string):
+    """
+    ປັບແຕ່ງ date string ເປັນ datetime object
+    
+    Parameters:
+    - date_string: ວັນທີ່ໃນຮູບແບບ string
+    
+    Returns:
+    - datetime object ຫຼື None
+    """
+    if not date_string:
+        return None
+        
+    # ລອງ parse ຫຼາຍຮູບແບບ
+    try:
+        # ISO format: YYYY-MM-DDTHH:MM:SS
+        return parse_datetime(date_string)
+    except:
+        try:
+            # Simple date format: YYYY-MM-DD
+            return datetime.strptime(date_string, '%Y-%m-%d')
+        except:
+            try:
+                # DD/MM/YYYY format
+                return datetime.strptime(date_string, '%d/%m/%Y')
+            except:
+                return None
+
+# ===============================
+# API View Class
+# ===============================
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AssetDepreciationReportView(View):
+    """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ"""
+    
+    def get(self, request):
+        """GET method - ໃຊ້ query parameters"""
+        try:
+            # ດຶງ parameters ຈາກ URL
+            asset_list_id = request.GET.get('asset_list_id')
+            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
+            asset_status = request.GET.get('asset_status') or request.GET.get('status')
+            start_date_str = request.GET.get('start_date') or request.GET.get('start')
+            end_date_str = request.GET.get('end_date') or request.GET.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ກວດສອບຮູບແບບວັນທີ່
+            if start_date_str and not start_date:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid start_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
+                }, status=400)
+            
+            if end_date_str and not end_date:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid end_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
+                }, status=400)
+            
+            # ດຶງຂໍ້ມູນຈາກ Stored Procedure
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຄິດໄລ່ຄ່າລວມ
+            totals = calculate_asset_totals(assets)
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'totals': totals,
+                'filters': {
+                    'asset_list_id': asset_list_id,
+                    'asset_type_id': asset_type_id,
+                    'asset_status': asset_status,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                },
+                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+    
+    def post(self, request):
+        """POST method - ໃຊ້ JSON payload"""
+        try:
+            data = json.loads(request.body)
+            
+            # ດຶງຂໍ້ມູນຈາກ JSON
+            asset_list_id = data.get('asset_list_id')
+            asset_type_id = data.get('asset_type_id') or data.get('type')
+            asset_status = data.get('asset_status') or data.get('status')
+            start_date_str = data.get('start_date') or data.get('start')
+            end_date_str = data.get('end_date') or data.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ດຶງຂໍ້ມູນ
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຄິດໄລ່ຄ່າລວມ
+            totals = calculate_asset_totals(assets)
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'totals': totals,
+                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'JSON format ບໍ່ຖືກຕ້ອງ'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+
+# ===============================
+# ຟັງຊັ້ນເສີມສຳລັບສະຖິຕິ
+# ===============================
+
+def get_asset_statistics(asset_type_id=None, start_date=None, end_date=None):
+    """
+    ດຶງສະຖິຕິສະຫຼຸບຂອງຊັບສິນ
+    """
+    try:
+        # ດຶງຂໍ້ມູນທັງໝົດ
+        assets = get_asset_depreciation_report(
+            asset_type_id=asset_type_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        # ສະຖິຕິຕາມສະຖານະ
+        status_stats = {}
+        type_stats = {}
+        
+        for asset in assets:
+            status = asset.get('asset_status', 'ບໍ່ລະບຸ')
+            asset_type = asset.get('asset_type_id_id', 'ບໍ່ລະບຸ')
+            
+            # ນັບຕາມສະຖານະ
+            if status in status_stats:
+                status_stats[status] += 1
+            else:
+                status_stats[status] = 1
+            
+            # ນັບຕາມປະເພດ
+            if asset_type in type_stats:
+                type_stats[asset_type] += 1
+            else:
+                type_stats[asset_type] = 1
+        
+        # ຄິດໄລ່ຄ່າລວມ
+        totals = calculate_asset_totals(assets)
+        
+        return {
+            'total_count': len(assets),
+            'status_breakdown': status_stats,
+            'type_breakdown': type_stats,
+            'financial_summary': totals
+        }
+        
+    except Exception as e:
+        print(f"Error in get_asset_statistics: {str(e)}")
+        raise e
+
+# ===============================
+# API View ສຳລັບສະຖິຕິ
+# ===============================
+
+class AssetStatisticsView(View):
+    """API View ສຳລັບສະຖິຕິສະຫຼຸບຊັບສິນ"""
+    
+    def get(self, request):
+        try:
+            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
+            start_date_str = request.GET.get('start_date') or request.GET.get('start')
+            end_date_str = request.GET.get('end_date') or request.GET.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ດຶງສະຖິຕິ
+            stats = get_asset_statistics(
+                asset_type_id=asset_type_id,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'statistics': stats,
+                'filters': {
+                    'asset_type_id': asset_type_id,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                }
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+
+# ===============================
+# ການນຳໄປໃຊ້
+# ===============================
+
+"""
+ການໃຊ້ງານ:
+
+1. ເພີ່ມໃນ urls.py:
+from .asset_api import AssetDepreciationReportView, AssetStatisticsView
+
+urlpatterns = [
+    path('api/assets/depreciation/', AssetDepreciationReportView.as_view(), name='asset_depreciation'),
+    path('api/assets/statistics/', AssetStatisticsView.as_view(), name='asset_statistics'),
+]
+
+2. ເອີ້ນໃຊ້ຈາກ Frontend:
+GET /api/assets/depreciation/?type=1002&status=AC&start=2024-01-01&end=2024-12-31
+POST /api/assets/depreciation/ with JSON payload
+
+3. ຜົນລັບ:
+{
+    "success": true,
+    "data": [...],
+    "totals": {
+        "total_asset_value": 1000000,
+        "total_depreciation_value": 200000,
+        "total_remaining_value": 800000,
+        "asset_count": 50
+    },
+    "filters": {...}
+}
+"""
