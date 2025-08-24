@@ -2138,8 +2138,8 @@ class Report_Cashflow(models.Model):
     RID = models.AutoField(primary_key=True)
     Report_number = models.CharField(max_length=20, null=True, blank=True)
     org_formula = models.TextField(null=True, blank=True)
-    Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
-    Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
+    Pvalue = models.CharField(max_length=255, null=True, blank=True)
+    Mvalue = models.CharField(max_length=255, null=True, blank=True)
     TypeOfReport = models.CharField(max_length=50, null=True, blank=True) 
     CR_order = models.CharField(max_length=20, null=True, blank=True)
     COE_order = models.CharField(max_length=20, null=True, blank=True)
