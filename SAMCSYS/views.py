@@ -19897,11 +19897,11 @@ def execute_dairy_somtop_trailbalance(eod_function, user, processing_date=None):
     try:
         # Get current processing date from system or use provided date
         if not processing_date:
-            from .models import MTTB_System_Date  # Replace with actual import
+            from .models import STTB_Dates  # Replace with actual import
             try:
-                system_date_obj = MTTB_System_Date.objects.get(active=True)
+                system_date_obj = STTB_Dates.objects.get(active=True)
                 processing_date = system_date_obj.current_date
-            except MTTB_System_Date.DoesNotExist:
+            except STTB_Dates.DoesNotExist:
                 processing_date = date.today()
         
         # Convert to string format if it's a date object
@@ -26904,3 +26904,5 @@ class AssetSummaryView(View):
                 'success': False,
                 'error': str(e)
             }, status=500)
+
+
