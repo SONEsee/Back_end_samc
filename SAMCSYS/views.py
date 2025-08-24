@@ -9468,8 +9468,8 @@ def get_active_sessions(request):
         "own_role_id": user_role_id,
     }
 
-    # check session of today
-    today = timezone.now().date()
+    SESSION_TIMEOUT_MINUTES = 30
+    time_limit = timezone.now() - timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
     latest_log_id_subquery = MTTB_USER_ACCESS_LOG.objects.filter(
         user_id=OuterRef('user_id')
@@ -9479,7 +9479,7 @@ def get_active_sessions(request):
         log_id__in=Subquery(latest_log_id_subquery),
         login_status='S',
         logout_datetime__isnull=True,
-        login_datetime__date=today   # ✅ กรองเฉพาะวันเดียวกับวันนี้
+        login_datetime__gte=time_limit
     ).select_related('user_id').order_by('-login_datetime')
 
     active_user_ids = list(
@@ -9500,13 +9500,15 @@ def get_active_sessions(request):
 
     return Response({
         "success": True,
-        **own_user_info,
+        **own_user_info,  # show user_id / user_name / role_id is own
         "active_sessions": sessions_data,
         "total_count": len(sessions_data),
         "total_active_users_all": len(active_user_ids),
         "active_user_ids": active_user_ids,
         "current_time": timezone.now()
     }, status=status.HTTP_200_OK)
+
+
 
 # @api_view(["GET"])
 # @permission_classes([IsAuthenticated])
@@ -18027,7 +18029,7 @@ def run_trial_balance_fcy_proc(ac_ccy_id: str, date_start: str, date_end: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_fcy_afterEOC
+                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_fcy
                     @ac_ccy_id = %s,
                     @DateStart = %s,
                     @DateEnd = %s
@@ -18354,11 +18356,11 @@ def run_trial_balance_consolidated_proc(date_start: str, date_end: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy_afterEOC
+                EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy
                     @DateStart = %s,
                     @DateEnd = %s
             """
-                
+            
             cursor.execute(sql, [date_start, date_end])
             
             # Get column names
@@ -18671,7 +18673,7 @@ def validate_currency_code(currency_code: str) -> bool:
         return False
     
     # Common currency codes supported
-    allowed_currencies = ['LAK', 'USD', 'THB']
+    allowed_currencies = ['LAK', 'USD', 'THB', 'EUR', 'JPY', 'CNY', 'VND']
     
     return currency_code.upper() in allowed_currencies
 
@@ -18728,7 +18730,7 @@ def balance_sheet_acc_view(request):
     if not validate_currency_code(currency):
         return Response({
             "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB (Invalid currency code. Supported currencies: LAK, USD, THB)",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -19965,6 +19967,8 @@ def bulk_insert_dairy_reports_internal(request):
     {
         "date_start": "YYYY-MM-DD",
         "date_end": "YYYY-MM-DD", 
+        "fin_year": "2025",
+        "period_code": "",
         "category": "TRIAL_BALANCE"
     }
     """
@@ -19980,7 +19984,7 @@ def bulk_insert_dairy_reports_internal(request):
                 'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
             }
 
-        # Date validation and period_code calculation
+        # Date validation
         try:
             start_date_obj = datetime.strptime(date_start, '%Y-%m-%d').date()
             end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
@@ -20002,7 +20006,7 @@ def bulk_insert_dairy_reports_internal(request):
                 'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
             }
 
-        logger.info(f"[BulkInsertDairyReports] Starting bulk insert operation from {date_start} to {date_end}, period: {period_code}, fin_year: {fin_year}")
+        logger.info(f"[BulkInsertDairyReports] Starting bulk insert operation from {date_start} to {date_end}")
 
         # Statistics tracking
         stats = {
@@ -20266,8 +20270,6 @@ def bulk_insert_dairy_reports_internal(request):
             'status': 'success',
             'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records)',
             'date_range': f"{date_start} to {date_end}",
-            'period_code': period_code,
-            'fin_year': fin_year,
             'statistics': {
                 'cleared_records': stats['cleared_records'],
                 'fcy_procedure': {
@@ -20294,7 +20296,6 @@ def bulk_insert_dairy_reports_internal(request):
 
         logger.info(f"Bulk insert operation completed successfully:")
         logger.info(f"- Cleared: {stats['cleared_records']} records")
-        logger.info(f"- Period: {period_code}, Fin Year: {fin_year}")
         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
@@ -20361,7 +20362,6 @@ class CompanyProfileViewSet(viewsets.ModelViewSet):
 
 
 # Main Trial Balance
-# Main Trial Balance
 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
@@ -20373,31 +20373,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_trial_balance_all_currency_proc(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str):
+def run_trial_balance_all_currency_proc():
     """
-    Execute the trial balance by currency stored procedure (used for both single and all currency queries)
-    
-    Args:
-        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
-        m_segment (str): Market segment (LCY, FCY)
-        fin_year_id (str): Financial year (e.g., 2025)
-        period_code_id (str): Period code (e.g., 202508)
+    Execute the trial balance all currency stored procedure
     
     Returns:
         list: Query results as list of dictionaries
     """
     try:
         with connection.cursor() as cursor:
-            # Use the same procedure that has the correct parameter structure
-            sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
-                    @CCy_Code_id = %s,
-                    @MSegment = %s,
-                    @Fin_year_id = %s,
-                    @Period_code_id = %s
-            """
+            # Execute stored procedure without parameters
+            sql = "EXEC dbo.Trial_Balance_All_Currency"
             
-            cursor.execute(sql, [ccy_code_id, m_segment, fin_year_id, period_code_id])
+            cursor.execute(sql)
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20408,18 +20396,15 @@ def run_trial_balance_all_currency_proc(ccy_code_id: str, m_segment: str, fin_ye
             return results
             
     except Exception as e:
-        logger.error(f"Error executing trial balance procedure: {str(e)}")
+        logger.error(f"Error executing trial balance all currency procedure: {str(e)}")
         raise
 
-def run_trial_balance_by_currency_proc(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str):
+def run_trial_balance_by_currency_proc(currency: str):
     """
     Execute the trial balance by currency stored procedure
     
     Args:
-        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
-        m_segment (str): Market segment (LCY, FCY)
-        fin_year_id (str): Financial year (e.g., 2025)
-        period_code_id (str): Period code (e.g., 202508)
+        currency (str): Currency code (LAK, USD, THB, etc.)
     
     Returns:
         list: Query results as list of dictionaries
@@ -20428,14 +20413,11 @@ def run_trial_balance_by_currency_proc(ccy_code_id: str, m_segment: str, fin_yea
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
-                    @CCy_Code_id = %s,
-                    @MSegment = %s,
-                    @Fin_year_id = %s,
-                    @Period_code_id = %s
+                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated
+                    @Currency = %s
             """
             
-            cursor.execute(sql, [ccy_code_id, m_segment, fin_year_id, period_code_id])
+            cursor.execute(sql, [currency])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20462,8 +20444,8 @@ def validate_currency_code(currency_code: str) -> bool:
     if not currency_code or not isinstance(currency_code, str):
         return False
     
-    # Check length (should be 3-4 characters)
-    if len(currency_code) < 3 or len(currency_code) > 4:
+    # Check length (should be 3-5 characters)
+    if len(currency_code) < 3 or len(currency_code) > 5:
         return False
     
     # Common currency codes supported
@@ -20557,68 +20539,35 @@ def validate_trial_balance_params(ccy_code_id: str, m_segment: str, fin_year_id:
 @permission_classes([IsAuthenticated])
 def main_trial_balance_all_currency_view(request):
     """
-    API endpoint for main trial balance by currency and segment (Category <= 5)
+    API endpoint for main trial balance all currencies (GL codes <= 5 digits)
     
-    Required parameters:
-    - ccy_code_id: Currency code (LAK, USD, THB, etc.)
-    - m_segment: Market segment (LCY, FCY)
-    - fin_year_id: Financial year (e.g., 2025)
-    - period_code_id: Period code (e.g., 202508)
+    This endpoint doesn't require any parameters as it returns all currencies
     
     Returns:
     {
         "status": "success|error",
         "message": "Description",
         "count": number_of_records,
-        "data": [trial_balance_records],
-        "parameters": {parameters_used}
+        "data": [trial_balance_records]
     }
     """
     try:
-        # Get parameters from request
-        if request.method == 'GET':
-            ccy_code_id = request.GET.get('ccy_code_id', '').strip().upper()
-            m_segment = request.GET.get('m_segment', '').strip().upper()
-            fin_year_id = request.GET.get('fin_year_id', '').strip()
-            period_code_id = request.GET.get('period_code_id', '').strip()
-        else:  # POST
-            ccy_code_id = request.data.get('ccy_code_id', '').strip().upper()
-            m_segment = request.data.get('m_segment', '').strip().upper()
-            fin_year_id = request.data.get('fin_year_id', '').strip()
-            period_code_id = request.data.get('period_code_id', '').strip()
-        
-        # Validate parameters
-        is_valid, error_message = validate_trial_balance_params(ccy_code_id, m_segment, fin_year_id, period_code_id)
-        if not is_valid:
-            return Response({
-                "status": "error",
-                "message": error_message,
-                "data": None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"[MainTrialBalance] Executing procedure with params: "
-                   f"CCy={ccy_code_id}, Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
+        logger.info(f"[MainTrialBalance-AllCurrency] Executing procedure for all currencies")
         
         # Execute stored procedure
-        result = run_trial_balance_all_currency_proc(ccy_code_id, m_segment, fin_year_id, period_code_id)
+        result = run_trial_balance_all_currency_proc()
         
-        logger.info(f"[MainTrialBalance] Procedure completed successfully. Records: {len(result)}")
+        logger.info(f"[MainTrialBalance-AllCurrency] Procedure completed successfully. Records: {len(result)}")
         
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນ Trial Balance ທຸກສະກຸນເງິນສຳເລັດ (Main trial balance retrieved successfully)",
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ທຸກສະກຸນເງິນສຳເລັດ (Main trial balance for all currencies retrieved successfully)",
             "count": len(result),
-            "data": result,
-            "parameters": {
-                "ccy_code_id": ccy_code_id,
-                "m_segment": m_segment,
-                "fin_year_id": fin_year_id,
-                "period_code_id": period_code_id
-            }
+            "data": result
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.exception(f"[MainTrialBalance] Error executing stored procedure: {str(e)}")
+        logger.exception(f"[MainTrialBalance-AllCurrency] Error executing stored procedure: {str(e)}")
         
         return Response({
             "status": "error",
@@ -20627,6 +20576,72 @@ def main_trial_balance_all_currency_view(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
  
 # Trail Balance by Currency <--- using hai sone pherm
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def main_trial_balance_by_currency_view(request):
+    """
+    API endpoint for main trial balance by specific currency
+    
+    Expected payload:
+    {
+        "currency": "LAK|USD|THB|etc"
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description",
+        "currency": "currency_code",
+        "count": number_of_records,
+        "data": [trial_balance_records]
+    }
+    """
+    # Extract currency parameter from request
+    currency = request.data.get("currency")
+    
+    # Validate required parameter
+    if not currency:
+        return Response({
+            "status": "error",
+            "message": "ບໍ່ມີຂໍ້ມູນສະກຸນເງິນ: currency ແມ່ນຕ້ອງການ (Missing required parameter: currency is required)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Convert to uppercase for consistency
+    currency = currency.upper()
+    
+    # Validate currency code
+    if not validate_currency_code(currency):
+        return Response({
+            "status": "error",
+            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK)",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[MainTrialBalance-ByCurrency] Executing procedure for currency={currency}")
+        
+        # Execute stored procedure
+        result = run_trial_balance_by_currency_proc(currency)
+        
+        logger.info(f"[MainTrialBalance-ByCurrency] Procedure completed successfully. Currency: {currency}, Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": f"ດຶງຂໍ້ມູນ Trial Balance ສຳລັບ {currency} ສຳເລັດ (Main trial balance data for {currency} retrieved successfully)",
+            "currency": currency,
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+          
+    except Exception as e:
+        logger.exception(f"[MainTrialBalance-ByCurrency] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def trial_balance_by_currency_view(request):
@@ -20699,7 +20714,6 @@ def trial_balance_by_currency_view(request):
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
-
 # Store Procedure IncomeStatement ------> 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
@@ -20708,18 +20722,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
-def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: str):
+def run_income_statement_acc_proc(segment: str, currency: str):
     """
     Execute the income statement ACC stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-        period_code_id (str): Period code in YYYYMM format
     
     Returns:
         list: Query results as list of dictionaries
@@ -20728,13 +20740,12 @@ def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: s
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated_afterEOC
+                EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s,
-                    @period_code_id = %s
+                    @currency = %s
             """
             
-            cursor.execute(sql, [segment, currency, period_code_id])
+            cursor.execute(sql, [segment, currency])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20748,14 +20759,13 @@ def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: s
         logger.error(f"Error executing income statement ACC procedure: {str(e)}")
         raise
 
-def run_income_statement_mfi_proc(segment: str, currency: str, period_code_id: str):
+def run_income_statement_mfi_proc(segment: str, currency: str):
     """
     Execute the income statement MFI stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-        period_code_id (str): Period code in YYYYMM format
     
     Returns:
         list: Query results as list of dictionaries
@@ -20764,13 +20774,12 @@ def run_income_statement_mfi_proc(segment: str, currency: str, period_code_id: s
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated_afterEOC
+                EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s,
-                    @period_code_id = %s
+                    @currency = %s
             """
             
-            cursor.execute(sql, [segment, currency, period_code_id])
+            cursor.execute(sql, [segment, currency])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20822,46 +20831,6 @@ def validate_currency_code(currency_code: str) -> bool:
     
     return currency_code.upper() in allowed_currencies
 
-def validate_period_code(period_code: str) -> bool:
-    """
-    Validate period code format (YYYYMM)
-    
-    Args:
-        period_code (str): Period code to validate
-    
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    if not period_code or not isinstance(period_code, str):
-        return False
-    
-    # Check if exactly 6 characters
-    if len(period_code) != 6:
-        return False
-    
-    # Check if format is YYYYMM using regex
-    pattern = r'^20\d{2}(0[1-9]|1[0-2])$'
-    if not re.match(pattern, period_code):
-        return False
-    
-    # Additional validation: check if it's a reasonable year and month
-    try:
-        year = int(period_code[:4])
-        month = int(period_code[4:6])
-        
-        # Check reasonable year range (2020-2030)
-        if year < 2020 or year > 2030:
-            return False
-            
-        # Check valid month (1-12)
-        if month < 1 or month > 12:
-            return False
-            
-        return True
-        
-    except ValueError:
-        return False
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def income_statement_acc_view(request):
@@ -20871,8 +20840,7 @@ def income_statement_acc_view(request):
     Expected payload:
     {
         "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB|etc",
-        "period_code_id": "YYYYMM"
+        "currency": "LAK|USD|THB|etc"
     }
     
     Returns:
@@ -20881,7 +20849,6 @@ def income_statement_acc_view(request):
         "message": "Description",
         "segment": "segment_type",
         "currency": "currency_code",
-        "period_code_id": "YYYYMM",
         "type": "ACC",
         "count": number_of_records,
         "data": [income_statement_records]
@@ -20890,20 +20857,18 @@ def income_statement_acc_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
-    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency or not period_code_id:
+    if not segment or not currency:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment, currency ແລະ period_code_id ແມ່ນຕ້ອງການ (Missing required parameters: segment, currency and period_code_id are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
-    period_code_id = str(period_code_id).strip()
     
     # Validate segment
     if not validate_segment(segment):
@@ -20921,37 +20886,22 @@ def income_statement_acc_view(request):
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate period code
-    if not validate_period_code(period_code_id):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດຊ່ວງເວລາບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ຮູບແບບ YYYYMM (ເຊັ່ນ: 202508) (Invalid period code. Please use YYYYMM format, e.g., 202508)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
-        logger.info(f"[IncomeStatement-ACC] Executing procedure for segment={segment}, currency={currency}, period={period_code_id}")
+        logger.info(f"[IncomeStatement-ACC] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_income_statement_acc_proc(segment, currency, period_code_id)
+        result = run_income_statement_acc_proc(segment, currency)
         
-        logger.info(f"[IncomeStatement-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period: {period_code_id}, Records: {len(result)}")
+        logger.info(f"[IncomeStatement-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
         
-        # Format period for display
-        year = period_code_id[:4]
-        month = period_code_id[4:6]
-        period_display = f"{month}/{year}"
-        
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບ {display_currency} ຊ່ວງ {period_display} ສຳເລັດ (Income statement ACC data retrieved successfully - {display_currency} for period {period_display})",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບ {display_currency} ສຳເລັດ (Income statement ACC data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
-            "period_code_id": period_code_id,
-            "period_display": period_display,
             "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
@@ -20963,7 +20913,7 @@ def income_statement_acc_view(request):
         
         return Response({
             "status": "error",
-            "message": f"ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບຊ່ວງ {period_code_id} (Internal server error occurred while retrieving income statement ACC data for period {period_code_id})",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC (Internal server error occurred while retrieving income statement ACC data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -20976,8 +20926,7 @@ def income_statement_mfi_view(request):
     Expected payload:
     {
         "segment": "FCY|LCY",
-        "currency": "LAK|USD|THB|etc",
-        "period_code_id": "YYYYMM"
+        "currency": "LAK|USD|THB|etc"
     }
     
     Returns:
@@ -20986,7 +20935,6 @@ def income_statement_mfi_view(request):
         "message": "Description",
         "segment": "segment_type",
         "currency": "currency_code",
-        "period_code_id": "YYYYMM",
         "type": "MFI",
         "count": number_of_records,
         "data": [income_statement_records]
@@ -20995,20 +20943,18 @@ def income_statement_mfi_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
-    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency or not period_code_id:
+    if not segment or not currency:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment, currency ແລະ period_code_id ແມ່ນຕ້ອງການ (Missing required parameters: segment, currency and period_code_id are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Convert to uppercase for consistency
     segment = segment.upper()
     currency = currency.upper()
-    period_code_id = str(period_code_id).strip()
     
     # Validate segment
     if not validate_segment(segment):
@@ -21026,37 +20972,22 @@ def income_statement_mfi_view(request):
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate period code
-    if not validate_period_code(period_code_id):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດຊ່ວງເວລາບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ຮູບແບບ YYYYMM (ເຊັ່ນ: 202508) (Invalid period code. Please use YYYYMM format, e.g., 202508)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
-        logger.info(f"[IncomeStatement-MFI] Executing procedure for segment={segment}, currency={currency}, period={period_code_id}")
+        logger.info(f"[IncomeStatement-MFI] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_income_statement_mfi_proc(segment, currency, period_code_id)
+        result = run_income_statement_mfi_proc(segment, currency)
         
-        logger.info(f"[IncomeStatement-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period: {period_code_id}, Records: {len(result)}")
+        logger.info(f"[IncomeStatement-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
         
-        # Format period for display
-        year = period_code_id[:4]
-        month = period_code_id[4:6]
-        period_display = f"{month}/{year}"
-        
         return Response({
             "status": "success",
-            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບ {display_currency} ຊ່ວງ {period_display} ສຳເລັດ (Income statement MFI data retrieved successfully - {display_currency} for period {period_display})",
+            "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບ {display_currency} ສຳເລັດ (Income statement MFI data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
-            "period_code_id": period_code_id,
-            "period_display": period_display,
             "type": "MFI",
             "display_currency": display_currency,
             "count": len(result),
@@ -21068,7 +20999,7 @@ def income_statement_mfi_view(request):
         
         return Response({
             "status": "error",
-            "message": f"ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບຊ່ວງ {period_code_id} (Internal server error occurred while retrieving income statement MFI data for period {period_code_id})",
+            "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI (Internal server error occurred while retrieving income statement MFI data)",
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -26768,13 +26699,13 @@ class AssetListAPIView(View):
     def get(self, request):
         """GET method - ໃຊ້ query parameters"""
         try:
-            # Get parameters from query string
+            
             asset_type_id = request.GET.get('asset_type_id')
             asset_status = request.GET.get('asset_status') 
             start_date_str = request.GET.get('start_date')
             end_date_str = request.GET.get('end_date')
             
-            # Parse dates if provided
+            
             start_date = None
             end_date = None
             
@@ -26794,7 +26725,7 @@ class AssetListAPIView(View):
                         'error': 'Invalid end_date format. Use ISO format: YYYY-MM-DDTHH:MM:SS'
                     }, status=400)
             
-            # Call service method
+           
             assets = AssetService.get_asset_list_by_criteria(
                 asset_type_id=asset_type_id,
                 asset_status=asset_status,
@@ -26830,7 +26761,7 @@ class AssetListAPIView(View):
             start_date_str = data.get('start_date')
             end_date_str = data.get('end_date')
             
-            # Parse dates
+          
             start_date = None
             end_date = None
             
@@ -26839,7 +26770,7 @@ class AssetListAPIView(View):
             if end_date_str:
                 end_date = parse_datetime(end_date_str)
             
-            # Call service
+           
             assets = AssetService.get_asset_list_by_criteria(
                 asset_type_id=asset_type_id,
                 asset_status=asset_status,
@@ -26906,3 +26837,378 @@ class AssetSummaryView(View):
             }, status=500)
 
 
+<<<<<<< HEAD
+=======
+# ===============================
+# ໄຟລ์: asset_api.py
+# ຟັງຊັ້ນສຳລັບ API ດຶງຂໍ້ມູນຊັບສິນ
+# ===============================
+
+from django.http import JsonResponse
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.dateparse import parse_datetime
+from django.db import connection
+import json
+from datetime import datetime
+
+# ===============================
+# ຟັງຊັ້ນຫຼັກສຳລັບເອີ້ນ Stored Procedure
+# ===============================
+
+def get_asset_depreciation_report(asset_list_id=None, asset_type_id=None, 
+                                asset_status=None, start_date=None, end_date=None):
+    """
+    ຟັງຊັ້ນເອີ້ນ Stored Procedure ເພື່ອດຶງຂໍ້ມູນບົດລາຍງານຊັບສິນ
+    
+    Parameters:
+    - asset_list_id: ລະຫັດຊັບສິນສະເພາະ (ຖ້າຕ້ອງການ)
+    - asset_type_id: ປະເພດຊັບສິນ (1001, 1002, ...)
+    - asset_status: ສະຖານະຊັບສິນ (AC, UC, IA, ...)
+    - start_date: ວັນທີ່ເລີ່ມຕົ້ນ
+    - end_date: ວັນທີ່ສິ້ນສຸດ
+    
+    Returns:
+    - List ຂອງຂໍ້ມູນຊັບສິນ
+    """
+    try:
+        with connection.cursor() as cursor:
+            # ເອີ້ນ Stored Procedure
+            cursor.execute("""
+                EXEC [dbo].[Asset_List_GetAllList_Depreciation_Monthly] 
+                @asset_list_id_id = %s,
+                @asset_type_id = %s,
+                @asset_status = %s,
+                @startDate = %s,
+                @Enddate = %s
+            """, [asset_list_id, asset_type_id, asset_status, start_date, end_date])
+            
+            # ດຶງຊື່ຖັນ (columns)
+            columns = [col[0] for col in cursor.description]
+            
+            # ດຶງຂໍ້ມູນທັງໝົດ
+            rows = cursor.fetchall()
+            
+            # ປ່ຽນເປັນ list of dictionaries
+            result = []
+            for row in rows:
+                row_dict = dict(zip(columns, row))
+                
+                # ປ່ຽນ datetime objects ເປັນ string ສຳລັບ JSON
+                for key, value in row_dict.items():
+                    if isinstance(value, datetime):
+                        row_dict[key] = value.isoformat()
+                
+                result.append(row_dict)
+            
+            return result
+            
+    except Exception as e:
+        print(f"Error in get_asset_depreciation_report: {str(e)}")
+        raise e
+
+# ===============================
+# ຟັງຊັ້ນຄິດໄລ່ຄ່າລວມ
+# ===============================
+
+def calculate_asset_totals(asset_data):
+    """
+    ຄິດໄລ່ຄ່າລວມຕ່າງໆ ຈາກຂໍ້ມູນຊັບສິນ
+    
+    Parameters:
+    - asset_data: List ຂອງຂໍ້ມູນຊັບສິນ
+    
+    Returns:
+    - Dictionary ທີ່ມີຄ່າລວມຕ່າງໆ
+    """
+    totals = {
+        'total_asset_value': 0,
+        'total_depreciation_value': 0,
+        'total_remaining_value': 0,
+        'total_monthly_depreciation': 0,
+        'asset_count': len(asset_data)
+    }
+    
+    for asset in asset_data:
+        # ປ່ຽນ string ເປັນ float ຖ້າຈຳເປັນ
+        asset_value = float(asset.get('asset_value', 0) or 0)
+        accu_depreciation = float(asset.get('asset_accu_dpca_value', 0) or 0)
+        remaining_value = float(asset.get('asset_value_remain', 0) or 0)
+        monthly_depreciation = float(asset.get('asset_value_remainMonth', 0) or 0)
+        
+        totals['total_asset_value'] += asset_value
+        totals['total_depreciation_value'] += accu_depreciation
+        totals['total_remaining_value'] += remaining_value
+        totals['total_monthly_depreciation'] += monthly_depreciation
+    
+    return totals
+
+# ===============================
+# ຟັງຊັ້ນປັບແຕ່ງວັນທີ່
+# ===============================
+
+def parse_date_parameter(date_string):
+    """
+    ປັບແຕ່ງ date string ເປັນ datetime object
+    
+    Parameters:
+    - date_string: ວັນທີ່ໃນຮູບແບບ string
+    
+    Returns:
+    - datetime object ຫຼື None
+    """
+    if not date_string:
+        return None
+        
+    # ລອງ parse ຫຼາຍຮູບແບບ
+    try:
+        # ISO format: YYYY-MM-DDTHH:MM:SS
+        return parse_datetime(date_string)
+    except:
+        try:
+            # Simple date format: YYYY-MM-DD
+            return datetime.strptime(date_string, '%Y-%m-%d')
+        except:
+            try:
+                # DD/MM/YYYY format
+                return datetime.strptime(date_string, '%d/%m/%Y')
+            except:
+                return None
+
+# ===============================
+# API View Class
+# ===============================
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AssetDepreciationReportView(View):
+    """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ"""
+    
+    def get(self, request):
+        """GET method - ໃຊ້ query parameters"""
+        try:
+            # ດຶງ parameters ຈາກ URL
+            asset_list_id = request.GET.get('asset_list_id')
+            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
+            asset_status = request.GET.get('asset_status') or request.GET.get('status')
+            start_date_str = request.GET.get('start_date') or request.GET.get('start')
+            end_date_str = request.GET.get('end_date') or request.GET.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ກວດສອບຮູບແບບວັນທີ່
+            if start_date_str and not start_date:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid start_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
+                }, status=400)
+            
+            if end_date_str and not end_date:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid end_date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS'
+                }, status=400)
+            
+            # ດຶງຂໍ້ມູນຈາກ Stored Procedure
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຄິດໄລ່ຄ່າລວມ
+            totals = calculate_asset_totals(assets)
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'totals': totals,
+                'filters': {
+                    'asset_list_id': asset_list_id,
+                    'asset_type_id': asset_type_id,
+                    'asset_status': asset_status,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                },
+                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+    
+    def post(self, request):
+        """POST method - ໃຊ້ JSON payload"""
+        try:
+            data = json.loads(request.body)
+            
+            # ດຶງຂໍ້ມູນຈາກ JSON
+            asset_list_id = data.get('asset_list_id')
+            asset_type_id = data.get('asset_type_id') or data.get('type')
+            asset_status = data.get('asset_status') or data.get('status')
+            start_date_str = data.get('start_date') or data.get('start')
+            end_date_str = data.get('end_date') or data.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ດຶງຂໍ້ມູນ
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຄິດໄລ່ຄ່າລວມ
+            totals = calculate_asset_totals(assets)
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'totals': totals,
+                'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'JSON format ບໍ່ຖືກຕ້ອງ'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+
+# ===============================
+# ຟັງຊັ້ນເສີມສຳລັບສະຖິຕິ
+# ===============================
+
+def get_asset_statistics(asset_type_id=None, start_date=None, end_date=None):
+    """
+    ດຶງສະຖິຕິສະຫຼຸບຂອງຊັບສິນ
+    """
+    try:
+        # ດຶງຂໍ້ມູນທັງໝົດ
+        assets = get_asset_depreciation_report(
+            asset_type_id=asset_type_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        # ສະຖິຕິຕາມສະຖານະ
+        status_stats = {}
+        type_stats = {}
+        
+        for asset in assets:
+            status = asset.get('asset_status', 'ບໍ່ລະບຸ')
+            asset_type = asset.get('asset_type_id_id', 'ບໍ່ລະບຸ')
+            
+            # ນັບຕາມສະຖານະ
+            if status in status_stats:
+                status_stats[status] += 1
+            else:
+                status_stats[status] = 1
+            
+            # ນັບຕາມປະເພດ
+            if asset_type in type_stats:
+                type_stats[asset_type] += 1
+            else:
+                type_stats[asset_type] = 1
+        
+        # ຄິດໄລ່ຄ່າລວມ
+        totals = calculate_asset_totals(assets)
+        
+        return {
+            'total_count': len(assets),
+            'status_breakdown': status_stats,
+            'type_breakdown': type_stats,
+            'financial_summary': totals
+        }
+        
+    except Exception as e:
+        print(f"Error in get_asset_statistics: {str(e)}")
+        raise e
+
+# ===============================
+# API View ສຳລັບສະຖິຕິ
+# ===============================
+
+class AssetStatisticsView(View):
+    """API View ສຳລັບສະຖິຕິສະຫຼຸບຊັບສິນ"""
+    
+    def get(self, request):
+        try:
+            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
+            start_date_str = request.GET.get('start_date') or request.GET.get('start')
+            end_date_str = request.GET.get('end_date') or request.GET.get('end')
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ດຶງສະຖິຕິ
+            stats = get_asset_statistics(
+                asset_type_id=asset_type_id,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'statistics': stats,
+                'filters': {
+                    'asset_type_id': asset_type_id,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                }
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
+
+# ===============================
+# ການນຳໄປໃຊ້
+# ===============================
+
+"""
+ການໃຊ້ງານ:
+
+1. ເພີ່ມໃນ urls.py:
+from .asset_api import AssetDepreciationReportView, AssetStatisticsView
+
+urlpatterns = [
+    path('api/assets/depreciation/', AssetDepreciationReportView.as_view(), name='asset_depreciation'),
+    path('api/assets/statistics/', AssetStatisticsView.as_view(), name='asset_statistics'),
+]
+
+2. ເອີ້ນໃຊ້ຈາກ Frontend:
+GET /api/assets/depreciation/?type=1002&status=AC&start=2024-01-01&end=2024-12-31
+POST /api/assets/depreciation/ with JSON payload
+
+3. ຜົນລັບ:
+{
+    "success": true,
+    "data": [...],
+    "totals": {
+        "total_asset_value": 1000000,
+        "total_depreciation_value": 200000,
+        "total_remaining_value": 800000,
+        "asset_count": 50
+    },
+    "filters": {...}
+}
+"""
+>>>>>>> 5e24eb3ab269027a168a79b6ffc5d8afc668c991
