@@ -2137,7 +2137,8 @@ class Monthly_Incomestatement_mfi(models.Model):
 class Report_Cashflow(models.Model):
     RID = models.AutoField(primary_key=True)
     Report_number = models.CharField(max_length=20, null=True, blank=True)
-    org_formula = models.TextField(null=True, blank=True)
+    REP_Desc = models.CharField(max_length=500, null=True, blank=True)
+    org_formula = models.CharField(max_length=255, null=True, blank=True)
     Pvalue = models.CharField(max_length=255, null=True, blank=True)
     Mvalue = models.CharField(max_length=255, null=True, blank=True)
     TypeOfReport = models.CharField(max_length=50, null=True, blank=True) 
