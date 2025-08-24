@@ -25036,6 +25036,11 @@ def bulk_insert_somtop_trial_balancesheet(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+        
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_monthly_balancesheet_acc(request):
@@ -26837,8 +26842,6 @@ class AssetSummaryView(View):
             }, status=500)
 
 
-<<<<<<< HEAD
-=======
 # ===============================
 # ໄຟລ์: asset_api.py
 # ຟັງຊັ້ນສຳລັບ API ດຶງຂໍ້ມູນຊັບສິນ
@@ -27211,4 +27214,3 @@ POST /api/assets/depreciation/ with JSON payload
     "filters": {...}
 }
 """
->>>>>>> 5e24eb3ab269027a168a79b6ffc5d8afc668c991
