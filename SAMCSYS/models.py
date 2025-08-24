@@ -2145,7 +2145,8 @@ class Report_Cashflow(models.Model):
     CR_order = models.CharField(max_length=20, null=True, blank=True)
     COE_order = models.CharField(max_length=20, null=True, blank=True)
     Extensions = models.CharField(max_length=20, null=True, blank=True) 
-    Reductions = models.CharField(max_length=20, null=True, blank=True)     
+    Reductions = models.CharField(max_length=20, null=True, blank=True)  
+    category = models.CharField(max_length=50, null=True, blank=True)   
     
     class Meta:
         verbose_name_plural = 'Report_Cashflow'
