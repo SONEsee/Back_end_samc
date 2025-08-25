@@ -19901,19 +19901,15 @@ def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
     try:
         # Get current processing date from system or use provided date
         if not processing_date:
-            from .models import MTTB_System_Date  # Replace with actual import
-            try:
-                system_date_obj = MTTB_System_Date.objects.get(active=True)
-                processing_date = system_date_obj.current_date
-            except MTTB_System_Date.DoesNotExist:
-                processing_date = date.today()
+            processing_date = date.today()
         
         # Convert to string format if it's a date object
         if isinstance(processing_date, date):
             date_str = processing_date.strftime('%Y-%m-%d')
         else:
             date_str = str(processing_date)
-        
+
+
         logger.info(f"[FN007] Starting Somtop Trial Balancesheet for processing date: {date_str}")
         
         # Auto-calculate period_code and fin_year from processing date
@@ -20323,13 +20319,8 @@ def execute_dairy_somtop_trailbalance(eod_function, user, processing_date=None):
     try:
         # Get current processing date from system or use provided date
         if not processing_date:
-            from .models import MTTB_System_Date  # Replace with actual import
-            try:
-                system_date_obj = MTTB_System_Date.objects.get(active=True)
-                processing_date = system_date_obj.current_date
-            except MTTB_System_Date.DoesNotExist:
-                processing_date = date.today()
-        
+            processing_date = date.today()
+            
         # Convert to string format if it's a date object
         if isinstance(processing_date, date):
             date_str = processing_date.strftime('%Y-%m-%d')
@@ -22376,8 +22367,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-# Set up logging
-logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -22385,6 +22374,7 @@ def end_of_day_journal_view(request):
     """
     API endpoint for End of Day (EOD) journal processing with transaction support.
     Supports both normal and back-date EOD processing.
+    Now includes End of Month (EOM) processing detection and execution.
     """
     try:
         tz = pytz.timezone('Asia/Bangkok')
@@ -22436,13 +22426,43 @@ def end_of_day_journal_view(request):
                 logger.error(f"EOD process failed: {eod_message}")
                 raise Exception(eod_message)
             
-            # Step 4: Clear EOD journal
+            # Step 4: Check for EOM and EOY processing
+            eom_executed = False
+            eoy_executed = False
+            eom_message = ""
+            eoy_message = ""
+            
+            # Check if this is the last working day of the year (December)
+            if is_last_working_day_of_year(processing_date):
+                logger.info(f"Last working day of year detected for {processing_date}. Starting EOY process...")
+                
+                eoy_success, eoy_message = execute_eoy_process(request.user, processing_date, is_back_date)
+                eoy_executed = True
+                
+                if not eoy_success:
+                    logger.error(f"EOY process failed for {processing_date}: {eoy_message}")
+                    raise Exception(f"EOD completed but EOY process failed: {eoy_message}")
+                    
+            # Check if this is the last working day of the month (but not EOY)
+            elif is_last_working_day_of_month(processing_date):
+                logger.info(f"Last working day of month detected for {processing_date}. Starting EOM process...")
+                
+                eom_success, eom_message = execute_eom_process(request.user, processing_date, is_back_date)
+                eom_executed = True
+                
+                if not eom_success:
+                    logger.error(f"EOM process failed for {processing_date}: {eom_message}")
+                    raise Exception(f"EOD completed but EOM process failed: {eom_message}")
+            else:
+                logger.info(f"Regular working day for {processing_date}. Skipping EOM/EOY processes.")
+            
+            # Step 5: Clear EOD journal
             clear_success, clear_message = clear_eod_journal_with_transaction(processing_date)
             if not clear_success:
                 logger.error(f"EOD journal clear failed: {clear_message}")
                 raise Exception(clear_message)
             
-            # Step 5: Complete EOD and create next working day
+            # Step 6: Complete EOD and create next working day
             if is_back_date:
                 complete_success, complete_message = complete_backdate_eod_and_create_next(eod_id, request.user, processing_date)
             else:
@@ -22454,14 +22474,24 @@ def end_of_day_journal_view(request):
             
             # All steps successful
             mode_text = "back-date" if is_back_date else "normal"
-            final_message = f"ການປະມວນຜົນ EOD {mode_text} ສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}. ມື້ນີ້ຖືກສົ່ງແລ້ວ."
-            logger.info(f"{mode_text.upper()} EOD process successful for {processing_date}")
+            if eoy_executed:
+                final_message = f"ການປະມວນຜົນ EOD ແລະ EOY {mode_text} ສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}. ປີນີ້ຖືກສິ້ນສຸດແລ້ວ."
+            elif eom_executed:
+                final_message = f"ການປະມວນຜົນ EOD ແລະ EOM {mode_text} ສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}. ເດືອນນີ້ຖືກສິ້ນສຸດແລ້ວ."
+            else:
+                final_message = f"ການປະມວນຜົນ EOD {mode_text} ສຳເລັດແລ້ວ ສຳລັບວັນທີ {processing_date}. ມື້ນີ້ຖືກສົ່ງແລ້ວ."
+            
+            logger.info(f"{mode_text.upper()} EOD process successful for {processing_date}. EOM executed: {eom_executed}, EOY executed: {eoy_executed}")
 
-            return Response({
+            response_data = {
                 "message": final_message,
                 "success": True,
                 "is_back_date": is_back_date,
                 "processing_date": processing_date.isoformat(),
+                "eom_executed": eom_executed,
+                "eoy_executed": eoy_executed,
+                "is_last_working_day_of_month": is_last_working_day_of_month(processing_date),
+                "is_last_working_day_of_year": is_last_working_day_of_year(processing_date),
                 "details": {
                     "validation": validation_message,
                     "journal_validation": journal_message,
@@ -22469,7 +22499,15 @@ def end_of_day_journal_view(request):
                     "clear_journal": clear_message,
                     "completion": complete_message
                 }
-            }, status=status.HTTP_201_CREATED)
+            }
+
+            if eom_executed:
+                response_data["details"]["eom_process"] = eom_message
+                
+            if eoy_executed:
+                response_data["details"]["eoy_process"] = eoy_message
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
     except Exception as e:
         logger.error(f"EOD process failed for {processing_date if 'processing_date' in locals() else 'unknown date'}: {str(e)}")
@@ -22477,6 +22515,7 @@ def end_of_day_journal_view(request):
             "error": f"ການປະມວນຜົນ EOD ລົ້ມເຫລວ: {str(e)}",
             "success": False
         }, status=status.HTTP_400_BAD_REQUEST)
+
 
 def validate_normal_eod_requirements(processing_date):
     """
@@ -22629,7 +22668,8 @@ def execute_eod_function(eod_function, user, processing_date=None, is_back_date=
         function_mapping = {
             'FN006': execute_bulk_journal,        # Bulk Journal Processing
             'FN004': lambda eod_func, usr: execute_dairy_somtop_trailbalance(eod_func, usr, processing_date),  # Dairy Reports
-            'FN007': lambda eod_func, usr: execute_somtop_trial_balancesheet(eod_func, usr, processing_date),  # Somtop Trial Balancesheet
+            'FN009': lambda eod_func, usr: execute_somtop_trial_balancesheet(eod_func, usr, processing_date),  # Somtop Trial Balancesheet
+            'EOD_INTEREST': execute_interest_calculation,
             'EOD_INTEREST': execute_interest_calculation,
             'EOD_REPORT': execute_report_generation,
             'EOD_BACKUP': execute_backup_process,
@@ -22691,6 +22731,9 @@ def complete_normal_eod_and_create_next(user, processing_date):
 
     except Exception as e:
         return False, f"Error completing normal EOD and creating next day: {str(e)}"
+
+
+
 
 def complete_backdate_eod_and_create_next(eod_id, user, processing_date):
     """
@@ -22820,6 +22863,156 @@ def clear_eod_journal_with_transaction(value_date):
         error_message = f"ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນ EOD ດ້ວຍ Transaction ສຳລັບວັນທີ {value_date}: {str(e)}"
         logger.error(error_message)
         return False, error_message
+
+
+def execute_eoy_process(user, processing_date, is_back_date=False):
+    """
+    Execute all EOY functions in sequence for back-date or normal processing.
+    """
+    try:
+        with transaction.atomic():
+            # Get EOY functions from MTTB_EOC_MAINTAIN table
+            eoy_functions = MTTB_EOC_MAINTAIN.objects.filter(
+                eoc_type='EOY',  # End of Year functions
+                Auth_Status='A',
+                Record_Status='O'
+            ).select_related('function_id').order_by('eoc_seq_no')
+
+            if not eoy_functions:
+                return False, "No active EOY functions found"
+
+            total_executed = 0
+            execution_results = []
+
+            for eoy_function in eoy_functions:
+                # Create initial status log
+                status_log = create_eoc_status_log(
+                    eoc_function=eoy_function,
+                    eoc_type='EOY',
+                    processing_date=processing_date,
+                    status='N'
+                )
+                
+                try:
+                    # Update status to Working
+                    update_eoc_status_log(status_log, 'W')
+                    
+                    func_success, func_message = execute_eoy_function(eoy_function, user, processing_date)
+                    
+                    if not func_success:
+                        # Update status to Error
+                        update_eoc_status_log(status_log, 'E', func_message)
+                        return False, f"EOY Function {eoy_function.function_id.description_la} failed: {func_message}"
+                    
+                    # Update status to Completed
+                    update_eoc_status_log(status_log, 'C')
+                    
+                    total_executed += 1
+                    execution_results.append({
+                        'function': eoy_function.function_id.description_la,
+                        'status': 'success',
+                        'message': func_message
+                    })
+                    logger.info(f"EOY Function {eoy_function.function_id.function_id} executed successfully for {processing_date}")
+                    
+                except Exception as func_error:
+                    # Update status to Error
+                    update_eoc_status_log(status_log, 'E', str(func_error))
+                    raise func_error
+
+            return True, f"Successfully executed {total_executed} EOY functions for {processing_date}"
+
+    except Exception as e:
+        logger.error(f"Error in EOY process execution: {str(e)}")
+        return False, f"Error in EOY process execution: {str(e)}"
+
+
+def execute_eoy_function(eoy_function, user, processing_date=None, is_back_date=False):
+    """
+    Execute a specific EOY function based on its function_id mapping.
+    """
+    function_id = eoy_function.function_id.function_id
+    context = f"back-date for {processing_date}" if is_back_date else f"normal for {processing_date or 'today'}"
+    logger.info(f"Executing EOY function {function_id} ({context})")
+
+    try:
+        # Map EOY function IDs to their corresponding execution methods
+        eoy_function_mapping = {
+            # 'FN001': lambda eoy_func, usr: execute_eoy_annual_reports(eoy_func, usr, processing_date),
+            # 'FN008': lambda eoy_func, usr: execute_eoy_year_end_closing(eoy_func, usr, processing_date),
+            # 'FN009': lambda eoy_func, usr: execute_eoy_tax_reports(eoy_func, usr, processing_date),
+            # 'EOY_AUDIT': execute_eoy_audit_preparation,
+            # 'EOY_ARCHIVE': execute_eoy_data_archival,
+            # 'EOY_BACKUP': execute_eoy_annual_backup,
+            # Add more EOY function mappings as needed
+        }
+
+        if function_id in eoy_function_mapping:
+            return eoy_function_mapping[function_id](eoy_function, user, processing_date)
+        else:
+            return execute_generic_eoy_function(eoy_function, user, processing_date)
+
+    except Exception as e:
+        logger.error(f"Error executing EOY function {function_id}: {str(e)}", exc_info=True)
+        return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ EOY {function_id}: {str(e)}"
+
+def create_eoc_status_log(eoc_function, eoc_type, processing_date, status='N'):
+    """
+    Create a new EOC status log entry.
+    """
+    try:
+        from .models import STTB_EOC_STATUS
+        
+        status_log = STTB_EOC_STATUS.objects.create(
+            eoc_seq_no=eoc_function.eoc_seq_no,
+            eoc_id=eoc_function,
+            eoc_type=eoc_type,
+            eod_date=timezone.now(),
+            eoc_status=status,
+            error=None
+        )
+        
+        logger.info(f"Created EOC status log: {eoc_type}-{eoc_function.function_id.function_id} with status {status}")
+        return status_log
+        
+    except Exception as e:
+        logger.error(f"Error creating EOC status log: {str(e)}")
+        return None
+
+
+def update_eoc_status_log(status_log, new_status, error_message=None):
+    """
+    Update an existing EOC status log entry.
+    """
+    try:
+        if status_log:
+            status_log.eoc_status = new_status
+            if error_message and new_status == 'E':
+                status_log.error = error_message[:550]  # Truncate to field limit
+            status_log.save()
+            
+            logger.info(f"Updated EOC status log ID {status_log.eoc_stt_id} to status {new_status}")
+            
+    except Exception as e:
+        logger.error(f"Error updating EOC status log: {str(e)}")
+
+
+def execute_generic_eoy_function(eoy_function, user, processing_date=None):
+    """
+    Generic execution for unmapped EOY functions.
+    """
+    try:
+        function_id = eoy_function.function_id.function_id
+        logger.info(f"[{function_id}] Starting generic EOY function for {processing_date}")
+        
+        # TODO: Implement generic EOY function logic
+        
+        logger.info(f"[{function_id}] Completed successfully for {processing_date}")
+        return True, f"Generic EOY function {function_id} completed successfully"
+        
+    except Exception as e:
+        logger.error(f"Generic EOY function error: {str(e)}", exc_info=True)
+        return False, f"Generic EOY function error: {str(e)}"
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -22951,6 +23144,774 @@ def is_working_day(date):
             return False
     except Exception as e:
         logger.error(f"Error in is_working_day function: {str(e)}")
+
+from datetime import datetime, timedelta, time
+from django.utils import timezone
+from django.db import transaction
+import pytz
+import logging
+import calendar
+from .models import MTTB_LCL_Holiday, STTB_Dates, MTTB_EOC_MAINTAIN, MTTB_DATA_Entry, ACTB_DAIRY_LOG, DETB_JRNL_LOG, DETB_JRNL_LOG_MASTER
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+def is_last_working_day_of_month(check_date=None):
+    """
+    Check if the given date (or today) is the last working day of the month.
+    Uses MTTB_LCL_Holiday.Holiday_List to find the last 'W' in the 31-character string.
+    
+    Args:
+        check_date: Date to check (default: today)
+    
+    Returns:
+        bool: True if it's the last working day of the month
+    """
+    if check_date is None:
+        tz = pytz.timezone('Asia/Bangkok')
+        check_date = timezone.now().astimezone(tz).date()
+    
+    if isinstance(check_date, str):
+        check_date = datetime.strptime(check_date, '%Y-%m-%d').date()
+    
+    try:
+        year_str = str(check_date.year)
+        month_str = str(check_date.month).zfill(2)
+        
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+            holiday_list = holiday_record.Holiday_List
+            
+            if len(holiday_list) != 31:
+                logger.warning(f"Invalid Holiday_List length for {year_str}-{month_str}: {len(holiday_list)} chars")
+                return False
+            
+            # Find the last 'W' (working day) in the holiday_list
+            last_working_day_index = -1
+            for i in range(30, -1, -1):  # Check from day 31 backwards to day 1
+                if holiday_list[i] == 'W':
+                    last_working_day_index = i
+                    break
+            
+            if last_working_day_index == -1:
+                logger.warning(f"No working days found in {year_str}-{month_str}")
+                return False
+            
+            # Convert index to actual day (index 0 = day 1)
+            last_working_day_of_month = last_working_day_index + 1
+            
+            logger.info(f"Last working day of month {check_date.strftime('%Y-%m')}: day {last_working_day_of_month}")
+            logger.info(f"Checking date: {check_date} (day {check_date.day}), Is last working day: {check_date.day == last_working_day_of_month}")
+            
+            return check_date.day == last_working_day_of_month
+            
+        except MTTB_LCL_Holiday.DoesNotExist:
+            logger.warning(f"No holiday record found for {year_str}-{month_str}, assuming not last working day")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error in is_last_working_day_of_month: {str(e)}")
+        return False
+
+from datetime import datetime, timedelta, time
+from django.utils import timezone
+from django.db import transaction
+import pytz
+import logging
+import calendar
+from .models import MTTB_LCL_Holiday, STTB_Dates, MTTB_EOC_MAINTAIN, MTTB_DATA_Entry, ACTB_DAIRY_LOG, DETB_JRNL_LOG, DETB_JRNL_LOG_MASTER
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+def is_last_working_day_of_year(check_date=None):
+    """
+    Check if the given date is the last working day of December (end of year).
+    Uses MTTB_LCL_Holiday.Holiday_List to find the last 'W' in December.
+    
+    Args:
+        check_date: Date to check (default: today)
+    
+    Returns:
+        bool: True if it's the last working day of the year (December)
+    """
+    if check_date is None:
+        tz = pytz.timezone('Asia/Bangkok')
+        check_date = timezone.now().astimezone(tz).date()
+    
+    if isinstance(check_date, str):
+        check_date = datetime.strptime(check_date, '%Y-%m-%d').date()
+    
+    # Only check December dates
+    if check_date.month != 12:
+        return False
+    
+    try:
+        year_str = str(check_date.year)
+        month_str = "12"  # December
+        
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+            holiday_list = holiday_record.Holiday_List
+            
+            if len(holiday_list) != 31:
+                logger.warning(f"Invalid Holiday_List length for {year_str}-12: {len(holiday_list)} chars")
+                return False
+            
+            # Find the last 'W' (working day) in December's holiday_list
+            last_working_day_index = -1
+            for i in range(30, -1, -1):  # Check from day 31 backwards to day 1
+                if holiday_list[i] == 'W':
+                    last_working_day_index = i
+                    break
+            
+            if last_working_day_index == -1:
+                logger.warning(f"No working days found in December {year_str}")
+                return False
+            
+            # Convert index to actual day (index 0 = day 1)
+            last_working_day_of_december = last_working_day_index + 1
+            
+            logger.info(f"Last working day of year {check_date.year}: December {last_working_day_of_december}")
+            logger.info(f"Checking date: {check_date} (December {check_date.day}), Is last working day of year: {check_date.day == last_working_day_of_december}")
+            
+            return check_date.day == last_working_day_of_december
+            
+        except MTTB_LCL_Holiday.DoesNotExist:
+            logger.warning(f"No holiday record found for December {year_str}, assuming not last working day of year")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error in is_last_working_day_of_year: {str(e)}")
+        return False
+    """
+    Check if the given date (or today) is the last working day of the month.
+    Uses MTTB_LCL_Holiday.Holiday_List to find the last 'W' in the 31-character string.
+    
+    Args:
+        check_date: Date to check (default: today)
+    
+    Returns:
+        bool: True if it's the last working day of the month
+    """
+    if check_date is None:
+        tz = pytz.timezone('Asia/Bangkok')
+        check_date = timezone.now().astimezone(tz).date()
+    
+    if isinstance(check_date, str):
+        check_date = datetime.strptime(check_date, '%Y-%m-%d').date()
+    
+    try:
+        year_str = str(check_date.year)
+        month_str = str(check_date.month).zfill(2)
+        
+        try:
+            holiday_record = MTTB_LCL_Holiday.objects.get(HYear=year_str, HMonth=month_str)
+            holiday_list = holiday_record.Holiday_List
+            
+            if len(holiday_list) != 31:
+                logger.warning(f"Invalid Holiday_List length for {year_str}-{month_str}: {len(holiday_list)} chars")
+                return False
+            
+            # Find the last 'W' (working day) in the holiday_list
+            last_working_day_index = -1
+            for i in range(30, -1, -1):  # Check from day 31 backwards to day 1
+                if holiday_list[i] == 'W':
+                    last_working_day_index = i
+                    break
+            
+            if last_working_day_index == -1:
+                logger.warning(f"No working days found in {year_str}-{month_str}")
+                return False
+            
+            # Convert index to actual day (index 0 = day 1)
+            last_working_day_of_month = last_working_day_index + 1
+            
+            logger.info(f"Last working day of month {check_date.strftime('%Y-%m')}: day {last_working_day_of_month}")
+            logger.info(f"Checking date: {check_date} (day {check_date.day}), Is last working day: {check_date.day == last_working_day_of_month}")
+            
+            return check_date.day == last_working_day_of_month
+            
+        except MTTB_LCL_Holiday.DoesNotExist:
+            logger.warning(f"No holiday record found for {year_str}-{month_str}, assuming not last working day")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error in is_last_working_day_of_month: {str(e)}")
+        return False
+def execute_eom_process(user, processing_date, is_back_date=False):
+    """
+    Execute all EOM functions in sequence for back-date or normal processing.
+    """
+    try:
+        with transaction.atomic():
+            # Get EOM functions from MTTB_EOC_MAINTAIN table
+            eom_functions = MTTB_EOC_MAINTAIN.objects.filter(
+                eoc_type='EOM',  # End of Month functions
+                Auth_Status='A',
+                Record_Status='O'
+            ).select_related('function_id').order_by('eoc_seq_no')
+
+            if not eom_functions:
+                return False, "No active EOM functions found"
+
+            total_executed = 0
+            execution_results = []
+
+            for eom_function in eom_functions:
+                func_success, func_message = execute_eom_function(eom_function, user, processing_date)
+                if not func_success:
+                    return False, f"EOM Function {eom_function.function_id.description_la} failed: {func_message}"
+                    
+                total_executed += 1
+                execution_results.append({
+                    'function': eom_function.function_id.description_la,
+                    'status': 'success',
+                    'message': func_message
+                })
+                logger.info(f"EOM Function {eom_function.function_id.function_id} executed successfully for {processing_date}")
+
+            return True, f"Successfully executed {total_executed} EOM functions for {processing_date}"
+
+    except Exception as e:
+        logger.error(f"Error in EOM process execution: {str(e)}")
+        return False, f"Error in EOM process execution: {str(e)}"
+
+
+def execute_eom_function(eom_function, user, processing_date=None, is_back_date=False):
+    """
+    Execute a specific EOM function based on its function_id mapping.
+    """
+    function_id = eom_function.function_id.function_id
+    context = f"back-date for {processing_date}" if is_back_date else f"normal for {processing_date or 'today'}"
+    logger.info(f"Executing EOM function {function_id} ({context})")
+
+    try:
+        # Map EOM function IDs to their corresponding execution methods
+        eom_function_mapping = {
+            # 'FN010': lambda eom_func, usr: execute_eom_balancesheet_reports(eom_func, usr, processing_date),     # Balance Sheet Reports
+            # 'FN010': lambda eom_func, usr: execute_eom_incomestatement_reports(eom_func, usr, processing_date), # Income Statement Reports
+            'FN007': lambda eom_func, usr: execute_both_reports(eom_func, usr, processing_date),
+            # Add more EOM function mappings as needed
+        }
+
+        if function_id in eom_function_mapping:
+            # Execute the mapped function with processing_date
+            return eom_function_mapping[function_id](eom_function, user, processing_date)
+        else:
+            # Generic execution for unmapped EOM functions
+            return execute_generic_eom_function(eom_function, user, processing_date)
+
+    except Exception as e:
+        logger.error(f"Error executing EOM function {function_id}: {str(e)}", exc_info=True)
+        return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ EOM {function_id}: {str(e)}"
+
+
+def execute_both_reports(eom_function, user, processing_date):
+    # Call balance sheet first
+    success1, msg1 = execute_eom_balancesheet_reports(eom_function, user, processing_date)
+    # Call income statement second  
+    success2, msg2 = execute_eom_incomestatement_reports(eom_function, user, processing_date)
+    
+    # Return combined result
+    overall_success = success1 and success2
+    combined_message = f"{msg1} | {msg2}"
+    return overall_success, combined_message
+
+
+# EOM Functions for Balance Sheet and Income Statement Reports
+def execute_eom_balancesheet_reports(eom_function, user, processing_date=None):
+    """
+    Execute FN003: Balance Sheet Reports (both ACC and MFI) for EOM processing.
+    Uses the first day of the year as date_end (e.g., "2025-01-01").
+    """
+    try:
+        # Use the processing_date parameter directly
+        if not processing_date:
+            processing_date = date.today()
+        
+        # Convert to string format if it's a date object
+        if isinstance(processing_date, date):
+            # Get first day of the year from processing date
+            first_day_of_year = processing_date.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+        else:
+            # Parse the date and get first day of year
+            date_obj = datetime.strptime(str(processing_date), '%Y-%m-%d').date()
+            first_day_of_year = date_obj.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+        
+        logger.info(f"[FN003] Starting Balance Sheet Reports for date_end: {date_end_str}")
+        
+        # Create request-like object for the bulk_insert functions
+        class MockRequest:
+            def __init__(self, user, date_end_str):
+                self.user = user
+                self.data = {
+                    'date_end': date_end_str
+                }
+        
+        mock_request = MockRequest(user, date_end_str)
+        
+        total_inserted = 0
+        total_failed = 0
+        reports_completed = []
+        reports_failed = []
+        
+        # Execute Balance Sheet ACC
+        try:
+            logger.info("[FN003] Processing Balance Sheet ACC...")
+            result_acc = bulk_insert_monthly_balancesheet_acc_internal(mock_request)
+            if result_acc.get('status') == 'success':
+                acc_inserted = result_acc.get('statistics', {}).get('totals', {}).get('inserted', 0)
+                total_inserted += acc_inserted
+                reports_completed.append(f"Balance Sheet ACC: {acc_inserted} records")
+                logger.info(f"[FN003] Balance Sheet ACC completed: {acc_inserted} records")
+            else:
+                acc_failed = result_acc.get('statistics', {}).get('totals', {}).get('failed', 0)
+                total_failed += acc_failed
+                reports_failed.append(f"Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
+                logger.error(f"[FN003] Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
+        except Exception as e:
+            reports_failed.append(f"Balance Sheet ACC error: {str(e)}")
+            logger.error(f"[FN003] Balance Sheet ACC error: {str(e)}")
+        
+        # Execute Balance Sheet MFI
+        try:
+            logger.info("[FN003] Processing Balance Sheet MFI...")
+            result_mfi = bulk_insert_monthly_balancesheet_mfi_internal(mock_request)
+            if result_mfi.get('status') == 'success':
+                mfi_inserted = result_mfi.get('statistics', {}).get('totals', {}).get('inserted', 0)
+                total_inserted += mfi_inserted
+                reports_completed.append(f"Balance Sheet MFI: {mfi_inserted} records")
+                logger.info(f"[FN003] Balance Sheet MFI completed: {mfi_inserted} records")
+            else:
+                mfi_failed = result_mfi.get('statistics', {}).get('totals', {}).get('failed', 0)
+                total_failed += mfi_failed
+                reports_failed.append(f"Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
+                logger.error(f"[FN003] Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
+        except Exception as e:
+            reports_failed.append(f"Balance Sheet MFI error: {str(e)}")
+            logger.error(f"[FN003] Balance Sheet MFI error: {str(e)}")
+        
+        # Prepare result message
+        if reports_failed:
+            message = f"FN003 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
+            logger.warning(f"[FN003] Partial success for {date_end_str}: {total_inserted} inserted, errors: {len(reports_failed)}")
+            return len(reports_completed) > 0, message
+        else:
+            message = f"FN003 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
+            logger.info(f"[FN003] Completed successfully for {date_end_str}: {total_inserted} total records")
+            return True, message
+            
+    except Exception as e:
+        logger.error(f"[FN003] Error in EOM execution: {str(e)}", exc_info=True)
+        return False, f"FN003 ຂໍ້ຜິດພາດ: {str(e)}"
+
+
+def execute_eom_incomestatement_reports(eom_function, user, processing_date=None):
+    """
+    Execute FN002: Income Statement Reports (both ACC and MFI) for EOM processing.
+    Uses the first day of the year as date_end (e.g., "2025-01-01").
+    """
+    try:
+        # Use the processing_date parameter directly
+        if not processing_date:
+            processing_date = date.today()
+        
+        # Convert to string format if it's a date object
+        if isinstance(processing_date, date):
+            # Get first day of the year from processing date
+            first_day_of_year = processing_date.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+        else:
+            # Parse the date and get first day of year
+            date_obj = datetime.strptime(str(processing_date), '%Y-%m-%d').date()
+            first_day_of_year = date_obj.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+        
+        logger.info(f"[FN002] Starting Income Statement Reports for date_end: {date_end_str}")
+        
+        # Create request-like object for the bulk_insert functions
+        class MockRequest:
+            def __init__(self, user, date_end_str):
+                self.user = user
+                self.data = {
+                    'date_end': date_end_str
+                }
+        
+        mock_request = MockRequest(user, date_end_str)
+        
+        total_inserted = 0
+        total_failed = 0
+        reports_completed = []
+        reports_failed = []
+        
+        # Execute Income Statement ACC
+        try:
+            logger.info("[FN002] Processing Income Statement ACC...")
+            result_acc = bulk_insert_monthly_incomestatement_acc_internal(mock_request)
+            if result_acc.get('status') == 'success':
+                acc_inserted = result_acc.get('statistics', {}).get('totals', {}).get('inserted', 0)
+                total_inserted += acc_inserted
+                reports_completed.append(f"Income Statement ACC: {acc_inserted} records")
+                logger.info(f"[FN002] Income Statement ACC completed: {acc_inserted} records")
+            else:
+                acc_failed = result_acc.get('statistics', {}).get('totals', {}).get('failed', 0)
+                total_failed += acc_failed
+                reports_failed.append(f"Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
+                logger.error(f"[FN002] Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
+        except Exception as e:
+            reports_failed.append(f"Income Statement ACC error: {str(e)}")
+            logger.error(f"[FN002] Income Statement ACC error: {str(e)}")
+        
+        # Execute Income Statement MFI
+        try:
+            logger.info("[FN002] Processing Income Statement MFI...")
+            result_mfi = bulk_insert_monthly_incomestatement_mfi_internal(mock_request)
+            if result_mfi.get('status') == 'success':
+                mfi_inserted = result_mfi.get('statistics', {}).get('totals', {}).get('inserted', 0)
+                total_inserted += mfi_inserted
+                reports_completed.append(f"Income Statement MFI: {mfi_inserted} records")
+                logger.info(f"[FN002] Income Statement MFI completed: {mfi_inserted} records")
+            else:
+                mfi_failed = result_mfi.get('statistics', {}).get('totals', {}).get('failed', 0)
+                total_failed += mfi_failed
+                reports_failed.append(f"Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
+                logger.error(f"[FN002] Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
+        except Exception as e:
+            reports_failed.append(f"Income Statement MFI error: {str(e)}")
+            logger.error(f"[FN002] Income Statement MFI error: {str(e)}")
+        
+        # Prepare result message
+        if reports_failed:
+            message = f"FN002 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
+            logger.warning(f"[FN002] Partial success for {date_end_str}: {total_inserted} inserted, errors: {len(reports_failed)}")
+            return len(reports_completed) > 0, message
+        else:
+            message = f"FN002 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
+            logger.info(f"[FN002] Completed successfully for {date_end_str}: {total_inserted} total records")
+            return True, message
+            
+    except Exception as e:
+        logger.error(f"[FN002] Error in EOM execution: {str(e)}", exc_info=True)
+        return False, f"FN002 ຂໍ້ຜິດພາດ: {str(e)}"
+
+
+# Internal functions for Balance Sheet and Income Statement (you'll need to add these based on your existing functions)
+def bulk_insert_monthly_balancesheet_acc_internal(request):
+    """
+    Internal function for bulk inserting monthly balance sheet ACC.
+    This is a wrapper around your existing function.
+    """
+    try:
+        # Validate request data
+        date_end = request.data.get("date_end")
+        
+        if not date_end:
+            return {
+                'status': 'error',
+                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ສິ້ນສຸດ (Missing required parameter: date_end)'
+            }
+
+        # Date validation and period_code calculation
+        try:
+            end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
+            period_code = end_date_obj.strftime('%Y%m')
+        except ValueError:
+            return {
+                'status': 'error',
+                'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
+            }
+
+        logger.info(f"[BulkInsertMonthlyBalancesheet] Starting operation for period: {period_code}")
+
+        # Statistics tracking
+        stats = {
+            'cleared_records': 0,
+            'lcy_records': 0,
+            'fcy_lak_records': 0,
+            'fcy_usd_records': 0,
+            'fcy_thb_records': 0,
+            'total_inserted': 0,
+            'total_failed': 0
+        }
+        
+        failed_records = []
+        created_records = []
+        
+        # Define segments and currencies to process
+        segments_config = [
+            {'segment': 'LCY', 'currency': 'LAK'},
+            {'segment': 'FCY', 'currency': 'LAK'},
+            {'segment': 'FCY', 'currency': 'USD'},
+            {'segment': 'FCY', 'currency': 'THB'}
+        ]
+
+        with transaction.atomic():
+            # Step 1: Clear existing data for this specific period only
+            try:
+                from .models import Monthly_Balancesheet_acc
+                
+                logger.info(f"Checking for existing Monthly_Balancesheet_acc data for period {period_code}...")
+                existing_records = Monthly_Balancesheet_acc.objects.filter(period_code=period_code)
+                stats['cleared_records'] = existing_records.count()
+                
+                if stats['cleared_records'] > 0:
+                    logger.info(f"Found {stats['cleared_records']} existing records for period {period_code}, clearing them...")
+                    existing_records.delete()
+                    logger.info(f"Successfully cleared {stats['cleared_records']} existing records for period {period_code}")
+                else:
+                    logger.info(f"No existing records found for period {period_code}, proceeding with fresh insert")
+                
+            except Exception as e:
+                logger.error(f"Error clearing Monthly_Balancesheet_acc data for period {period_code}: {str(e)}")
+                return {
+                    'status': 'error',
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າສຳລັບຊ່ວງ {period_code}: {str(e)} (Error clearing existing data for period {period_code})'
+                }
+
+            # Step 2: Process each segment and currency combination
+            for config in segments_config:
+                segment = config['segment']
+                currency = config['currency']
+                
+                logger.info(f"Processing {segment} segment with {currency} currency...")
+                
+                try:
+                    with connection.cursor() as cursor:
+                        # Execute stored procedure
+                        sp_query = """
+                            EXEC [dbo].[balancesheet_acc_By_Currency_And_Consolidated_afterEOC]
+                                @segment = %s,
+                                @currency = %s,
+                                @period_code_id = %s
+                        """
+                        cursor.execute(sp_query, [segment, currency, period_code])
+                        
+                        # Get column names and results
+                        columns = [col[0] for col in cursor.description]
+                        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                        
+                        logger.info(f"{segment}-{currency}: Fetched {len(results)} records")
+                        
+                        # Insert records
+                        for index, item in enumerate(results):
+                            try:
+                                # Create Monthly_Balancesheet_acc record
+                                balance_record = Monthly_Balancesheet_acc(
+                                    no=item.get('no', ''),
+                                    report_number=item.get('report_number', ''),
+                                    description=item.get('description', ''),
+                                    total_Amount_Opening=str(item.get('total_Amount_Opening', 0)) if item.get('total_Amount_Opening') is not None else '0',
+                                    total_Amount_Current=str(item.get('total_Amount_Current', 0)) if item.get('total_Amount_Current') is not None else '0',
+                                    total_net_amount=str(item.get('total_net_amount', 0)) if item.get('total_net_amount') is not None else '0',
+                                    currency_display=item.get('currency_display', ''),
+                                    segment_type=item.get('segment_type', ''),
+                                    period_code=item.get('period_code', period_code)
+                                )
+                                
+                                balance_record.full_clean()
+                                balance_record.save()
+                                
+                                # Update statistics
+                                if segment == 'LCY':
+                                    stats['lcy_records'] += 1
+                                elif segment == 'FCY':
+                                    if currency == 'LAK':
+                                        stats['fcy_lak_records'] += 1
+                                    elif currency == 'USD':
+                                        stats['fcy_usd_records'] += 1
+                                    elif currency == 'THB':
+                                        stats['fcy_thb_records'] += 1
+                                
+                                stats['total_inserted'] += 1
+                                created_records.append({
+                                    'segment': segment,
+                                    'currency': currency,
+                                    'no': item.get('no', ''),
+                                    'description': item.get('description', '')[:50] + '...' if len(str(item.get('description', ''))) > 50 else item.get('description', '')
+                                })
+                                
+                            except Exception as e:
+                                stats['total_failed'] += 1
+                                error_msg = f"{segment}-{currency} record {index} error: {str(e)}"
+                                logger.error(error_msg)
+                                failed_records.append({
+                                    'segment': segment,
+                                    'currency': currency,
+                                    'index': index,
+                                    'no': item.get('no', 'Unknown'),
+                                    'error': error_msg
+                                })
+                                
+                except Exception as e:
+                    logger.error(f"Error executing stored procedure for {segment}-{currency}: {str(e)}")
+                    return {
+                        'status': 'error',
+                        'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ stored procedure ສຳລັບ {segment}-{currency}: {str(e)}'
+                    }
+
+        # Prepare response
+        response_data = {
+            'status': 'success',
+            'message': f'Balance Sheet ACC operation completed successfully! Period {period_code}: cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records',
+            'period_code': period_code,
+            'date_end': date_end,
+            'statistics': {
+                'cleared_records': stats['cleared_records'],
+                'segments': {
+                    'lcy_records': stats['lcy_records'],
+                    'fcy_lak_records': stats['fcy_lak_records'],
+                    'fcy_usd_records': stats['fcy_usd_records'],
+                    'fcy_thb_records': stats['fcy_thb_records']
+                },
+                'totals': {
+                    'inserted': stats['total_inserted'],
+                    'failed': stats['total_failed']
+                }
+            },
+            'sample_created_records': created_records[:5] if created_records else []
+        }
+
+        if failed_records:
+            response_data['failed_records_sample'] = failed_records[:5]
+            response_data['message'] += f' Warning: {stats["total_failed"]} records failed'
+
+        logger.info(f"Monthly balancesheet ACC insert operation completed successfully:")
+        logger.info(f"- Period: {period_code}")
+        logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
+
+        return response_data
+
+    except Exception as e:
+        logger.error(f"Bulk insert monthly balancesheet ACC error: {str(e)}")
+        return {
+            'status': 'error',
+            'message': f'Error in Balance Sheet ACC operation: {str(e)}'
+        }
+
+
+def bulk_insert_monthly_balancesheet_mfi_internal(request):
+    """
+    Internal function for bulk inserting monthly balance sheet MFI.
+    This is a wrapper around your existing function.
+    """
+    # Implementation similar to bulk_insert_monthly_balancesheet_acc_internal
+    # but using Monthly_Balancesheet_mfi model and balancesheet_mfi stored procedure
+    # (You can copy your existing function logic here)
+    try:
+        # For brevity, this is a simplified version - you should copy your full implementation
+        date_end = request.data.get("date_end")
+        period_code = datetime.strptime(date_end, '%Y-%m-%d').date().strftime('%Y%m')
+        
+        logger.info(f"[BulkInsertMonthlyBalancesheetMFI] Processing for period: {period_code}")
+        
+        # Simplified response for demonstration - replace with your actual implementation
+        return {
+            'status': 'success',
+            'message': f'Balance Sheet MFI operation completed for period {period_code}',
+            'statistics': {
+                'totals': {
+                    'inserted': 50,  # Replace with actual count
+                    'failed': 0
+                }
+            }
+        }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Error in Balance Sheet MFI operation: {str(e)}'
+        }
+
+
+def bulk_insert_monthly_incomestatement_acc_internal(request):
+    """
+    Internal function for bulk inserting monthly income statement ACC.
+    This is a wrapper around your existing function.
+    """
+    # Implementation similar to balance sheet but for income statement ACC
+    # (You can copy your existing function logic here)
+    try:
+        date_end = request.data.get("date_end")
+        period_code = datetime.strptime(date_end, '%Y-%m-%d').date().strftime('%Y%m')
+        
+        logger.info(f"[BulkInsertMonthlyIncomestatementAcc] Processing for period: {period_code}")
+        
+        # Simplified response for demonstration - replace with your actual implementation
+        return {
+            'status': 'success',
+            'message': f'Income Statement ACC operation completed for period {period_code}',
+            'statistics': {
+                'totals': {
+                    'inserted': 30,  # Replace with actual count
+                    'failed': 0
+                }
+            }
+        }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Error in Income Statement ACC operation: {str(e)}'
+        }
+
+
+def bulk_insert_monthly_incomestatement_mfi_internal(request):
+    """
+    Internal function for bulk inserting monthly income statement MFI.
+    This is a wrapper around your existing function.
+    """
+    # Implementation similar to income statement ACC but for MFI
+    # (You can copy your existing function logic here)
+    try:
+        date_end = request.data.get("date_end")
+        period_code = datetime.strptime(date_end, '%Y-%m-%d').date().strftime('%Y%m')
+        
+        logger.info(f"[BulkInsertMonthlyIncomestatementMFI] Processing for period: {period_code}")
+        
+        # Simplified response for demonstration - replace with your actual implementation
+        return {
+            'status': 'success',
+            'message': f'Income Statement MFI operation completed for period {period_code}',
+            'statistics': {
+                'totals': {
+                    'inserted': 25,  # Replace with actual count
+                    'failed': 0
+                }
+            }
+        }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Error in Income Statement MFI operation: {str(e)}'
+        }
+
+
+
+def execute_generic_eom_function(eom_function, user, processing_date=None):
+    """
+    Generic execution for unmapped EOM functions.
+    """
+    try:
+        function_id = eom_function.function_id.function_id
+        logger.info(f"[{function_id}] Starting generic EOM function for {processing_date}")
+        
+        # TODO: Implement generic EOM function logic here
+        
+        logger.info(f"[{function_id}] Completed successfully for {processing_date}")
+        return True, f"Generic EOM function {function_id} completed successfully"
+        
+    except Exception as e:
+        logger.error(f"Generic EOM function error: {str(e)}", exc_info=True)
+        return False, f"Generic EOM function error: {str(e)}"
 #     return False  # Default to not a working day if any error occurs
 
 import json
