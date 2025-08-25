@@ -26979,7 +26979,7 @@ def parse_date_parameter(date_string):
 # ===============================
 
 @method_decorator(csrf_exempt, name='dispatch')
-class AssetDepreciationReportView(View):
+class AssetDepreciationReportView1(View):
     """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ"""
     
     def get(self, request):
@@ -27209,3 +27209,197 @@ POST /api/assets/depreciation/ with JSON payload
     "filters": {...}
 }
 """
+def group_depreciation_data_by_asset(data):
+    """
+    ຈັດກຸ່ມຂໍ້ມູນການຫຼຸດມູນຄ່າຕາມ asset_list_id
+    """
+    from collections import defaultdict
+    
+    grouped = defaultdict(lambda: {
+        'asset_info': {},
+        'depreciation_records': [],
+        'summary': {}
+    })
+    
+    for record in data:
+        asset_id = record['asset_list_id']
+        
+        # ຂໍ້ມູນພື້ນຖານຂອງຊັບສິນ (ເອົາຄັ້ງດຽວ)
+        if not grouped[asset_id]['asset_info']:
+            grouped[asset_id]['asset_info'] = {
+                'asset_list_id': record['asset_list_id'],
+                'asset_list_code': record['asset_list_code'],
+                'asset_serial_no': record['asset_serial_no'],
+                'asset_tag': record['asset_tag'],
+                'asset_spec': record['asset_spec'],
+                'asset_type_id': record['asset_type_id_id'],
+                'asset_location_id': record['asset_location_id_id'],
+                'asset_value': float(record['asset_value']),
+                'asset_salvage_value': float(record['asset_salvage_value']),
+                'asset_useful_life': record['asset_useful_life'],
+                'dpca_type': record['dpca_type'],
+                'dpca_percentage': float(record['dpca_percentage']),
+                'dpca_start_date': record['dpca_start_date'],
+                'dpca_end_date': record['dpca_end_date'],
+                'asset_currency': record['asset_currency'],
+                'asset_status': record['asset_status']
+            }
+        
+        # ຂໍ້ມູນການຫຼຸດມູນຄ່າແຕ່ລະເດືອນ
+        grouped[asset_id]['depreciation_records'].append({
+            'aldm_id': record['aldm_id'],
+            'dpca_year': record['dpca_year'],
+            'dpca_month': record['dpca_month'],
+            'dpca_date': record['dpca_date'],
+            'dpca_desc': record['dpca_desc'],
+            'dpca_value': float(record['dpca_value']),
+            'remaining_value': float(record['remaining_value']),
+            'accumulated_dpca': float(record['accumulated_dpca']),
+            'dpca_no_of_days': record['dpca_no_of_days'],
+            'dpca_ac_yesno': record['dpca_ac_yesno'],
+            'Auth_Status': record['Auth_Status'],
+            'Maker_Id': record['Maker_Id_id'],
+            'Maker_DT_Stamp': record['Maker_DT_Stamp']
+        })
+    
+    # ຄິດໄລ່ສະຫຼຸບສຳລັບແຕ່ລະຊັບສິນ
+    for asset_id, asset_data in grouped.items():
+        records = asset_data['depreciation_records']
+        
+        # ຈັດເລຽງຕາມວັນທີ່
+        records.sort(key=lambda x: x['dpca_date'])
+        
+        # ຄິດໄລ່ສະຫຼຸບ
+        total_depreciation = sum(r['dpca_value'] for r in records)
+        latest_remaining = records[-1]['remaining_value'] if records else 0
+        latest_accumulated = records[-1]['accumulated_dpca'] if records else 0
+        
+        asset_data['summary'] = {
+            'total_periods': len(records),
+            'total_depreciation_amount': total_depreciation,
+            'latest_remaining_value': latest_remaining,
+            'latest_accumulated_depreciation': latest_accumulated,
+            'first_depreciation_date': records[0]['dpca_date'] if records else None,
+            'last_depreciation_date': records[-1]['dpca_date'] if records else None,
+            'average_monthly_depreciation': total_depreciation / len(records) if records else 0
+        }
+    
+    return dict(grouped)
+
+
+def format_grouped_response(grouped_data):
+    """
+    ຈັດຮູບແບບ response ສຳລັບ API
+    """
+    formatted_assets = []
+    
+    for asset_id, asset_data in grouped_data.items():
+        formatted_asset = {
+            **asset_data['asset_info'],
+            'depreciation_schedule': asset_data['depreciation_records'],
+            'depreciation_summary': asset_data['summary']
+        }
+        formatted_assets.append(formatted_asset)
+    
+    # ຄິດໄລ່ສະຫຼຸບລວມທັງໝົດ
+    grand_totals = {
+        'total_assets': len(formatted_assets),
+        'total_depreciation_records': sum(len(asset['depreciation_schedule']) for asset in formatted_assets),
+        'total_depreciation_amount': sum(asset['depreciation_summary']['total_depreciation_amount'] for asset in formatted_assets),
+        'total_remaining_value': sum(asset['depreciation_summary']['latest_remaining_value'] for asset in formatted_assets)
+    }
+    
+    return {
+        'success': True,
+        'grouped_by': 'asset_list_id',
+        'data': formatted_assets,
+        'grand_totals': grand_totals
+    }
+
+
+# ຕົວຢ່າງການນຳໃຊ້
+def process_sample_data():
+    """ທົດສອບກັບຂໍ້ມູນຕົວຢ່າງ"""
+    
+    # Sample data (ເອົາຈາກ JSON ທີ່ໃຫ້ມາ)
+    sample_data = [
+        # ... ຂໍ້ມູນຈາກ JSON ຂ້າງເທິງ
+    ]
+    
+    # ຈັດກຸ່ມຂໍ້ມູນ
+    grouped = group_depreciation_data_by_asset(sample_data)
+    
+    # ຈັດຮູບແບບ response
+    response = format_grouped_response(grouped)
+    
+    return response
+
+
+# ການປັບປຸງ View class
+class AssetDepreciationReportView(View):
+    """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ - ເວີຊັນຈັດກຸ່ມ"""
+    
+    def get(self, request):
+        try:
+            # ດຶງ parameters
+            asset_list_id = request.GET.get('asset_list_id')
+            asset_type_id = request.GET.get('asset_type_id') or request.GET.get('type')
+            asset_status = request.GET.get('asset_status') or request.GET.get('status')
+            start_date_str = request.GET.get('start_date') or request.GET.get('start')
+            end_date_str = request.GET.get('end_date') or request.GET.get('end')
+            group_by = request.GET.get('group_by', 'asset')  # ເພີ່ມ parameter ໃໝ່
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            # ດຶງຂໍ້ມູນຈາກ Stored Procedure
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຖ້າຕ້ອງການຈັດກຸ່ມ
+            if group_by == 'asset' and assets:
+                grouped_data = group_depreciation_data_by_asset(assets)
+                response_data = format_grouped_response(grouped_data)
+                
+                response_data.update({
+                    'filters': {
+                        'asset_list_id': asset_list_id,
+                        'asset_type_id': asset_type_id,
+                        'asset_status': asset_status,
+                        'start_date': start_date_str,
+                        'end_date': end_date_str,
+                        'group_by': group_by
+                    }
+                })
+                
+                return JsonResponse(response_data)
+            
+            # ຖ້າບໍ່ຈັດກຸ່ມ (ແບບເດີມ)
+            else:
+                totals = calculate_asset_totals(assets)
+                return JsonResponse({
+                    'success': True,
+                    'data': assets,
+                    'totals': totals,
+                    'filters': {
+                        'asset_list_id': asset_list_id,
+                        'asset_type_id': asset_type_id,
+                        'asset_status': asset_status,
+                        'start_date': start_date_str,
+                        'end_date': end_date_str,
+                        'group_by': group_by or 'none'
+                    },
+                    'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+                })
+                
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
+            }, status=500)
