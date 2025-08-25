@@ -8160,6 +8160,95 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
 
+    # ເພີ່ມ action ໃໝ່ 3 ອັນນີ້
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def reserve_asset_code(self, request):
+        """Reserve asset code ໃນ memory"""
+        try:
+            user_id = request.user.id
+            duration = request.data.get('duration_minutes', 30)
+            
+            result = FA_Asset_Lists.reserve_next_asset_code(
+                user_id=user_id, 
+                duration_minutes=duration
+            )
+            
+            if result:
+                return Response({
+                    'success': True,
+                    'asset_code': result['asset_code'],
+                    'expires_at': result['expires_at'].isoformat(),
+                    'message': f"Reserved {result['asset_code']} for {duration} minutes"
+                })
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Failed to reserve asset code'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def release_asset_code(self, request):
+        """ປົດປ່ອຍ reserved asset code"""
+        try:
+            asset_code = request.data.get('asset_code')
+            user_id = request.user.id
+            
+            if not asset_code:
+                return Response({
+                    'success': False,
+                    'error': 'asset_code is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            result = FA_Asset_Lists.release_reserved_code(asset_code, user_id)
+            
+            return Response({
+                'success': result,
+                'message': 'Asset code released' if result else 'Code was not reserved or expired'
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def reserved_codes_status(self, request):
+        """ເບິ່ງສະຖານະ reserved codes"""
+        try:
+            global _reserved_codes
+            FA_Asset_Lists._cleanup_expired_reserves()
+            
+            status_info = {
+                'total_reserved': len(_reserved_codes),
+                'codes': [
+                    {
+                        'code': code,
+                        'user_id': info['user_id'],
+                        'expires_at': info['expires_at'].isoformat(),
+                        'time_left_minutes': int((info['expires_at'] - timezone.now()).total_seconds() / 60)
+                    }
+                    for code, info in _reserved_codes.items()
+                ]
+            }
+            
+            return Response({
+                'success': True,
+                'data': status_info
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # ເກັບ existing actions ຂອງເຈົ້າໄວ້
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
         """Set Record_Status = 'O'"""
@@ -8200,7 +8289,6 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
                 'error': 'Record ຖືກອະນຸມັດແລ້ວ'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Set Auth_Status = 'A', Once_Auth = 'Y', record_stat = 'C'
         obj.Auth_Status = 'A'
         obj.record_stat = 'C'
         obj.Checker_Id_id = user_obj
@@ -8215,7 +8303,7 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def unauthorize(self, request, pk=None):
-        """ຍົກເລີກການອະນຸມັດ """
+        """ຍົກເລີກການອະນຸມັດ"""
         obj = self.get_object()
         user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
 
@@ -8235,6 +8323,7 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
             'message': 'ຍົກເລີກການອະນຸມັດສໍາເລັດແລ້ວ',
             'data': serializer.data
         })
+
     
 # class FADepreciationMainViewSet(viewsets.ModelViewSet):
 #     serializer_class = FADepreciationMainSerializer
