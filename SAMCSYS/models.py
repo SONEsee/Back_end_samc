@@ -1205,6 +1205,18 @@ class FA_Expense_Category (models.Model):
 #     class Meta:
 #         verbose_name_plural = 'AssestList'
 
+from django.db import models, transaction
+from django.db.models import Max
+from django.utils import timezone
+import threading
+from datetime import timedelta
+
+# Thread lock
+_code_generation_lock = threading.Lock()
+
+# In-memory storage ສຳລັບ reserved codes
+_reserved_codes = {}
+
 class FA_Asset_Lists(models.Model):
     asset_list_id = models.CharField(primary_key=True, max_length=30)
     asset_list_code = models.CharField(max_length=20, null=True, blank=True, unique=True)
@@ -1216,32 +1228,32 @@ class FA_Asset_Lists(models.Model):
     asset_date = models.DateField(null=True, blank=True)
     asset_currency = models.CharField(max_length=5, null=True, blank=True)
     asset_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_status  = models.CharField(max_length=20, null=True, blank=True, default='UC')  
+    asset_status = models.CharField(max_length=20, null=True, blank=True, default='UC')
     warranty_end_date = models.DateField(null=True, blank=True)
     supplier_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
-    has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')  # Y or N
+    has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')
     dpca_type = models.CharField(max_length=20, null=True, blank=True)
-    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  
-    asset_useful_life = models.IntegerField(null=True, blank=True)  
-    asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
-    dpca_start_date = models.DateField(null=True, blank=True)  
-    dpca_end_date = models.DateField(null=True, blank=True) 
+    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    asset_useful_life = models.IntegerField(null=True, blank=True)
+    asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    dpca_start_date = models.DateField(null=True, blank=True)
+    dpca_end_date = models.DateField(null=True, blank=True)
     accu_dpca_value_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
-    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainBegin = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainLast = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     acc_no = models.CharField(max_length=30, null=True, blank=True)
     type_of_pay = models.CharField(max_length=30, null=True, blank=True)
-    asset_latest_date_dpca = models.DateField(null=True, blank=True)  
+    asset_latest_date_dpca = models.DateField(null=True, blank=True)
     C_dpac = models.CharField(max_length=5, null=True, blank=True, default='0')
-    asset_disposal_date = models.DateField(null=True, blank=True)  
-    asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
-    asset_ac_date = models.DateField(null=True, blank=True) 
-    asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
+    asset_disposal_date = models.DateField(null=True, blank=True)
+    asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')
+    asset_ac_date = models.DateField(null=True, blank=True)
+    asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)
     asset_ac_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='ac_asset_lists')
-    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Record_Status = models.CharField(max_length=1, null=True, blank=True, default='C')
     delete_Stat = models.CharField(max_length=1, null=True, blank=True, default='')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
@@ -1252,6 +1264,155 @@ class FA_Asset_Lists(models.Model):
 
     class Meta:
         verbose_name_plural = 'AssestLists'
+
+    @staticmethod
+    def _cleanup_expired_reserves():
+        """ລົບ reserved codes ທີ່ໝົດອາຍຸ"""
+        global _reserved_codes
+        now = timezone.now()
+        expired_codes = [
+            code for code, info in _reserved_codes.items()
+            if info['expires_at'] < now
+        ]
+        for code in expired_codes:
+            del _reserved_codes[code]
+        if expired_codes:
+            print(f"Cleaned up {len(expired_codes)} expired reserved codes")
+        return len(expired_codes)
+
+    @staticmethod
+    def reserve_next_asset_code(user_id=None, duration_minutes=30):
+        """Reserve asset code ຄັ້ງຖັດໄປໃນ memory"""
+        global _reserved_codes
+        
+        with _code_generation_lock:
+            try:
+                # ລົບ codes ທີ່ໝົດອາຍຸ
+                FA_Asset_Lists._cleanup_expired_reserves()
+                
+                # ຫາ asset code ສູງສຸດຈາກ database
+                max_from_db = FA_Asset_Lists.objects.aggregate(
+                    max_code=Max('asset_list_code')
+                )['max_code']
+                
+                # ຫາ asset code ສູງສຸດຈາກ memory
+                reserved_codes = list(_reserved_codes.keys())
+                max_from_memory = max([int(code) for code in reserved_codes if code.isdigit()]) if reserved_codes else 0
+                
+                # ຄິດໄລ່ next number
+                max_codes = []
+                if max_from_db and str(max_from_db).isdigit():
+                    max_codes.append(int(max_from_db))
+                if max_from_memory:
+                    max_codes.append(max_from_memory)
+                
+                next_number = max(max_codes) + 1 if max_codes else 1
+                asset_code = str(next_number).zfill(7)
+                
+                # ກວດວ່າຖືກ reserve ແລ້ວບໍ່
+                while asset_code in _reserved_codes:
+                    next_number += 1
+                    asset_code = str(next_number).zfill(7)
+                
+                # Reserve ໃນ memory
+                expires_at = timezone.now() + timedelta(minutes=duration_minutes)
+                _reserved_codes[asset_code] = {
+                    'user_id': user_id,
+                    'expires_at': expires_at,
+                    'reserved_at': timezone.now()
+                }
+                
+                print(f"Reserved asset code {asset_code} for user {user_id} until {expires_at}")
+                
+                return {
+                    'asset_code': asset_code,
+                    'expires_at': expires_at
+                }
+                
+            except Exception as e:
+                print(f"Error reserving asset code: {e}")
+                return None
+
+    @staticmethod
+    def use_reserved_code(asset_code, user_id=None):
+        """ໃຊ້ reserved code ທີ່ຖືກ reserve ໄວ້"""
+        global _reserved_codes
+        
+        with _code_generation_lock:
+            try:
+                FA_Asset_Lists._cleanup_expired_reserves()
+                
+                if asset_code not in _reserved_codes:
+                    print(f"Asset code {asset_code} is not reserved")
+                    return False
+                
+                reserved_info = _reserved_codes[asset_code]
+                
+                if reserved_info['expires_at'] < timezone.now():
+                    del _reserved_codes[asset_code]
+                    print(f"Asset code {asset_code} has expired")
+                    return False
+                
+                if user_id and reserved_info['user_id'] != user_id:
+                    print(f"Asset code {asset_code} was reserved by different user")
+                    return False
+                
+                del _reserved_codes[asset_code]
+                print(f"Used reserved asset code {asset_code}")
+                return True
+                
+            except Exception as e:
+                print(f"Error using reserved code: {e}")
+                return False
+
+    @staticmethod
+    def release_reserved_code(asset_code, user_id=None):
+        """ປົດປ່ອຍ reserved code"""
+        global _reserved_codes
+        
+        with _code_generation_lock:
+            try:
+                if asset_code in _reserved_codes:
+                    reserved_info = _reserved_codes[asset_code]
+                    
+                    if user_id and reserved_info['user_id'] != user_id:
+                        return False
+                    
+                    del _reserved_codes[asset_code]
+                    print(f"Released reserved asset code {asset_code}")
+                    return True
+                
+                return False
+                
+            except Exception as e:
+                print(f"Error releasing reserved code: {e}")
+                return False
+
+    @staticmethod
+    def generate_next_asset_code():
+        """Generate asset code ແບບເກົ່າ (fallback)"""
+        with _code_generation_lock:
+            try:
+                max_result = FA_Asset_Lists.objects.aggregate(
+                    max_code=Max('asset_list_code')
+                )['max_code']
+                
+                if max_result:
+                    try:
+                        next_number = int(max_result) + 1
+                    except (ValueError, TypeError):
+                        next_number = 1
+                else:
+                    next_number = 1
+                
+                return str(next_number).zfill(7)
+                
+            except Exception as e:
+                print(f"Error generating asset code: {e}")
+                import time, random
+                timestamp = str(int(time.time()))[-6:]
+                random_part = str(random.randint(100, 999))
+                return f"{timestamp}{random_part}"
 
 # class FA_Depreciation_Main (models.Model):
 #     dm_id = models.AutoField(primary_key=True)
