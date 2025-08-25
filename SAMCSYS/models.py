@@ -2137,10 +2137,17 @@ class Monthly_Incomestatement_mfi(models.Model):
 class Report_Cashflow(models.Model):
     RID = models.AutoField(primary_key=True)
     Report_number = models.CharField(max_length=20, null=True, blank=True)
-    org_formula = models.TextField(null=True, blank=True)
-    Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
-    Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
-    TypeOfReport = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
+    REP_Desc = models.CharField(max_length=500, null=True, blank=True)
+    org_formula = models.CharField(max_length=1000, null=True, blank=True)
+    Pvalue = models.CharField(max_length=1000, null=True, blank=True)
+    Mvalue = models.CharField(max_length=1000, null=True, blank=True)
+    TypeOfReport = models.CharField(max_length=50, null=True, blank=True) 
+    CR_order = models.CharField(max_length=20, null=True, blank=True)
+    COE_order = models.CharField(max_length=20, null=True, blank=True)
+    Extensions = models.CharField(max_length=20, null=True, blank=True) 
+    Reductions = models.CharField(max_length=20, null=True, blank=True)  
+    category = models.CharField(max_length=50, null=True, blank=True)   
     
     class Meta:
         verbose_name_plural = 'Report_Cashflow'
+
