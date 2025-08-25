@@ -814,288 +814,43 @@ class FAExpenseCategorySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 #change on chart serial
-# class FAAssetListSerializer(serializers.ModelSerializer):
-#     asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
-#     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
-#     supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
-#     type_of_pay_detail = serializers.SerializerMethodField()
-#     asset_status_detail = serializers.SerializerMethodField()
-
-#     class Meta:
-#         model = FA_Asset_Lists
-#         fields = '__all__'
-
-#     def get_type_of_pay_detail(self, obj):
-#         if hasattr(self, '_type_of_pay_cache') and obj.type_of_pay in self._type_of_pay_cache:
-#             return self._type_of_pay_cache[obj.type_of_pay]
-
-#         from .models import MasterCode
-#         mc = MasterCode.objects.filter(MC_code=obj.type_of_pay).first()
-#         result = MasterCodeDetail_Serializer(mc).data if mc else None
-
-#         if not hasattr(self, '_type_of_pay_cache'):
-#             self._type_of_pay_cache = {}
-#         self._type_of_pay_cache[obj.type_of_pay] = result
-#         return result
-
-#     def get_asset_status_detail(self, obj):
-#         if hasattr(self, '_asset_status_cache') and obj.asset_status in self._asset_status_cache:
-#             return self._asset_status_cache[obj.asset_status]
-
-#         from .models import MasterCode
-#         mc = MasterCode.objects.filter(MC_code=obj.asset_status).first()
-#         result = MasterCodeDetail_Serializer(mc).data if mc else None
-
-#         if not hasattr(self, '_asset_status_cache'):
-#             self._asset_status_cache = {}
-#         self._asset_status_cache[obj.asset_status] = result
-#         return result
-from rest_framework import serializers
-from django.db import transaction
-from django.utils import timezone
-
 class FAAssetListSerializer(serializers.ModelSerializer):
-    # Existing detail fields
-    asset_id_detail = serializers.SerializerMethodField(read_only=True)
-    location_detail = serializers.SerializerMethodField(read_only=True)
-    supplier_detail = serializers.SerializerMethodField(read_only=True)
+    asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
+    location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
+    supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
     type_of_pay_detail = serializers.SerializerMethodField()
     asset_status_detail = serializers.SerializerMethodField()
-    
-    # ເພີ່ມ computed fields ສຳລັບ preview
-    computed_asset_list_id = serializers.CharField(read_only=True)
-    computed_asset_serial_no = serializers.CharField(read_only=True)
-    computed_asset_tag = serializers.CharField(read_only=True) 
-    computed_reference_no = serializers.CharField(read_only=True)
-    computed_mc_detail = serializers.CharField(read_only=True)
 
     class Meta:
         model = FA_Asset_Lists
         fields = '__all__'
-        extra_kwargs = {
-            'asset_list_code': {'read_only': True},
-            'asset_list_id': {'read_only': True},
-            'asset_serial_no': {'read_only': True},
-            'asset_tag': {'read_only': True},
-            'Maker_Id': {'read_only': True},
-            'Maker_DT_Stamp': {'read_only': True},
-            'asset_ac_by': {'read_only': True},
-            'asset_ac_datetime': {'read_only': True}
-        }
-
-    def get_asset_id_detail(self, obj):
-        """ດຶງລາຍລະອຽດ asset type"""
-        if obj.asset_type_id:
-            try:
-                from .serializers import FAChartOfAssetDetailSerializer
-                return FAChartOfAssetDetailSerializer(obj.asset_type_id).data
-            except:
-                return None
-        return None
-
-    def get_location_detail(self, obj):
-        """ດຶງລາຍລະອຽດ location"""
-        if obj.asset_location_id:
-            try:
-                from .serializers import LocationDetailSerializer
-                return LocationDetailSerializer(obj.asset_location_id).data
-            except:
-                return None
-        return None
-
-    def get_supplier_detail(self, obj):
-        """ດຶງລາຍລະອຽດ supplier"""
-        if obj.supplier_id:
-            try:
-                from .serializers import SuppliersDetailSerializer
-                return SuppliersDetailSerializer(obj.supplier_id).data
-            except:
-                return None
-        return None
 
     def get_type_of_pay_detail(self, obj):
-        """ດຶງລາຍລະອຽດ type_of_pay ພ້ອມ caching"""
-        if not obj.type_of_pay:
-            return None
-            
         if hasattr(self, '_type_of_pay_cache') and obj.type_of_pay in self._type_of_pay_cache:
             return self._type_of_pay_cache[obj.type_of_pay]
 
-        try:
-            from .models import MasterCode
-            from .serializers import MasterCodeDetail_Serializer
-            mc = MasterCode.objects.filter(MC_code=obj.type_of_pay).first()
-            result = MasterCodeDetail_Serializer(mc).data if mc else None
+        from .models import MasterCode
+        mc = MasterCode.objects.filter(MC_code=obj.type_of_pay).first()
+        result = MasterCodeDetail_Serializer(mc).data if mc else None
 
-            if not hasattr(self, '_type_of_pay_cache'):
-                self._type_of_pay_cache = {}
-            self._type_of_pay_cache[obj.type_of_pay] = result
-            return result
-        except Exception as e:
-            print(f"Error getting type_of_pay_detail: {e}")
-            return None
+        if not hasattr(self, '_type_of_pay_cache'):
+            self._type_of_pay_cache = {}
+        self._type_of_pay_cache[obj.type_of_pay] = result
+        return result
 
     def get_asset_status_detail(self, obj):
-        """ດຶງລາຍລະອຽດ asset_status ພ້ອມ caching"""
-        if not obj.asset_status:
-            return None
-            
         if hasattr(self, '_asset_status_cache') and obj.asset_status in self._asset_status_cache:
             return self._asset_status_cache[obj.asset_status]
 
-        try:
-            from .models import MasterCode
-            from .serializers import MasterCodeDetail_Serializer
-            mc = MasterCode.objects.filter(MC_code=obj.asset_status).first()
-            result = MasterCodeDetail_Serializer(mc).data if mc else None
+        from .models import MasterCode
+        mc = MasterCode.objects.filter(MC_code=obj.asset_status).first()
+        result = MasterCodeDetail_Serializer(mc).data if mc else None
 
-            if not hasattr(self, '_asset_status_cache'):
-                self._asset_status_cache = {}
-            self._asset_status_cache[obj.asset_status] = result
-            return result
-        except Exception as e:
-            print(f"Error getting asset_status_detail: {e}")
-            return None
+        if not hasattr(self, '_asset_status_cache'):
+            self._asset_status_cache = {}
+        self._asset_status_cache[obj.asset_status] = result
+        return result
 
-    def _generate_computed_fields(self, asset_list_code, validated_data):
-        """
-        ສ້າງ computed fields ທັງໝົດທີ່ພົວພັນກັບ asset_list_code
-        ບໍ່ບັນທຶກໃນ database, ພຽງສ້າງເພື່ອສະແດງຜົນໃນ frontend
-        """
-        computed_fields = {}
-        
-        # ດຶງຂໍ້ມູນທີ່ຈຳເປັນ
-        asset_type = validated_data.get('asset_type_id')
-        asset_date = validated_data.get('asset_date', timezone.now().date())
-        
-        if asset_type:
-            # ດຶງ asset_code ຈາກ asset_type
-            asset_code = getattr(asset_type, 'asset_code', 'AST')
-            
-            # ສ້າງວັນທີໃນຮູບແບບຕ່າງໆ
-            year_month = asset_date.strftime('%Y%m')
-            date_string = asset_date.strftime('%Y%m%d')
-            
-            # 1. asset_list_id: ${assetCode}-${yearMonth}-${assetListCode}
-            computed_fields['asset_list_id'] = f"{asset_code}-{year_month}-{asset_list_code}"
-            
-            # 2. asset_serial_no: SN-${assetCode}-${dateString}-${assetListCode}
-            computed_fields['asset_serial_no'] = f"SN-{asset_code}-{date_string}-{asset_list_code}"
-            
-            # 3. asset_tag: BA-${assetCode}-${dateString}-${assetListCode}
-            computed_fields['asset_tag'] = f"BA-{asset_code}-{date_string}-{asset_list_code}"
-                
-        else:
-            # Fallback ຖ້າບໍ່ມີ asset_type
-            default_date = timezone.now().date().strftime('%Y%m')
-            computed_fields['asset_list_id'] = f"DEFAULT-{default_date}-{asset_list_code}"
-            computed_fields['asset_serial_no'] = f"SN-DEFAULT-{asset_list_code}"
-            computed_fields['asset_tag'] = f"BA-DEFAULT-{asset_list_code}"
-        
-        print(f"Generated computed fields for code {asset_list_code}: {computed_fields}")
-        
-        return computed_fields
-
-    def create(self, validated_data):
-        """
-        Override create method ເພື່ອສ້າງ asset_list_code ແລະ computed fields
-        """
-        with transaction.atomic():
-            print("Starting asset creation process...")
-            
-            # 1. ສ້າງ asset_list_code
-            asset_list_code = FA_Asset_Lists.generate_next_asset_code()
-            validated_data['asset_list_code'] = asset_list_code
-            
-            print(f"Generated asset_list_code: {asset_list_code}")
-            
-            # 2. ສ້າງ computed fields ທັງໝົດ
-            computed_fields = self._generate_computed_fields(asset_list_code, validated_data)
-            
-            # 3. ເພີ່ມ computed fields ໃສ່ validated_data
-            for field_name, field_value in computed_fields.items():
-                validated_data[field_name] = field_value
-            
-            # 4. ຕັ້ງຄ່າ default values ທີ່ຈຳເປັນ
-            if 'asset_ac_datetime' not in validated_data or not validated_data['asset_ac_datetime']:
-                validated_data['asset_ac_datetime'] = timezone.now()
-            
-            print(f"Final validated_data keys: {list(validated_data.keys())}")
-            
-            # 5. ສ້າງ record
-            instance = super().create(validated_data)
-            
-            print(f"Successfully created asset: {instance.asset_list_id}")
-            
-            return instance
-
-    def update(self, instance, validated_data):
-        """
-        Override update method ເພື່ອປ້ອງກັນການແກ້ໄຂ computed fields
-        """
-        # ລົບ computed fields ອອກຈາກ validated_data
-        computed_field_names = [
-            'asset_list_code', 'asset_list_id', 'asset_serial_no', 'asset_tag'
-        ]
-        
-        for field_name in computed_field_names:
-            if field_name in validated_data:
-                validated_data.pop(field_name)
-                print(f"Removed {field_name} from update data")
-        
-        return super().update(instance, validated_data)
-
-    def to_representation(self, instance):
-        """
-        ເພີ່ມ computed fields ໃນ API response ສຳລັບການສະແດງຜົນ
-        """
-        data = super().to_representation(instance)
-        
-        # ເພີ່ມ computed fields ສຳລັບ frontend (ບໍ່ບັນທຶກໃນ database)
-        data['computed_asset_list_id'] = getattr(instance, 'asset_list_id', '')
-        data['computed_asset_serial_no'] = getattr(instance, 'asset_serial_no', '')
-        data['computed_asset_tag'] = getattr(instance, 'asset_tag', '')
-        
-        # ສ້າງ computed fields ອື່ນໆ ທີ່ frontend ຕ້ອງການ
-        if instance.asset_type_id and instance.asset_date and instance.asset_list_code:
-            asset_code = getattr(instance.asset_type_id, 'asset_code', 'AST')
-            date_string = instance.asset_date.strftime('%Y%m%d')
-            
-            data['computed_reference_no'] = f"AS-UNC-{date_string}-{instance.asset_list_code}"
-            
-            if hasattr(instance.asset_type_id, 'tangible_detail') and hasattr(instance.asset_type_id.tangible_detail, 'MC_detail'):
-                base_mc_detail = instance.asset_type_id.tangible_detail.MC_detail
-                data['computed_mc_detail'] = f"{base_mc_detail}.{instance.asset_list_code}"
-        
-        return data
-
-    def validate(self, attrs):
-        """
-        ການ validate ຂໍ້ມູນເພີ່ມເຕີມ
-        """
-        # ກວດ asset_value
-        if attrs.get('asset_value') and attrs['asset_value'] <= 0:
-            raise serializers.ValidationError({
-                'asset_value': 'ມູນຄ່າຊັບສົມບັດຕ້ອງມີຄ່າຫຼາຍກວ່າ 0'
-            })
-        
-        # ກວດ dpca_percentage
-        if attrs.get('dpca_percentage'):
-            if attrs['dpca_percentage'] < 0 or attrs['dpca_percentage'] > 100:
-                raise serializers.ValidationError({
-                    'dpca_percentage': 'ອັດຕາຄ່າເສື່ອມຕ້ອງຢູ່ລະຫວ່າງ 0-100%'
-                })
-        
-        # ກວດ has_depreciation fields
-        if attrs.get('has_depreciation') == 'Y':
-            required_fields = ['dpca_type', 'asset_useful_life', 'type_of_pay', 'acc_no']
-            for field in required_fields:
-                if not attrs.get(field):
-                    raise serializers.ValidationError({
-                        field: f'ຟີລດ {field} ຈຳເປັນເມື່ອມີການຫັກຄ່າເສື່ອມລາຄາ'
-                    })
-        
-        return attrs
 
 # class FAAssetListSerializer(serializers.ModelSerializer):
 #     asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)

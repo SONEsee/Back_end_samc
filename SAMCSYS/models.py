@@ -1205,155 +1205,53 @@ class FA_Expense_Category (models.Model):
 #     class Meta:
 #         verbose_name_plural = 'AssestList'
 
-from django.db import models, transaction, connection
-from django.db.models import Max
-from django.utils import timezone
-import threading
-import random
-import time
-
-
-_code_generation_lock = threading.Lock()
-
 class FA_Asset_Lists(models.Model):
     asset_list_id = models.CharField(primary_key=True, max_length=30)
     asset_list_code = models.CharField(max_length=20, null=True, blank=True, unique=True)
-    asset_type_id = models.ForeignKey('FA_Chart_Of_Asset', null=True, blank=True, on_delete=models.CASCADE)
+    asset_type_id = models.ForeignKey(FA_Chart_Of_Asset, null=True, blank=True, on_delete=models.CASCADE)
     asset_serial_no = models.CharField(max_length=50, null=True, blank=True, unique=True)
     asset_tag = models.CharField(max_length=50, null=True, blank=True, unique=True)
-    asset_location_id = models.ForeignKey('FA_Location', null=True, blank=True, on_delete=models.CASCADE)
+    asset_location_id = models.ForeignKey(FA_Location, null=True, blank=True, on_delete=models.CASCADE)
     asset_spec = models.TextField(null=True, blank=True)
     asset_date = models.DateField(null=True, blank=True)
     asset_currency = models.CharField(max_length=5, null=True, blank=True)
     asset_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_status = models.CharField(max_length=20, null=True, blank=True, default='UC')
+    asset_status  = models.CharField(max_length=20, null=True, blank=True, default='UC')  
     warranty_end_date = models.DateField(null=True, blank=True)
-    supplier_id = models.ForeignKey('FA_Suppliers', null=True, blank=True, on_delete=models.CASCADE)
-    has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')
+    supplier_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
+    has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')  # Y or N
     dpca_type = models.CharField(max_length=20, null=True, blank=True)
-    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    asset_useful_life = models.IntegerField(null=True, blank=True)
-    asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    dpca_start_date = models.DateField(null=True, blank=True)
-    dpca_end_date = models.DateField(null=True, blank=True)
+    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  
+    asset_useful_life = models.IntegerField(null=True, blank=True)  
+    asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
+    dpca_start_date = models.DateField(null=True, blank=True)  
+    dpca_end_date = models.DateField(null=True, blank=True) 
     accu_dpca_value_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
     asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainBegin = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainLast = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     acc_no = models.CharField(max_length=30, null=True, blank=True)
     type_of_pay = models.CharField(max_length=30, null=True, blank=True)
-    asset_latest_date_dpca = models.DateField(null=True, blank=True)
+    asset_latest_date_dpca = models.DateField(null=True, blank=True)  
     C_dpac = models.CharField(max_length=5, null=True, blank=True, default='0')
-    asset_disposal_date = models.DateField(null=True, blank=True)
-    asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')
-    asset_ac_date = models.DateField(null=True, blank=True)
-    asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)
-    asset_ac_by = models.ForeignKey('MTTB_Users', null=True, blank=True, on_delete=models.CASCADE, related_name='ac_asset_lists')
-    Record_Status = models.CharField(max_length=1, null=True, blank=True, default='C')
+    asset_disposal_date = models.DateField(null=True, blank=True)  
+    asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
+    asset_ac_date = models.DateField(null=True, blank=True) 
+    asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
+    asset_ac_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='ac_asset_lists')
+    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     delete_Stat = models.CharField(max_length=1, null=True, blank=True, default='')
-    Maker_Id = models.ForeignKey('MTTB_Users', null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')
+    Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
-    Checker_Id = models.ForeignKey('MTTB_Users', null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_lists')
+    Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_asset_lists')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     Auth_Status_ARC = models.CharField(max_length=1, null=True, blank=True, default='U')
-    
-
 
     class Meta:
         verbose_name_plural = 'AssestLists'
-        db_table = 'fa_asset_lists'
-        
-    @staticmethod
-    def generate_next_asset_code():
-        """
-        ສ້າງ asset_list_code ລຳດັບຖັດໄປແບບປອດໄພ
-        ໃຊ້ thread lock ແລະ database transaction ເພື່ອປ້ອງກັນການຊ້ຳ
-        
-        Returns:
-            str: asset_list_code ໃນຮູບແບບ "0000001", "0000002", etc.
-        """
-        with _code_generation_lock:
-            try:
-                with transaction.atomic():
-                    # ລັອກຕາຕະລາງສຳລັບ database ທີ່ຮອງຮັບ
-                    if connection.vendor == 'postgresql':
-                        with connection.cursor() as cursor:
-                            cursor.execute("LOCK TABLE fa_asset_lists IN ACCESS EXCLUSIVE MODE")
-                    elif connection.vendor == 'mysql':
-                        # ສຳລັບ MySQL ໃຊ້ SELECT FOR UPDATE
-                        FA_Asset_Lists.objects.select_for_update().filter(
-                            asset_list_code__isnull=False
-                        ).first()
-                    
-                    # ຫາ asset_list_code ທີ່ມີຄ່າສູງສຸດປັດຈຸບັນ
-                    max_result = FA_Asset_Lists.objects.aggregate(
-                        max_code=Max('asset_list_code')
-                    )['max_code']
-                    
-                    print(f"Current max asset_list_code: {max_result}")
-                    
-                    # ຄິດໄລ່ເລກຖັດໄປ
-                    if max_result:
-                        try:
-                            current_max = int(max_result)
-                            next_number = current_max + 1
-                        except (ValueError, TypeError):
-                            print(f"Warning: Cannot convert '{max_result}' to int, starting from 1")
-                            next_number = 1
-                    else:
-                        next_number = 1
-                    
-                    formatted_code = str(next_number).zfill(7)
-                    print(f"Generated asset_list_code: {formatted_code}")
-                    
-                    return formatted_code
-                    
-            except Exception as e:
-                print(f"Error generating sequential asset code: {e}")
-                return FA_Asset_Lists._generate_fallback_code()
-
-    @staticmethod 
-    def _generate_fallback_code():
-        """
-        Fallback method ໃນກໍລະນີທີ່ sequential generation ລົ້ມເຫຼວ
-        """
-        try:
-            timestamp = str(int(time.time()))[-6:]
-            random_part = str(random.randint(100, 999))
-            fallback_code = f"{timestamp}{random_part}".zfill(10)
-            print(f"Using fallback asset_list_code: {fallback_code}")
-            return fallback_code
-        except Exception as e:
-            print(f"Fallback method also failed: {e}")
-            return str(random.randint(1000000, 9999999))
-
-    @staticmethod
-    def preview_next_asset_code():
-        """
-        Preview asset_list_code ຄັ້ງຖັດໄປໂດຍບໍ່ increment
-        """
-        try:
-            max_result = FA_Asset_Lists.objects.aggregate(
-                max_code=Max('asset_list_code')
-            )['max_code']
-            
-            if max_result:
-                try:
-                    next_number = int(max_result) + 1
-                except (ValueError, TypeError):
-                    next_number = 1
-            else:
-                next_number = 1
-                
-            return str(next_number).zfill(7)
-        except Exception:
-            return "0000001"
-
-    def __str__(self):
-        return f"{self.asset_list_id} - {self.asset_list_code}"
 
 # class FA_Depreciation_Main (models.Model):
 #     dm_id = models.AutoField(primary_key=True)
