@@ -824,23 +824,10 @@ class FAAssetListSerializer(serializers.ModelSerializer):
     supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
     type_of_pay_detail = serializers.SerializerMethodField()
     asset_status_detail = serializers.SerializerMethodField()
-    
-    # ເພີ່ມ computed fields
-    computed_asset_list_id = serializers.CharField(read_only=True)
-    computed_asset_serial_no = serializers.CharField(read_only=True)
-    computed_asset_tag = serializers.CharField(read_only=True)
-    computed_reference_no = serializers.CharField(read_only=True)
-    computed_mc_detail = serializers.CharField(read_only=True)
 
     class Meta:
         model = FA_Asset_Lists
         fields = '__all__'
-        extra_kwargs = {
-            'asset_list_code': {'read_only': True},
-            'asset_list_id': {'read_only': True},
-            'asset_serial_no': {'read_only': True},
-            'asset_tag': {'read_only': True},
-        }
 
     def get_type_of_pay_detail(self, obj):
         if hasattr(self, '_type_of_pay_cache') and obj.type_of_pay in self._type_of_pay_cache:
@@ -868,85 +855,7 @@ class FAAssetListSerializer(serializers.ModelSerializer):
         self._asset_status_cache[obj.asset_status] = result
         return result
 
-    def _generate_computed_fields(self, asset_list_code, validated_data):
-        """ສ້າງ computed fields"""
-        computed_fields = {}
-        
-        asset_type = validated_data.get('asset_type_id')
-        asset_date = validated_data.get('asset_date', timezone.now().date())
-        
-        if asset_type:
-            asset_code = getattr(asset_type, 'asset_code', 'AST')
-            year_month = asset_date.strftime('%Y%m')
-            date_string = asset_date.strftime('%Y%m%d')
-            
-            computed_fields['asset_list_id'] = f"{asset_code}-{year_month}-{asset_list_code}"
-            computed_fields['asset_serial_no'] = f"SN-{asset_code}-{date_string}-{asset_list_code}"
-            computed_fields['asset_tag'] = f"BA-{asset_code}-{date_string}-{asset_list_code}"
-        else:
-            default_date = timezone.now().date().strftime('%Y%m')
-            computed_fields['asset_list_id'] = f"DEFAULT-{default_date}-{asset_list_code}"
-            computed_fields['asset_serial_no'] = f"SN-DEFAULT-{asset_list_code}"
-            computed_fields['asset_tag'] = f"BA-DEFAULT-{asset_list_code}"
-        
-        return computed_fields
 
-    def create(self, validated_data):
-        """Create ດ້ວຍ reserved code"""
-        with transaction.atomic():
-            request = self.context.get('request')
-            reserved_code = None
-            
-            if request and hasattr(request, 'data'):
-                reserved_code = request.data.get('reserved_asset_code')
-            
-            if reserved_code:
-                # ໃຊ້ reserved code
-                user_id = request.user.id if request else None
-                if FA_Asset_Lists.use_reserved_code(reserved_code, user_id):
-                    asset_list_code = reserved_code
-                    print(f"Using reserved asset code: {asset_list_code}")
-                else:
-                    raise serializers.ValidationError({
-                        'reserved_asset_code': 'Reserved code expired, invalid, or belongs to another user'
-                    })
-            else:
-                # Fallback
-                asset_list_code = FA_Asset_Lists.generate_next_asset_code()
-            
-            validated_data['asset_list_code'] = asset_list_code
-            
-            # ສ້າງ computed fields
-            computed_fields = self._generate_computed_fields(asset_list_code, validated_data)
-            for field_name, field_value in computed_fields.items():
-                validated_data[field_name] = field_value
-            
-            # ສ້າງ record
-            instance = super().create(validated_data)
-            print(f"Created asset: {instance.asset_list_id}")
-            
-            return instance
-
-    def to_representation(self, instance):
-        """ເພີ່ມ computed fields ໃນ response"""
-        data = super().to_representation(instance)
-        
-        data['computed_asset_list_id'] = getattr(instance, 'asset_list_id', '')
-        data['computed_asset_serial_no'] = getattr(instance, 'asset_serial_no', '')
-        data['computed_asset_tag'] = getattr(instance, 'asset_tag', '')
-        
-        # ສ້າງ computed fields ອື່ນໆ
-        if instance.asset_type_id and instance.asset_date and instance.asset_list_code:
-            asset_code = getattr(instance.asset_type_id, 'asset_code', 'AST')
-            date_string = instance.asset_date.strftime('%Y%m%d')
-            
-            data['computed_reference_no'] = f"AS-UNC-{date_string}-{instance.asset_list_code}"
-            
-            if hasattr(instance.asset_type_id, 'tangible_detail') and hasattr(instance.asset_type_id.tangible_detail, 'MC_detail'):
-                base_mc_detail = instance.asset_type_id.tangible_detail.MC_detail
-                data['computed_mc_detail'] = f"{base_mc_detail}.{instance.asset_list_code}"
-        
-        return data
 
 
 # class FAAssetListSerializer(serializers.ModelSerializer):

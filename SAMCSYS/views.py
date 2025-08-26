@@ -8129,6 +8129,27 @@ class FAExpenseCategoryViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
+# views.py
+from django.db import transaction
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.db.models import Max
+import logging
+from django.db import transaction, connection
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+logger = logging.getLogger(__name__)
+from rest_framework.decorators import action
+from django.db import transaction, connection
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+import logging
+
+logger = logging.getLogger(__name__)
+
 class FAAssetListViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListSerializer
     permission_classes = [IsAuthenticated]
@@ -8143,188 +8164,47 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(asset_tag=asset_tag)
 
         return queryset
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Maker_Id=user,
-            Maker_DT_Stamp=timezone.now(),
-            asset_ac_by=user,
-            asset_ac_datetime=timezone.now()
-        )
 
-    def perform_update(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-
-    # ເພີ່ມ action ໃໝ່ 3 ອັນນີ້
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
-    def reserve_asset_code(self, request):
-        """Reserve asset code ໃນ memory"""
+    @action(detail=False, methods=['post'], url_path='generate-next-code')
+    def generate_next_code(self, request):
+        """
+        ໂທ SQL Server Stored Procedure
+        """
         try:
-            user_id = request.user.id
-            duration = request.data.get('duration_minutes', 30)
-            
-            result = FA_Asset_Lists.reserve_next_asset_code(
-                user_id=user_id, 
-                duration_minutes=duration
-            )
-            
-            if result:
-                return Response({
-                    'success': True,
-                    'asset_code': result['asset_code'],
-                    'expires_at': result['expires_at'].isoformat(),
-                    'message': f"Reserved {result['asset_code']} for {duration} minutes"
-                })
-            else:
-                return Response({
-                    'success': False,
-                    'error': 'Failed to reserve asset code'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            with connection.cursor() as cursor:
+                # ໂທ stored procedure
+                cursor.execute("EXEC GetNextAssetCode")
+                
+                # ອ່ານຜົນລັບ
+                result = cursor.fetchone()
+                
+                if result and len(result) >= 3:
+                    next_code, success, message = result
+                    
+                    if success == 1:  # success = 1 ແມ່ນສຳເລັດ
+                        return Response({
+                            'next_code': next_code,
+                            'success': True,
+                            'message': message or f'Generated: {next_code}'
+                        })
+                    else:
+                        return Response({
+                            'error': message or 'Stored procedure failed',
+                            'success': False
+                        }, status=500)
+                else:
+                    return Response({
+                        'error': 'Invalid response from stored procedure',
+                        'success': False
+                    }, status=500)
                 
         except Exception as e:
+            logger.error(f"Stored procedure error: {str(e)}")
             return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
-    def release_asset_code(self, request):
-        """ປົດປ່ອຍ reserved asset code"""
-        try:
-            asset_code = request.data.get('asset_code')
-            user_id = request.user.id
-            
-            if not asset_code:
-                return Response({
-                    'success': False,
-                    'error': 'asset_code is required'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            result = FA_Asset_Lists.release_reserved_code(asset_code, user_id)
-            
-            return Response({
-                'success': result,
-                'message': 'Asset code released' if result else 'Code was not reserved or expired'
-            })
-            
-        except Exception as e:
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
-    def reserved_codes_status(self, request):
-        """ເບິ່ງສະຖານະ reserved codes"""
-        try:
-            global _reserved_codes
-            FA_Asset_Lists._cleanup_expired_reserves()
-            
-            status_info = {
-                'total_reserved': len(_reserved_codes),
-                'codes': [
-                    {
-                        'code': code,
-                        'user_id': info['user_id'],
-                        'expires_at': info['expires_at'].isoformat(),
-                        'time_left_minutes': int((info['expires_at'] - timezone.now()).total_seconds() / 60)
-                    }
-                    for code, info in _reserved_codes.items()
-                ]
-            }
-            
-            return Response({
-                'success': True,
-                'data': status_info
-            })
-        except Exception as e:
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    # ເກັບ existing actions ຂອງເຈົ້າໄວ້
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_open(self, request, pk=None):
-        """Set Record_Status = 'O'"""
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
-        if obj.Record_Status == 'O':
-            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-        
-        obj.Record_Status = 'O'
-        obj.Checker_Id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-        serializer = self.get_serializer(obj)
-        return Response({'message': 'Set to Open.', 'entry': serializer.data})
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_close(self, request, pk=None):
-        """Set Record_Status = 'C' (Close)"""
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
-        if obj.Record_Status == 'C':
-            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-        obj.Record_Status = 'C'
-        obj.Checker_Id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-        serializer = self.get_serializer(obj)
-        return Response({'message': 'Set to Close.', 'entry': serializer.data})
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def authorize(self, request, pk=None):
-        """ອະນຸມັດ"""
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
-
-        if obj.Auth_Status == 'A':
-            return Response({
-                'error': 'Record ຖືກອະນຸມັດແລ້ວ'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        obj.Auth_Status = 'A'
-        obj.record_stat = 'C'
-        obj.Checker_Id_id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-
-        serializer = self.get_serializer(obj)
-        return Response({
-            'message': 'ອະນຸມັດ ສໍາເລັດແລ້ວ',
-            'data': serializer.data
-        })
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def unauthorize(self, request, pk=None):
-        """ຍົກເລີກການອະນຸມັດ"""
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
-
-        if obj.Auth_Status == 'U':
-            return Response({
-                'error': 'Record ຍັງບໍ່ໄດ້ຮັບການອະນຸມັດ'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        obj.Auth_Status = 'U'
-        obj.Record_Status = 'C'
-        obj.Checker_Id_id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-
-        serializer = self.get_serializer(obj)
-        return Response({
-            'message': 'ຍົກເລີກການອະນຸມັດສໍາເລັດແລ້ວ',
-            'data': serializer.data
-        })
-
-    
+                'error': 'Database error',
+                'detail': str(e),
+                'success': False
+            }, status=500)
 # class FADepreciationMainViewSet(viewsets.ModelViewSet):
 #     serializer_class = FADepreciationMainSerializer
 #     permission_classes = [IsAuthenticated]
@@ -28690,8 +28570,6 @@ POST /api/assets/depreciation/ with JSON payload
     "filters": {...}
 }
 """
-<<<<<<< HEAD
-=======
 def group_depreciation_data_by_asset(data):
     """
     ຈັດກຸ່ມຂໍ້ມູນການຫຼຸດມູນຄ່າຕາມ asset_list_id
@@ -28886,4 +28764,3 @@ class AssetDepreciationReportView(View):
                 'success': False,
                 'error': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}'
             }, status=500)
->>>>>>> 135d9a0e0f1bf7576640678241666255c3d3157e
