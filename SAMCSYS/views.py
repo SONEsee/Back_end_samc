@@ -20779,7 +20779,6 @@ class CompanyProfileViewSet(viewsets.ModelViewSet):
 
 
 # Main Trial Balance
-
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -20790,19 +20789,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_trial_balance_all_currency_proc():
+def run_trial_balance_all_currency_proc(m_segment: str, fin_year_id: str, period_code_id: str):
     """
     Execute the trial balance all currency stored procedure
+    
+    Args:
+        m_segment (str): Market segment (LCY, FCY)
+        fin_year_id (str): Financial year (e.g., 2025)
+        period_code_id (str): Period code (e.g., 202508)
     
     Returns:
         list: Query results as list of dictionaries
     """
     try:
         with connection.cursor() as cursor:
-            # Execute stored procedure without parameters
-            sql = "EXEC dbo.Trial_Balance_All_Currency"
+            # Execute stored procedure with parameters
+            sql = """
+                EXEC dbo.Trial_Balance_All_Currency_afterEOC
+                    @MSegment = %s,
+                    @Fin_year_id = %s,
+                    @Period_code_id = %s
+            """
             
-            cursor.execute(sql)
+            cursor.execute(sql, [m_segment, fin_year_id, period_code_id])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20816,12 +20825,15 @@ def run_trial_balance_all_currency_proc():
         logger.error(f"Error executing trial balance all currency procedure: {str(e)}")
         raise
 
-def run_trial_balance_by_currency_proc(currency: str):
+def run_trial_balance_by_currency_proc(ccy_code_id: str, m_segment: str, fin_year_id: str, period_code_id: str):
     """
     Execute the trial balance by currency stored procedure
     
     Args:
-        currency (str): Currency code (LAK, USD, THB, etc.)
+        ccy_code_id (str): Currency code (LAK, USD, THB, etc.)
+        m_segment (str): Market segment (LCY, FCY)
+        fin_year_id (str): Financial year (e.g., 2025)
+        period_code_id (str): Period code (e.g., 202508)
     
     Returns:
         list: Query results as list of dictionaries
@@ -20830,11 +20842,14 @@ def run_trial_balance_by_currency_proc(currency: str):
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
             sql = """
-                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated
-                    @Currency = %s
+                EXEC dbo.Trial_Balance_By_Currency_And_Consolidated_afterEOC
+                    @CCy_Code_id = %s,
+                    @MSegment = %s,
+                    @Fin_year_id = %s,
+                    @Period_code_id = %s
             """
             
-            cursor.execute(sql, [currency])
+            cursor.execute(sql, [ccy_code_id, m_segment, fin_year_id, period_code_id])
             
             # Get column names
             columns = [col[0] for col in cursor.description]
@@ -20861,8 +20876,8 @@ def validate_currency_code(currency_code: str) -> bool:
     if not currency_code or not isinstance(currency_code, str):
         return False
     
-    # Check length (should be 3-5 characters)
-    if len(currency_code) < 3 or len(currency_code) > 5:
+    # Check length (should be 3-4 characters based on stored procedure nvarchar(4))
+    if len(currency_code) < 3 or len(currency_code) > 4:
         return False
     
     # Common currency codes supported
@@ -20883,6 +20898,10 @@ def validate_market_segment(m_segment: str) -> bool:
     if not m_segment or not isinstance(m_segment, str):
         return False
     
+    # Check length based on stored procedure nvarchar(4)
+    if len(m_segment) > 4:
+        return False
+    
     allowed_segments = ['LCY', 'FCY']
     return m_segment.upper() in allowed_segments
 
@@ -20897,6 +20916,10 @@ def validate_financial_year(fin_year: str) -> bool:
         bool: True if valid, False otherwise
     """
     if not fin_year or not isinstance(fin_year, str):
+        return False
+    
+    # Check length based on stored procedure nvarchar(10)
+    if len(fin_year) > 10:
         return False
     
     # Should be 4 digits and reasonable year range
@@ -20917,6 +20940,10 @@ def validate_period_code(period_code: str) -> bool:
         bool: True if valid, False otherwise
     """
     if not period_code or not isinstance(period_code, str):
+        return False
+    
+    # Check length based on stored procedure nvarchar(10)
+    if len(period_code) > 10:
         return False
     
     # Should be 6 digits (YYYYMM format)
@@ -20950,7 +20977,24 @@ def validate_trial_balance_params(ccy_code_id: str, m_segment: str, fin_year_id:
         return False, "ລະຫັດງວດບໍ່ຖືກຕ້ອງ (ຮູບແບບ: YYYYMM) (Invalid period code format: YYYYMM)"
     
     return True, ""
- 
+
+def validate_required_params(m_segment: str, fin_year_id: str, period_code_id: str) -> tuple:
+    """
+    Validate required parameters for all currency trial balance
+    
+    Returns:
+        tuple: (is_valid: bool, error_message: str)
+    """
+    if not validate_market_segment(m_segment):
+        return False, "ປະເພດຕະຫຼາດບໍ່ຖືກຕ້ອງ (ຕ້ອງເປັນ LCY ຫຼື FCY) (Invalid market segment, must be LCY or FCY)"
+    
+    if not validate_financial_year(fin_year_id):
+        return False, "ປີການເງິນບໍ່ຖືກຕ້ອງ (Invalid financial year)"
+    
+    if not validate_period_code(period_code_id):
+        return False, "ລະຫັດງວດບໍ່ຖືກຕ້ອງ (ຮູບແບບ: YYYYMM) (Invalid period code format: YYYYMM)"
+    
+    return True, ""
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -20958,21 +21002,61 @@ def main_trial_balance_all_currency_view(request):
     """
     API endpoint for main trial balance all currencies (GL codes <= 5 digits)
     
-    This endpoint doesn't require any parameters as it returns all currencies
+    Required parameters:
+    - m_segment: Market segment (LCY, FCY)
+    - fin_year_id: Financial year (e.g., 2025)
+    - period_code_id: Period code (e.g., 202508)
     
     Returns:
     {
         "status": "success|error",
         "message": "Description",
         "count": number_of_records,
-        "data": [trial_balance_records]
+        "data": [trial_balance_records],
+        "parameters": {parameters_used}
     }
     """
     try:
-        logger.info(f"[MainTrialBalance-AllCurrency] Executing procedure for all currencies")
+        # Get parameters from request
+        if request.method == 'GET':
+            m_segment = request.GET.get('m_segment', '').strip().upper()
+            fin_year_id = request.GET.get('fin_year_id', '').strip()
+            period_code_id = request.GET.get('period_code_id', '').strip()
+        else:  # POST
+            m_segment = request.data.get('m_segment', '').strip().upper()
+            fin_year_id = request.data.get('fin_year_id', '').strip()
+            period_code_id = request.data.get('period_code_id', '').strip()
+        
+        # Check for missing required parameters
+        missing_params = []
+        if not m_segment:
+            missing_params.append('m_segment')
+        if not fin_year_id:
+            missing_params.append('fin_year_id')
+        if not period_code_id:
+            missing_params.append('period_code_id')
+        
+        if missing_params:
+            return Response({
+                "status": "error",
+                "message": f"ຂາດພາລາມິເຕີທີ່ຈຳເປັນ: {', '.join(missing_params)} (Missing required parameters: {', '.join(missing_params)})",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate parameters
+        is_valid, error_message = validate_required_params(m_segment, fin_year_id, period_code_id)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[MainTrialBalance-AllCurrency] Executing procedure with params: "
+                   f"Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
         
         # Execute stored procedure
-        result = run_trial_balance_all_currency_proc()
+        result = run_trial_balance_all_currency_proc(m_segment, fin_year_id, period_code_id)
         
         logger.info(f"[MainTrialBalance-AllCurrency] Procedure completed successfully. Records: {len(result)}")
         
@@ -20980,7 +21064,12 @@ def main_trial_balance_all_currency_view(request):
             "status": "success",
             "message": f"ດຶງຂໍ້ມູນ Trial Balance ທຸກສະກຸນເງິນສຳເລັດ (Main trial balance for all currencies retrieved successfully)",
             "count": len(result),
-            "data": result
+            "data": result,
+            "parameters": {
+                "m_segment": m_segment,
+                "fin_year_id": fin_year_id,
+                "period_code_id": period_code_id
+            }
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -20992,17 +21081,17 @@ def main_trial_balance_all_currency_view(request):
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
  
-# Trail Balance by Currency <--- using hai sone pherm
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def main_trial_balance_by_currency_view(request):
     """
     API endpoint for main trial balance by specific currency
     
-    Expected payload:
-    {
-        "currency": "LAK|USD|THB|etc"
-    }
+    Required parameters:
+    - currency: Currency code (LAK, USD, THB, etc.)
+    - m_segment: Market segment (LCY, FCY)
+    - fin_year_id: Financial year (e.g., 2025)
+    - period_code_id: Period code (e.g., 202508)
     
     Returns:
     {
@@ -21010,36 +21099,55 @@ def main_trial_balance_by_currency_view(request):
         "message": "Description",
         "currency": "currency_code",
         "count": number_of_records,
-        "data": [trial_balance_records]
+        "data": [trial_balance_records],
+        "parameters": {parameters_used}
     }
     """
-    # Extract currency parameter from request
-    currency = request.data.get("currency")
-    
-    # Validate required parameter
-    if not currency:
-        return Response({
-            "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນສະກຸນເງິນ: currency ແມ່ນຕ້ອງການ (Missing required parameter: currency is required)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Convert to uppercase for consistency
-    currency = currency.upper()
-    
-    # Validate currency code
-    if not validate_currency_code(currency):
-        return Response({
-            "status": "error",
-            "message": "ລະຫັດສະກຸນເງິນບໍ່ຖືກຕ້ອງ ສະກຸນເງິນທີ່ຮອງຮັບ: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK (Invalid currency code. Supported currencies: LAK, USD, THB, EUR, JPY, CNY, VND, KHR, MMK)",
-            "data": None
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
-        logger.info(f"[MainTrialBalance-ByCurrency] Executing procedure for currency={currency}")
+        # Get parameters from request
+        if request.method == 'GET':
+            currency = request.GET.get('currency', '').strip().upper()
+            m_segment = request.GET.get('m_segment', '').strip().upper()
+            fin_year_id = request.GET.get('fin_year_id', '').strip()
+            period_code_id = request.GET.get('period_code_id', '').strip()
+        else:  # POST
+            currency = request.data.get('currency', '').strip().upper()
+            m_segment = request.data.get('m_segment', '').strip().upper()
+            fin_year_id = request.data.get('fin_year_id', '').strip()
+            period_code_id = request.data.get('period_code_id', '').strip()
+        
+        # Check for missing required parameters
+        missing_params = []
+        if not currency:
+            missing_params.append('currency')
+        if not m_segment:
+            missing_params.append('m_segment')
+        if not fin_year_id:
+            missing_params.append('fin_year_id')
+        if not period_code_id:
+            missing_params.append('period_code_id')
+        
+        if missing_params:
+            return Response({
+                "status": "error",
+                "message": f"ຂາດພາລາມິເຕີທີ່ຈຳເປັນ: {', '.join(missing_params)} (Missing required parameters: {', '.join(missing_params)})",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate parameters
+        is_valid, error_message = validate_trial_balance_params(currency, m_segment, fin_year_id, period_code_id)
+        if not is_valid:
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[MainTrialBalance-ByCurrency] Executing procedure with params: "
+                   f"Currency={currency}, Segment={m_segment}, Year={fin_year_id}, Period={period_code_id}")
         
         # Execute stored procedure
-        result = run_trial_balance_by_currency_proc(currency)
+        result = run_trial_balance_by_currency_proc(currency, m_segment, fin_year_id, period_code_id)
         
         logger.info(f"[MainTrialBalance-ByCurrency] Procedure completed successfully. Currency: {currency}, Records: {len(result)}")
         
@@ -21048,7 +21156,13 @@ def main_trial_balance_by_currency_view(request):
             "message": f"ດຶງຂໍ້ມູນ Trial Balance ສຳລັບ {currency} ສຳເລັດ (Main trial balance data for {currency} retrieved successfully)",
             "currency": currency,
             "count": len(result),
-            "data": result
+            "data": result,
+            "parameters": {
+                "currency": currency,
+                "m_segment": m_segment,
+                "fin_year_id": fin_year_id,
+                "period_code_id": period_code_id
+            }
         }, status=status.HTTP_200_OK)
           
     except Exception as e:
@@ -21058,7 +21172,8 @@ def main_trial_balance_by_currency_view(request):
             "status": "error",
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def trial_balance_by_currency_view(request):
@@ -21092,6 +21207,24 @@ def trial_balance_by_currency_view(request):
             m_segment = request.data.get('m_segment', '').strip().upper()
             fin_year_id = request.data.get('fin_year_id', '').strip()
             period_code_id = request.data.get('period_code_id', '').strip()
+        
+        # Check for missing required parameters
+        missing_params = []
+        if not ccy_code_id:
+            missing_params.append('ccy_code_id')
+        if not m_segment:
+            missing_params.append('m_segment')
+        if not fin_year_id:
+            missing_params.append('fin_year_id')
+        if not period_code_id:
+            missing_params.append('period_code_id')
+        
+        if missing_params:
+            return Response({
+                "status": "error",
+                "message": f"ຂາດພາລາມິເຕີທີ່ຈຳເປັນ: {', '.join(missing_params)} (Missing required parameters: {', '.join(missing_params)})",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Validate parameters
         is_valid, error_message = validate_trial_balance_params(ccy_code_id, m_segment, fin_year_id, period_code_id)
@@ -21130,7 +21263,9 @@ def trial_balance_by_currency_view(request):
             "status": "error",
             "message": "ເກີດຂໍ້ຜິດພາດໃນການດຶງຂໍ້ມູນ Trial Balance (Internal server error occurred while retrieving trial balance data)",
             "data": None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        
 # Store Procedure IncomeStatement ------> 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
