@@ -814,6 +814,10 @@ class FAExpenseCategorySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 #change on chart serial
+from rest_framework import serializers
+from django.db import transaction
+from django.utils import timezone
+
 class FAAssetListSerializer(serializers.ModelSerializer):
     asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
@@ -850,6 +854,8 @@ class FAAssetListSerializer(serializers.ModelSerializer):
             self._asset_status_cache = {}
         self._asset_status_cache[obj.asset_status] = result
         return result
+
+
 
 
 # class FAAssetListSerializer(serializers.ModelSerializer):

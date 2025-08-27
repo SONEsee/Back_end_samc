@@ -1205,6 +1205,14 @@ class FA_Expense_Category (models.Model):
 #     class Meta:
 #         verbose_name_plural = 'AssestList'
 
+from django.db import models, transaction
+from django.db.models import Max
+from django.utils import timezone
+import threading
+from datetime import timedelta
+
+
+
 class FA_Asset_Lists(models.Model):
     asset_list_id = models.CharField(primary_key=True, max_length=30)
     asset_list_code = models.CharField(max_length=20, null=True, blank=True, unique=True)
@@ -1216,32 +1224,32 @@ class FA_Asset_Lists(models.Model):
     asset_date = models.DateField(null=True, blank=True)
     asset_currency = models.CharField(max_length=5, null=True, blank=True)
     asset_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_status  = models.CharField(max_length=20, null=True, blank=True, default='UC')  
+    asset_status = models.CharField(max_length=20, null=True, blank=True, default='UC')
     warranty_end_date = models.DateField(null=True, blank=True)
     supplier_id = models.ForeignKey(FA_Suppliers, null=True, blank=True, on_delete=models.CASCADE)
-    has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')  # Y or N
+    has_depreciation = models.CharField(max_length=1, null=True, blank=True, default='Y')
     dpca_type = models.CharField(max_length=20, null=True, blank=True)
-    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  
-    asset_useful_life = models.IntegerField(null=True, blank=True)  
-    asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) 
-    dpca_start_date = models.DateField(null=True, blank=True)  
-    dpca_end_date = models.DateField(null=True, blank=True) 
+    dpca_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    asset_useful_life = models.IntegerField(null=True, blank=True)
+    asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    dpca_start_date = models.DateField(null=True, blank=True)
+    dpca_end_date = models.DateField(null=True, blank=True)
     accu_dpca_value_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
-    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainBegin = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     asset_value_remainLast = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     acc_no = models.CharField(max_length=30, null=True, blank=True)
     type_of_pay = models.CharField(max_length=30, null=True, blank=True)
-    asset_latest_date_dpca = models.DateField(null=True, blank=True)  
+    asset_latest_date_dpca = models.DateField(null=True, blank=True)
     C_dpac = models.CharField(max_length=5, null=True, blank=True, default='0')
-    asset_disposal_date = models.DateField(null=True, blank=True)  
-    asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')  
-    asset_ac_date = models.DateField(null=True, blank=True) 
-    asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)  
+    asset_disposal_date = models.DateField(null=True, blank=True)
+    asset_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N')
+    asset_ac_date = models.DateField(null=True, blank=True)
+    asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)
     asset_ac_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='ac_asset_lists')
-    Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
+    Record_Status = models.CharField(max_length=1, null=True, blank=True, default='C')
     delete_Stat = models.CharField(max_length=1, null=True, blank=True, default='')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
@@ -1252,6 +1260,8 @@ class FA_Asset_Lists(models.Model):
 
     class Meta:
         verbose_name_plural = 'AssestLists'
+
+   
 
 # class FA_Depreciation_Main (models.Model):
 #     dm_id = models.AutoField(primary_key=True)
