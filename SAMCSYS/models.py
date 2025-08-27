@@ -1249,6 +1249,7 @@ class FA_Asset_Lists(models.Model):
     asset_ac_date = models.DateField(null=True, blank=True)
     asset_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True)
     asset_ac_by = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='ac_asset_lists')
+    division = models.ForeignKey(MTTB_Divisions, null=True, blank=True, on_delete=models.CASCADE)
     Record_Status = models.CharField(max_length=1, null=True, blank=True, default='C')
     delete_Stat = models.CharField(max_length=1, null=True, blank=True, default='')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_lists')

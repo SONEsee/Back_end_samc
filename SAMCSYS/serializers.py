@@ -822,6 +822,7 @@ class FAAssetListSerializer(serializers.ModelSerializer):
     asset_id_detail = FAChartOfAssetDetailSerializer(source='asset_type_id', read_only=True)
     location_detail = LocationDetailSerializer(source='asset_location_id', read_only=True)
     supplier_detail = SuppliersDetailSerializer(source='supplier_id', read_only=True)
+    division_detail = DivisionSerializer(source='division', read_only=True)
     type_of_pay_detail = serializers.SerializerMethodField()
     asset_status_detail = serializers.SerializerMethodField()
 
