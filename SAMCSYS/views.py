@@ -8156,7 +8156,7 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = FA_Asset_Lists.objects.select_related(
-            'asset_type_id', 'asset_location_id', 'supplier_id'
+            'asset_type_id', 'asset_location_id', 'supplier_id', 'division'
         ).all().order_by('asset_list_id')
 
         asset_tag = self.request.query_params.get('asset_tag')
