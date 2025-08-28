@@ -8157,13 +8157,28 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = FA_Asset_Lists.objects.select_related(
             'asset_type_id', 'asset_location_id', 'supplier_id', 'division'
-        ).all().order_by('asset_list_id')
+        ).order_by('asset_list_id')
 
+        filters = {}
         asset_tag = self.request.query_params.get('asset_tag')
+        asset_list_id = self.request.query_params.get('asset_list_id')
+        asset_status = self.request.query_params.get('asset_status')
+        Auth_Status = self.request.query_params.get('Auth_Status')
+
         if asset_tag:
-            queryset = queryset.filter(asset_tag=asset_tag)
+            filters['asset_tag'] = asset_tag
+        if asset_list_id:
+            filters['asset_list_id'] = asset_list_id
+        if asset_status:
+            filters['asset_status'] = asset_status
+        if Auth_Status:
+            filters['Auth_Status'] = Auth_Status
+
+        if filters:
+            queryset = queryset.filter(**filters)
 
         return queryset
+
 
     @action(detail=False, methods=['post'], url_path='generate-next-code')
     def generate_next_code(self, request):
