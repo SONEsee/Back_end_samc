@@ -8161,14 +8161,14 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
 
         filters = {}
         asset_tag = self.request.query_params.get('asset_tag')
-        asset_list_id = self.request.query_params.get('asset_list_id')
+        asset_type_id = self.request.query_params.get('asset_type_id')
         asset_status = self.request.query_params.get('asset_status')
         Auth_Status = self.request.query_params.get('Auth_Status')
 
         if asset_tag:
             filters['asset_tag'] = asset_tag
-        if asset_list_id:
-            filters['asset_list_id'] = asset_list_id
+        if asset_type_id:
+            filters['asset_type_id'] = asset_type_id
         if asset_status:
             filters['asset_status'] = asset_status
         if Auth_Status:
