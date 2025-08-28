@@ -920,9 +920,54 @@ class FATransferLogsSerializer(serializers.ModelSerializer):
     asset_list_id_detail = AssetListDetailsSerializer(source='asset_list_id', read_only=True)
     from_location_detail = LocationDetailSerializer(source='from_location_id', read_only=True)
     to_location_detail = LocationDetailSerializer(source='to_location_id', read_only=True)
+    
+    # ເພີ່ມ field division ເພື່ອຮັບຂໍ້ມູນຈາກ frontend (ແຕ່ບໍ່ບັນທຶກໃນ FA_Transfer_Logs)
+    division = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Divisions.objects.all(),
+        required=False,
+        allow_null=True,
+        write_only=True  # ໃຊ້ສຳລັບຮັບຂໍ້ມູນຈາກ frontend ເທົ່ານັ້ນ
+    )
+    
     class Meta:
         model = FA_Transfer_Logs
         fields = '__all__'
+    
+    def create(self, validated_data):
+        # ດຶງ division ອອກຈາກ validated_data ກ່ອນສ້າງ record
+        division = validated_data.pop('division', None)
+        
+        # ສ້າງ FA_Transfer_Logs record ໂດຍບໍ່ມີ division field
+        instance = super().create(validated_data)
+        
+        # ເກັບ division ໄວ້ເພື່ອໃຊ້ໃນ ViewSet
+        instance._division_for_asset_update = division
+        
+        return instance
+    
+    def create(self, validated_data):
+        # ດຶງ division ອອກຈາກ validated_data ກ່ອນສ້າງ FA_Transfer_Logs record
+        division = validated_data.pop('division', None)
+        
+        # ສ້າງ FA_Transfer_Logs record ໂດຍບໍ່ມີ division field
+        instance = super().create(validated_data)
+        
+        # ເກັບ division ໄວ້ເພື່ອໃຊ້ໃນ ViewSet
+        instance._division_for_asset_update = division
+        
+        return instance
+    
+    def create(self, validated_data):
+        # ດຶງ division ອອກຈາກ validated_data ກ່ອນສ້າງ FA_Transfer_Logs record
+        division = validated_data.pop('division', None)
+        
+        # ສ້າງ FA_Transfer_Logs record ໂດຍບໍ່ມີ division field
+        instance = super().create(validated_data)
+        
+        # ເກັບ division ໄວ້ເພື່ອໃຊ້ໃນ ViewSet
+        instance._division_for_asset_update = division
+        
+        return instance
 
 class FAAssetPhotosSerializer(serializers.ModelSerializer):
     class Meta:
