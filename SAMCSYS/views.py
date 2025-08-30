@@ -8389,27 +8389,68 @@ class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
 class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDisposalSerializer
     permission_classes = [IsAuthenticated]
-
+    
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
         return queryset
-    
+        
     def perform_create(self, serializer):
         user = self.request.user
-        serializer.save(
+        instance = serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now()
         )
-
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+                asset_list = instance.asset_list_id
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except Exception as e:
+                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+                print(f"Error updating asset status: {e}")
+                pass
+    
     def perform_update(self, serializer):
         user = self.request.user
-        serializer.save(
+        instance = serializer.save(
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+                asset_list = instance.asset_list_id
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except Exception as e:
+                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+                print(f"Error updating asset status: {e}")
+                pass
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                asset_list = FA_Asset_Lists.objects.get(id=instance.asset_list_id)
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except FA_Asset_Lists.DoesNotExist:
+                # ຖ້າບໍ່ເຈົ້າ record ໃນ FA_Asset_Lists ກໍ່ຜ່ານໄປ
+                pass
 
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetExpenseSerializer
