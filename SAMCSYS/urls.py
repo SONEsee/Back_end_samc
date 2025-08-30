@@ -132,6 +132,8 @@ from .views import (
     balance_sheet_dairy_mfi_view,
     income_statement_dairy_mfi_view,
     income_statement_dairy_acc_view,
+    journal_report_view,
+    journal_report_get_view,
 
     
 
@@ -273,6 +275,11 @@ urlpatterns = [
 
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
+
+
+    # Store Procedure <----- Report End ----->
+    path('api/journal-report/', journal_report_view, name='journal_report_post'),
+    path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
 
 
     # Store Procedure <---- Sub Trail Balance ------>
