@@ -8157,13 +8157,28 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = FA_Asset_Lists.objects.select_related(
             'asset_type_id', 'asset_location_id', 'supplier_id', 'division'
-        ).all().order_by('asset_list_id')
+        ).order_by('asset_list_id')
 
+        filters = {}
         asset_tag = self.request.query_params.get('asset_tag')
+        asset_type_id = self.request.query_params.get('asset_type_id')
+        asset_status = self.request.query_params.get('asset_status')
+        Auth_Status = self.request.query_params.get('Auth_Status')
+
         if asset_tag:
-            queryset = queryset.filter(asset_tag=asset_tag)
+            filters['asset_tag'] = asset_tag
+        if asset_type_id:
+            filters['asset_type_id'] = asset_type_id
+        if asset_status:
+            filters['asset_status'] = asset_status
+        if Auth_Status:
+            filters['Auth_Status'] = Auth_Status
+
+        if filters:
+            queryset = queryset.filter(**filters)
 
         return queryset
+
 
     @action(detail=False, methods=['post'], url_path='generate-next-code')
     def generate_next_code(self, request):
@@ -8374,27 +8389,68 @@ class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
 class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDisposalSerializer
     permission_classes = [IsAuthenticated]
-
+    
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
         return queryset
-    
+        
     def perform_create(self, serializer):
         user = self.request.user
-        serializer.save(
+        instance = serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now()
         )
-
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+                asset_list = instance.asset_list_id
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except Exception as e:
+                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+                print(f"Error updating asset status: {e}")
+                pass
+    
     def perform_update(self, serializer):
         user = self.request.user
-        serializer.save(
+        instance = serializer.save(
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+                asset_list = instance.asset_list_id
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except Exception as e:
+                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+                print(f"Error updating asset status: {e}")
+                pass
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                asset_list = FA_Asset_Lists.objects.get(id=instance.asset_list_id)
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except FA_Asset_Lists.DoesNotExist:
+                # ຖ້າບໍ່ເຈົ້າ record ໃນ FA_Asset_Lists ກໍ່ຜ່ານໄປ
+                pass
 
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetExpenseSerializer
@@ -8451,7 +8507,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from .models import FA_Transfer_Logs, FA_Asset_Lists  # ເພີ່ມ imports ເຫຼົ່ານີ້
 from .serializers import FATransferLogsSerializer
-
 class FATransferLogsViewSet(viewsets.ModelViewSet):
     queryset = FA_Transfer_Logs.objects.all()
     serializer_class = FATransferLogsSerializer
@@ -8471,12 +8526,26 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
         logger = logging.getLogger(__name__)
         user = self.request.user
         
+        # Debug request data
+        print(f"🔍 Raw request data keys: {list(self.request.data.keys())}")
+        print(f"🔍 Raw request data: {dict(self.request.data)}")
+        
         with transaction.atomic():
             # ບັນທຶກ transfer log
+            print(f"🔍 Serializer validated data: {serializer.validated_data}")
+            
+            # ຮັບ division ຈາກ validated data
+            division_data = serializer.validated_data.get('division')
+            print(f"🔍 Division from validated_data: {division_data}")
+            
             transfer_log = serializer.save(
                 Maker_Id=user,
                 Maker_DT_Stamp=timezone.now()
             )
+            
+            # ດຶງ division ຈາກ serializer ທີ່ເກັບໄວ້
+            division_from_serializer = getattr(transfer_log, '_division_for_asset_update', None)
+            print(f"🔍 Division from serializer: {division_from_serializer}")
             
             logger.info(f"Transfer log created: {transfer_log.transfer_id}")
             
@@ -8493,34 +8562,70 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
                 # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
                 asset_obj = transfer_log.asset_list_id
                 
-                # ຫຼື ລອງ get ແບບລະມັດລະວັງ
+                # ລອງ get ແບບລະມັດລະວັງ
                 try:
                     asset_obj_fresh = FA_Asset_Lists.objects.get(asset_list_id=asset_obj.asset_list_id)
                     print(f"✅ Successfully got fresh asset object: {asset_obj_fresh.asset_list_id}")
                     asset_obj = asset_obj_fresh
                 except FA_Asset_Lists.DoesNotExist:
                     print(f"⚠️ Could not get fresh asset, using existing: {asset_obj.asset_list_id}")
-                    # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
                 
                 old_location = asset_obj.asset_location_id
+                old_division = asset_obj.division
                 new_location = transfer_log.to_location_id
                 
                 print(f"🔥 Asset ID: {asset_obj.asset_list_id}")
                 print(f"🔥 Old location: {old_location}")
                 print(f"🔥 New location: {new_location}")
+                print(f"🔥 Old division: {old_division}")
                 print(f"🔥 New location type: {type(new_location)}")
                 
-                # ອັບເດດສະຖານທີ່
+                # ກວດສອບວ່າ new_location ບໍ່ເປັນ None
+                if new_location is None:
+                    error_msg = "New location cannot be None"
+                    logger.error(error_msg)
+                    print(f"❌ ERROR: {error_msg}")
+                    raise ValueError(error_msg)
+                
+                # ໃຊ້ division ທີ່ສົ່ງມາຈາກ frontend
+                new_division = division_from_serializer
+                if not new_division:
+                    # ຖ້າບໍ່ມີ division ຈາກ serializer, ລອງຈາກ request.data
+                    division_id = self.request.data.get('division')
+                    if division_id:
+                        try:
+                            new_division = MTTB_Divisions.objects.get(pk=division_id)
+                            print(f"🔥 Got division from request: {new_division}")
+                        except MTTB_Divisions.DoesNotExist:
+                            new_division = old_division
+                            print(f"🔥 Division not found, keeping old: {old_division}")
+                    else:
+                        new_division = old_division
+                        print(f"🔥 No division in request, keeping old: {old_division}")
+                else:
+                    print(f"🔥 Using division from frontend: {new_division}")
+                
+                print(f"🔥 Final new_division: {new_division}")
+                print(f"🔥 New division type: {type(new_division)}")
+                
+                # ອັບເດດສະຖານທີ່ແລະ division
                 asset_obj.asset_location_id = new_location
+                asset_obj.division = new_division
+                
+                print(f"🔧 Before save - asset location: {asset_obj.asset_location_id}")
+                print(f"🔧 Before save - asset division: {asset_obj.division}")
                 
                 # ບັງຄັບບັນທຶກດ້ວຍ update_fields
-                asset_obj.save(update_fields=['asset_location_id'])
+                fields_to_update = ['asset_location_id', 'division']
+                asset_obj.save(update_fields=fields_to_update)
                 
                 # ກວດສອບວ່າອັບເດດແລ້ວຈິງບໍ
                 asset_obj.refresh_from_db()
                 
                 print(f"✅ Asset location updated from {old_location} to {asset_obj.asset_location_id}")
+                print(f"✅ Asset division updated from {old_division} to {asset_obj.division}")
                 logger.info(f"Asset {asset_obj.asset_list_id} moved from {old_location} to {asset_obj.asset_location_id}")
+                logger.info(f"Asset {asset_obj.asset_list_id} division changed from {old_division} to {asset_obj.division}")
                 
             except FA_Asset_Lists.DoesNotExist:
                 error_msg = f"Asset not found: {transfer_log.asset_list_id}"
@@ -8528,14 +8633,117 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
                 raise ValueError(error_msg)
                 
             except Exception as e:
-                error_msg = f"Failed to update asset location: {e}"
+                error_msg = f"Failed to update asset location/division: {e}"
                 logger.error(error_msg)
                 print(f"❌ ERROR: {error_msg}")
                 import traceback
                 print(traceback.format_exc())
                 raise
 
-    # ເພີ່ມ method ນີ້ເພື່ອກວດສອບຫຼັງການອັບເດດ
+    # method ສຳລັບກວດສອບຫຼັງການອັບເດດ
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        
+        # ກວດສອບວ່າການອັບເດດສຳເລັດແລ້ວ
+        if response.status_code == 201:
+            transfer_log_id = response.data.get('transfer_id')
+            if transfer_log_id:
+                try:
+                    transfer_log = FA_Transfer_Logs.objects.get(pk=transfer_log_id)
+                    asset = transfer_log.asset_list_id
+                    
+                    print(f"🔍 Final verification - Asset {asset.asset_list_id} location: {asset.asset_location_id}")
+                    print(f"🔍 Final verification - Asset {asset.asset_list_id} division: {asset.division}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Verification failed: {e}")
+        
+        return response
+
+# class FATransferLogsViewSet(viewsets.ModelViewSet):
+#     queryset = FA_Transfer_Logs.objects.all()
+#     serializer_class = FATransferLogsSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Transfer_Logs.objects.all().order_by('transfer_id')
+#         asset_list_id = self.request.query_params.get('asset_list_id')
+#         if asset_list_id:
+#             queryset = queryset.filter(asset_list_id=asset_list_id)
+#         return queryset
+
+#     def perform_create(self, serializer):
+#         from django.db import transaction
+#         import logging
+        
+#         logger = logging.getLogger(__name__)
+#         user = self.request.user
+        
+#         with transaction.atomic():
+#             # ບັນທຶກ transfer log
+#             transfer_log = serializer.save(
+#                 Maker_Id=user,
+#                 Maker_DT_Stamp=timezone.now()
+#             )
+            
+#             logger.info(f"Transfer log created: {transfer_log.transfer_id}")
+            
+#             try:
+#                 # Debug: ກວດສອບ transfer_log ກ່ອນ
+#                 print(f"🔍 Transfer log asset_list_id: {transfer_log.asset_list_id}")
+#                 print(f"🔍 Transfer log asset_list_id type: {type(transfer_log.asset_list_id)}")
+#                 print(f"🔍 Transfer log asset_list_id pk: {transfer_log.asset_list_id.pk if transfer_log.asset_list_id else 'None'}")
+                
+#                 # ກວດສອບວ່າ asset_list_id ບໍ່ເປັນ None
+#                 if not transfer_log.asset_list_id:
+#                     raise ValueError("Asset list ID is None")
+                
+#                 # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+#                 asset_obj = transfer_log.asset_list_id
+                
+#                 # ຫຼື ລອງ get ແບບລະມັດລະວັງ
+#                 try:
+#                     asset_obj_fresh = FA_Asset_Lists.objects.get(asset_list_id=asset_obj.asset_list_id)
+#                     print(f"✅ Successfully got fresh asset object: {asset_obj_fresh.asset_list_id}")
+#                     asset_obj = asset_obj_fresh
+#                 except FA_Asset_Lists.DoesNotExist:
+#                     print(f"⚠️ Could not get fresh asset, using existing: {asset_obj.asset_list_id}")
+#                     # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+                
+#                 old_location = asset_obj.asset_location_id
+#                 new_location = transfer_log.to_location_id
+                
+#                 print(f"🔥 Asset ID: {asset_obj.asset_list_id}")
+#                 print(f"🔥 Old location: {old_location}")
+#                 print(f"🔥 New location: {new_location}")
+#                 print(f"🔥 New location type: {type(new_location)}")
+                
+               
+#                 asset_obj.asset_location_id = new_location
+                
+                
+#                 asset_obj.save(update_fields=['asset_location_id'])
+                
+                
+#                 asset_obj.refresh_from_db()
+                
+#                 print(f"✅ Asset location updated from {old_location} to {asset_obj.asset_location_id}")
+#                 logger.info(f"Asset {asset_obj.asset_list_id} moved from {old_location} to {asset_obj.asset_location_id}")
+                
+#             except FA_Asset_Lists.DoesNotExist:
+#                 error_msg = f"Asset not found: {transfer_log.asset_list_id}"
+#                 logger.error(error_msg)
+#                 raise ValueError(error_msg)
+                
+#             except Exception as e:
+#                 error_msg = f"Failed to update asset location: {e}"
+#                 logger.error(error_msg)
+#                 print(f"❌ ERROR: {error_msg}")
+#                 import traceback
+#                 print(traceback.format_exc())
+#                 raise
+
+    
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         
