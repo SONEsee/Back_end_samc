@@ -88,6 +88,7 @@ from .views import (
     calculate_depreciation_api_with_journal,
     FAAssetListDepreciationInMonthViewSet,
     AssetDepreciationReportView, 
+    AssetDepreciationReportView1, 
     AssetStatisticsView,
 
     overdue_depreciation_api,
@@ -320,8 +321,11 @@ urlpatterns = [
     path('api/calculate/', calculate_depreciation_api, name='calculate_api'),
     path('api/assets/', views.AssetListAPIView.as_view(), name='asset_list_api'),
     path('api/assets/summary/', views.AssetSummaryView.as_view(), name='asset_summary_api'),
-    path('api/assets/depreciation/', AssetDepreciationReportView.as_view()),
+    path('api/assets/depreciation/', AssetDepreciationReportView1.as_view()),
     path('api/assets/statistics/', AssetStatisticsView.as_view()),
+    path('api/asset-depreciation-report/', 
+         AssetDepreciationReportView.as_view(), 
+         name='asset_depreciation_report'),
     
     
     path('api/depreciation/', calculate_depreciation_api),

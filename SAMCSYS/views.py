@@ -8129,113 +8129,97 @@ class FAExpenseCategoryViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
 
+# views.py
+from django.db import transaction
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.db.models import Max
+import logging
+from django.db import transaction, connection
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+logger = logging.getLogger(__name__)
+from rest_framework.decorators import action
+from django.db import transaction, connection
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+import logging
+
+logger = logging.getLogger(__name__)
+
 class FAAssetListViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = FA_Asset_Lists.objects.select_related(
-            'asset_type_id', 'asset_location_id', 'supplier_id'
-        ).all().order_by('asset_list_id')
+            'asset_type_id', 'asset_location_id', 'supplier_id', 'division'
+        ).order_by('asset_list_id')
 
+        filters = {}
         asset_tag = self.request.query_params.get('asset_tag')
+        asset_type_id = self.request.query_params.get('asset_type_id')
+        asset_status = self.request.query_params.get('asset_status')
+        Auth_Status = self.request.query_params.get('Auth_Status')
+
         if asset_tag:
-            queryset = queryset.filter(asset_tag=asset_tag)
+            filters['asset_tag'] = asset_tag
+        if asset_type_id:
+            filters['asset_type_id'] = asset_type_id
+        if asset_status:
+            filters['asset_status'] = asset_status
+        if Auth_Status:
+            filters['Auth_Status'] = Auth_Status
+
+        if filters:
+            queryset = queryset.filter(**filters)
 
         return queryset
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Maker_Id=user,
-            Maker_DT_Stamp=timezone.now(),
-            asset_ac_by=user,
-            asset_ac_datetime=timezone.now()
-        )
 
-    def perform_update(self, serializer):
-        user = self.request.user
-        serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_open(self, request, pk=None):
-        """Set Record_Status = 'O'"""
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)  
-        if obj.Record_Status == 'O':
-            return Response({'detail': 'Already open.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-        
-        obj.Record_Status = 'O'
-        obj.Checker_Id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-        serializer = self.get_serializer(obj)
-        return Response({'message': 'Set to Open.', 'entry': serializer.data})
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def set_close(self, request, pk=None):
-        """Set Record_Status = 'C' (Close)"""
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
-        if obj.Record_Status == 'C':
-            return Response({'detail': 'Already closed.'}, status=status.HTTP_406_NOT_ACCEPTABLE)
-        obj.Record_Status = 'C'
-        obj.Checker_Id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-        serializer = self.get_serializer(obj)
-        return Response({'message': 'Set to Close.', 'entry': serializer.data})
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def authorize(self, request, pk=None):
-        """ອະນຸມັດ"""
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
-
-        if obj.Auth_Status == 'A':
+    @action(detail=False, methods=['post'], url_path='generate-next-code')
+    def generate_next_code(self, request):
+        """
+        ໂທ SQL Server Stored Procedure
+        """
+        try:
+            with connection.cursor() as cursor:
+                # ໂທ stored procedure
+                cursor.execute("EXEC GetNextAssetCode")
+                
+                # ອ່ານຜົນລັບ
+                result = cursor.fetchone()
+                
+                if result and len(result) >= 3:
+                    next_code, success, message = result
+                    
+                    if success == 1:  # success = 1 ແມ່ນສຳເລັດ
+                        return Response({
+                            'next_code': next_code,
+                            'success': True,
+                            'message': message or f'Generated: {next_code}'
+                        })
+                    else:
+                        return Response({
+                            'error': message or 'Stored procedure failed',
+                            'success': False
+                        }, status=500)
+                else:
+                    return Response({
+                        'error': 'Invalid response from stored procedure',
+                        'success': False
+                    }, status=500)
+                
+        except Exception as e:
+            logger.error(f"Stored procedure error: {str(e)}")
             return Response({
-                'error': 'Record ຖືກອະນຸມັດແລ້ວ'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Set Auth_Status = 'A', Once_Auth = 'Y', record_stat = 'C'
-        obj.Auth_Status = 'A'
-        obj.record_stat = 'C'
-        obj.Checker_Id_id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-
-        serializer = self.get_serializer(obj)
-        return Response({
-            'message': 'ອະນຸມັດ ສໍາເລັດແລ້ວ',
-            'data': serializer.data
-        })
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def unauthorize(self, request, pk=None):
-        """ຍົກເລີກການອະນຸມັດ """
-        obj = self.get_object()
-        user_obj = MTTB_Users.objects.get(user_id=request.user.user_id)
-
-        if obj.Auth_Status == 'U':
-            return Response({
-                'error': 'Record ຍັງບໍ່ໄດ້ຮັບການອະນຸມັດ'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        obj.Auth_Status = 'U'
-        obj.Record_Status = 'C'
-        obj.Checker_Id_id = user_obj
-        obj.Checker_DT_Stamp = timezone.now()
-        obj.save()
-
-        serializer = self.get_serializer(obj)
-        return Response({
-            'message': 'ຍົກເລີກການອະນຸມັດສໍາເລັດແລ້ວ',
-            'data': serializer.data
-        })
-    
+                'error': 'Database error',
+                'detail': str(e),
+                'success': False
+            }, status=500)
 # class FADepreciationMainViewSet(viewsets.ModelViewSet):
 #     serializer_class = FADepreciationMainSerializer
 #     permission_classes = [IsAuthenticated]
@@ -8405,27 +8389,68 @@ class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
 class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDisposalSerializer
     permission_classes = [IsAuthenticated]
-
+    
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
         return queryset
-    
+        
     def perform_create(self, serializer):
         user = self.request.user
-        serializer.save(
+        instance = serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now()
         )
-
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+                asset_list = instance.asset_list_id
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except Exception as e:
+                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+                print(f"Error updating asset status: {e}")
+                pass
+    
     def perform_update(self, serializer):
         user = self.request.user
-        serializer.save(
+        instance = serializer.save(
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+                asset_list = instance.asset_list_id
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except Exception as e:
+                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+                print(f"Error updating asset status: {e}")
+                pass
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = serializer.save(
+            Checker_Id=user,
+            Checker_DT_Stamp=timezone.now()
+        )
+        
+        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+        if instance.asset_list_id:
+            try:
+                asset_list = FA_Asset_Lists.objects.get(id=instance.asset_list_id)
+                asset_list.asset_status = 'DS'
+                asset_list.save()
+            except FA_Asset_Lists.DoesNotExist:
+                # ຖ້າບໍ່ເຈົ້າ record ໃນ FA_Asset_Lists ກໍ່ຜ່ານໄປ
+                pass
 
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetExpenseSerializer
@@ -8482,7 +8507,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from .models import FA_Transfer_Logs, FA_Asset_Lists  # ເພີ່ມ imports ເຫຼົ່ານີ້
 from .serializers import FATransferLogsSerializer
-
 class FATransferLogsViewSet(viewsets.ModelViewSet):
     queryset = FA_Transfer_Logs.objects.all()
     serializer_class = FATransferLogsSerializer
@@ -8502,12 +8526,26 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
         logger = logging.getLogger(__name__)
         user = self.request.user
         
+        # Debug request data
+        print(f"🔍 Raw request data keys: {list(self.request.data.keys())}")
+        print(f"🔍 Raw request data: {dict(self.request.data)}")
+        
         with transaction.atomic():
             # ບັນທຶກ transfer log
+            print(f"🔍 Serializer validated data: {serializer.validated_data}")
+            
+            # ຮັບ division ຈາກ validated data
+            division_data = serializer.validated_data.get('division')
+            print(f"🔍 Division from validated_data: {division_data}")
+            
             transfer_log = serializer.save(
                 Maker_Id=user,
                 Maker_DT_Stamp=timezone.now()
             )
+            
+            # ດຶງ division ຈາກ serializer ທີ່ເກັບໄວ້
+            division_from_serializer = getattr(transfer_log, '_division_for_asset_update', None)
+            print(f"🔍 Division from serializer: {division_from_serializer}")
             
             logger.info(f"Transfer log created: {transfer_log.transfer_id}")
             
@@ -8524,34 +8562,70 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
                 # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
                 asset_obj = transfer_log.asset_list_id
                 
-                # ຫຼື ລອງ get ແບບລະມັດລະວັງ
+                # ລອງ get ແບບລະມັດລະວັງ
                 try:
                     asset_obj_fresh = FA_Asset_Lists.objects.get(asset_list_id=asset_obj.asset_list_id)
                     print(f"✅ Successfully got fresh asset object: {asset_obj_fresh.asset_list_id}")
                     asset_obj = asset_obj_fresh
                 except FA_Asset_Lists.DoesNotExist:
                     print(f"⚠️ Could not get fresh asset, using existing: {asset_obj.asset_list_id}")
-                    # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
                 
                 old_location = asset_obj.asset_location_id
+                old_division = asset_obj.division
                 new_location = transfer_log.to_location_id
                 
                 print(f"🔥 Asset ID: {asset_obj.asset_list_id}")
                 print(f"🔥 Old location: {old_location}")
                 print(f"🔥 New location: {new_location}")
+                print(f"🔥 Old division: {old_division}")
                 print(f"🔥 New location type: {type(new_location)}")
                 
-                # ອັບເດດສະຖານທີ່
+                # ກວດສອບວ່າ new_location ບໍ່ເປັນ None
+                if new_location is None:
+                    error_msg = "New location cannot be None"
+                    logger.error(error_msg)
+                    print(f"❌ ERROR: {error_msg}")
+                    raise ValueError(error_msg)
+                
+                # ໃຊ້ division ທີ່ສົ່ງມາຈາກ frontend
+                new_division = division_from_serializer
+                if not new_division:
+                    # ຖ້າບໍ່ມີ division ຈາກ serializer, ລອງຈາກ request.data
+                    division_id = self.request.data.get('division')
+                    if division_id:
+                        try:
+                            new_division = MTTB_Divisions.objects.get(pk=division_id)
+                            print(f"🔥 Got division from request: {new_division}")
+                        except MTTB_Divisions.DoesNotExist:
+                            new_division = old_division
+                            print(f"🔥 Division not found, keeping old: {old_division}")
+                    else:
+                        new_division = old_division
+                        print(f"🔥 No division in request, keeping old: {old_division}")
+                else:
+                    print(f"🔥 Using division from frontend: {new_division}")
+                
+                print(f"🔥 Final new_division: {new_division}")
+                print(f"🔥 New division type: {type(new_division)}")
+                
+                # ອັບເດດສະຖານທີ່ແລະ division
                 asset_obj.asset_location_id = new_location
+                asset_obj.division = new_division
+                
+                print(f"🔧 Before save - asset location: {asset_obj.asset_location_id}")
+                print(f"🔧 Before save - asset division: {asset_obj.division}")
                 
                 # ບັງຄັບບັນທຶກດ້ວຍ update_fields
-                asset_obj.save(update_fields=['asset_location_id'])
+                fields_to_update = ['asset_location_id', 'division']
+                asset_obj.save(update_fields=fields_to_update)
                 
                 # ກວດສອບວ່າອັບເດດແລ້ວຈິງບໍ
                 asset_obj.refresh_from_db()
                 
                 print(f"✅ Asset location updated from {old_location} to {asset_obj.asset_location_id}")
+                print(f"✅ Asset division updated from {old_division} to {asset_obj.division}")
                 logger.info(f"Asset {asset_obj.asset_list_id} moved from {old_location} to {asset_obj.asset_location_id}")
+                logger.info(f"Asset {asset_obj.asset_list_id} division changed from {old_division} to {asset_obj.division}")
                 
             except FA_Asset_Lists.DoesNotExist:
                 error_msg = f"Asset not found: {transfer_log.asset_list_id}"
@@ -8559,14 +8633,117 @@ class FATransferLogsViewSet(viewsets.ModelViewSet):
                 raise ValueError(error_msg)
                 
             except Exception as e:
-                error_msg = f"Failed to update asset location: {e}"
+                error_msg = f"Failed to update asset location/division: {e}"
                 logger.error(error_msg)
                 print(f"❌ ERROR: {error_msg}")
                 import traceback
                 print(traceback.format_exc())
                 raise
 
-    # ເພີ່ມ method ນີ້ເພື່ອກວດສອບຫຼັງການອັບເດດ
+    # method ສຳລັບກວດສອບຫຼັງການອັບເດດ
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        
+        # ກວດສອບວ່າການອັບເດດສຳເລັດແລ້ວ
+        if response.status_code == 201:
+            transfer_log_id = response.data.get('transfer_id')
+            if transfer_log_id:
+                try:
+                    transfer_log = FA_Transfer_Logs.objects.get(pk=transfer_log_id)
+                    asset = transfer_log.asset_list_id
+                    
+                    print(f"🔍 Final verification - Asset {asset.asset_list_id} location: {asset.asset_location_id}")
+                    print(f"🔍 Final verification - Asset {asset.asset_list_id} division: {asset.division}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Verification failed: {e}")
+        
+        return response
+
+# class FATransferLogsViewSet(viewsets.ModelViewSet):
+#     queryset = FA_Transfer_Logs.objects.all()
+#     serializer_class = FATransferLogsSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         queryset = FA_Transfer_Logs.objects.all().order_by('transfer_id')
+#         asset_list_id = self.request.query_params.get('asset_list_id')
+#         if asset_list_id:
+#             queryset = queryset.filter(asset_list_id=asset_list_id)
+#         return queryset
+
+#     def perform_create(self, serializer):
+#         from django.db import transaction
+#         import logging
+        
+#         logger = logging.getLogger(__name__)
+#         user = self.request.user
+        
+#         with transaction.atomic():
+#             # ບັນທຶກ transfer log
+#             transfer_log = serializer.save(
+#                 Maker_Id=user,
+#                 Maker_DT_Stamp=timezone.now()
+#             )
+            
+#             logger.info(f"Transfer log created: {transfer_log.transfer_id}")
+            
+#             try:
+#                 # Debug: ກວດສອບ transfer_log ກ່ອນ
+#                 print(f"🔍 Transfer log asset_list_id: {transfer_log.asset_list_id}")
+#                 print(f"🔍 Transfer log asset_list_id type: {type(transfer_log.asset_list_id)}")
+#                 print(f"🔍 Transfer log asset_list_id pk: {transfer_log.asset_list_id.pk if transfer_log.asset_list_id else 'None'}")
+                
+#                 # ກວດສອບວ່າ asset_list_id ບໍ່ເປັນ None
+#                 if not transfer_log.asset_list_id:
+#                     raise ValueError("Asset list ID is None")
+                
+#                 # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+#                 asset_obj = transfer_log.asset_list_id
+                
+#                 # ຫຼື ລອງ get ແບບລະມັດລະວັງ
+#                 try:
+#                     asset_obj_fresh = FA_Asset_Lists.objects.get(asset_list_id=asset_obj.asset_list_id)
+#                     print(f"✅ Successfully got fresh asset object: {asset_obj_fresh.asset_list_id}")
+#                     asset_obj = asset_obj_fresh
+#                 except FA_Asset_Lists.DoesNotExist:
+#                     print(f"⚠️ Could not get fresh asset, using existing: {asset_obj.asset_list_id}")
+#                     # ໃຊ້ asset object ທີ່ມີຢູ່ແລ້ວ
+                
+#                 old_location = asset_obj.asset_location_id
+#                 new_location = transfer_log.to_location_id
+                
+#                 print(f"🔥 Asset ID: {asset_obj.asset_list_id}")
+#                 print(f"🔥 Old location: {old_location}")
+#                 print(f"🔥 New location: {new_location}")
+#                 print(f"🔥 New location type: {type(new_location)}")
+                
+               
+#                 asset_obj.asset_location_id = new_location
+                
+                
+#                 asset_obj.save(update_fields=['asset_location_id'])
+                
+                
+#                 asset_obj.refresh_from_db()
+                
+#                 print(f"✅ Asset location updated from {old_location} to {asset_obj.asset_location_id}")
+#                 logger.info(f"Asset {asset_obj.asset_list_id} moved from {old_location} to {asset_obj.asset_location_id}")
+                
+#             except FA_Asset_Lists.DoesNotExist:
+#                 error_msg = f"Asset not found: {transfer_log.asset_list_id}"
+#                 logger.error(error_msg)
+#                 raise ValueError(error_msg)
+                
+#             except Exception as e:
+#                 error_msg = f"Failed to update asset location: {e}"
+#                 logger.error(error_msg)
+#                 print(f"❌ ERROR: {error_msg}")
+#                 import traceback
+#                 print(traceback.format_exc())
+#                 raise
+
+    
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         
@@ -12338,168 +12515,168 @@ def calculate_depreciation_api_with_journal(request):
         return JsonResponse(error_details, status=500)
     
 
-def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
-    """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດເດືອນປະຈຸບັນ"""
-    try:
-        # ກວດສອບສະຖານະກ່ອນ
-        calc_result = calculate_depreciation_schedule(mapping_id)
-        if 'error' in calc_result:
-            return calc_result
+# def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
+#     """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດເດືອນປະຈຸບັນ"""
+#     try:
+#         # ກວດສອບສະຖານະກ່ອນ
+#         calc_result = calculate_depreciation_schedule(mapping_id)
+#         if 'error' in calc_result:
+#             return calc_result
         
-        # ດຶງຂໍ້ມູນ asset
-        accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
-        if accounting_method.asset_list_id:
-            asset = accounting_method.asset_list_id
-        else:
-            asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+#         # ດຶງຂໍ້ມູນ asset
+#         accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+#         if accounting_method.asset_list_id:
+#             asset = accounting_method.asset_list_id
+#         else:
+#             asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
         
-        # ✅ ຂໍ້ມູນພື້ນຖານ
-        start_date = asset.dpca_start_date
-        useful_life = int(asset.asset_useful_life)
-        total_months = useful_life * 12
-        end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+#         # ✅ ຂໍ້ມູນພື້ນຖານ
+#         start_date = asset.dpca_start_date
+#         useful_life = int(asset.asset_useful_life)
+#         total_months = useful_life * 12
+#         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
         
-        # ກຳນົດ current_date
-        if current_date:
-            target_date = datetime.strptime(current_date, '%Y-%m-%d').date()
-        else:
-            target_date = datetime.now().date()
+#         # ກຳນົດ current_date
+#         if current_date:
+#             target_date = datetime.strptime(current_date, '%Y-%m-%d').date()
+#         else:
+#             target_date = datetime.now().date()
         
-        # ✅ ຄິດໄລຍະເວລາທີ່ຕ້ອງຫັກ
-        actual_end_date = min(end_date, target_date)
+#         # ✅ ຄິດໄລຍະເວລາທີ່ຕ້ອງຫັກ
+#         actual_end_date = min(end_date, target_date)
         
-        # ຄິດຈຳນວນເດືອນທີ່ຕ້ອງຫັກ
-        months_to_process = []
-        current_month_start = start_date
-        month_counter = 1
+#         # ຄິດຈຳນວນເດືອນທີ່ຕ້ອງຫັກ
+#         months_to_process = []
+#         current_month_start = start_date
+#         month_counter = 1
         
-        while current_month_start <= actual_end_date:
-            # ວັນເລີ່ມຕົ້ນແລະສິ້ນສຸດຂອງເດືອນ
-            if month_counter == 1:
-                month_actual_start = start_date
-                month_end = datetime(start_date.year, start_date.month, 
-                                   get_last_day_of_month(start_date.year, start_date.month)).date()
-            else:
-                month_actual_start = datetime(current_month_start.year, current_month_start.month, 1).date()
-                month_end = datetime(current_month_start.year, current_month_start.month,
-                                   get_last_day_of_month(current_month_start.year, current_month_start.month)).date()
+#         while current_month_start <= actual_end_date:
+#             # ວັນເລີ່ມຕົ້ນແລະສິ້ນສຸດຂອງເດືອນ
+#             if month_counter == 1:
+#                 month_actual_start = start_date
+#                 month_end = datetime(start_date.year, start_date.month, 
+#                                    get_last_day_of_month(start_date.year, start_date.month)).date()
+#             else:
+#                 month_actual_start = datetime(current_month_start.year, current_month_start.month, 1).date()
+#                 month_end = datetime(current_month_start.year, current_month_start.month,
+#                                    get_last_day_of_month(current_month_start.year, current_month_start.month)).date()
             
-            if month_end > actual_end_date:
-                month_end = actual_end_date
+#             if month_end > actual_end_date:
+#                 month_end = actual_end_date
             
-            months_to_process.append({
-                'month_number': month_counter,
-                'start_date': month_actual_start,
-                'end_date': month_end,
-                'year_month': f"{current_month_start.year}-{current_month_start.month:02d}"
-            })
+#             months_to_process.append({
+#                 'month_number': month_counter,
+#                 'start_date': month_actual_start,
+#                 'end_date': month_end,
+#                 'year_month': f"{current_month_start.year}-{current_month_start.month:02d}"
+#             })
             
-            current_month_start = current_month_start + relativedelta(months=1)
-            month_counter += 1
+#             current_month_start = current_month_start + relativedelta(months=1)
+#             month_counter += 1
             
-            if month_counter > total_months:
-                break
+#             if month_counter > total_months:
+#                 break
         
-        # ✅ ຄິດຄ່າເສື່ອມ
-        asset_value = Decimal(str(asset.asset_value or 0))
-        salvage_value = Decimal(str(asset.asset_salvage_value or 0))
-        depreciable_amount = asset_value - salvage_value
-        old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
+#         # ✅ ຄິດຄ່າເສື່ອມ
+#         asset_value = Decimal(str(asset.asset_value or 0))
+#         salvage_value = Decimal(str(asset.asset_salvage_value or 0))
+#         depreciable_amount = asset_value - salvage_value
+#         old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
         
-        annual_depreciation = depreciable_amount / Decimal(str(useful_life))
-        monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#         annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+#         monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
-        # ຄິດຄ່າເສື່ອມແຕ່ລະເດືອນ
-        monthly_details = []
-        total_depreciation = Decimal('0')
-        is_asset_completed = actual_end_date >= end_date
+#         # ຄິດຄ່າເສື່ອມແຕ່ລະເດືອນ
+#         monthly_details = []
+#         total_depreciation = Decimal('0')
+#         is_asset_completed = actual_end_date >= end_date
         
-        for i, month_data in enumerate(months_to_process):
-            month_num = month_data['month_number']
-            month_start = month_data['start_date']
-            month_end = month_data['end_date']
+#         for i, month_data in enumerate(months_to_process):
+#             month_num = month_data['month_number']
+#             month_start = month_data['start_date']
+#             month_end = month_data['end_date']
             
-            days_in_period = (month_end - month_start + timedelta(days=1)).days
-            total_days_in_month = get_last_day_of_month(month_start.year, month_start.month)
+#             days_in_period = (month_end - month_start + timedelta(days=1)).days
+#             total_days_in_month = get_last_day_of_month(month_start.year, month_start.month)
             
-            is_first_month = (month_num == 1)
-            is_last_month_of_asset = (month_num == total_months) and is_asset_completed
+#             is_first_month = (month_num == 1)
+#             is_last_month_of_asset = (month_num == total_months) and is_asset_completed
             
-            # ✅ ຄິດຄ່າເສື່ອມຕາມປະເພດງວດ
-            if is_first_month:
-                month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
-                                    Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                period_type = "ງວດທຳອິດ"
-                calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+#             # ✅ ຄິດຄ່າເສື່ອມຕາມປະເພດງວດ
+#             if is_first_month:
+#                 month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+#                                     Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#                 period_type = "ງວດທຳອິດ"
+#                 calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
                 
-            elif is_last_month_of_asset:
-                remaining_to_depreciate = depreciable_amount - (old_accumulated + total_depreciation)
-                month_depreciation = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                period_type = "ງວດສຸດທ້າຍ (ຄົບອາຍຸ)"
-                calculation_note = f"ປັບໃຫ້ຄົບ {depreciable_amount:,.0f} ກີບ (ເຫຼືອ {remaining_to_depreciate:,.2f})"
+#             elif is_last_month_of_asset:
+#                 remaining_to_depreciate = depreciable_amount - (old_accumulated + total_depreciation)
+#                 month_depreciation = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#                 period_type = "ງວດສຸດທ້າຍ (ຄົບອາຍຸ)"
+#                 calculation_note = f"ປັບໃຫ້ຄົບ {depreciable_amount:,.0f} ກີບ (ເຫຼືອ {remaining_to_depreciate:,.2f})"
                 
-            else:
-                if days_in_period == total_days_in_month:
-                    month_depreciation = monthly_depreciation
-                    period_type = "ງວດປົກກະຕິ (ເຕັມເດືອນ)"
-                    calculation_note = f"ເຕັມເດືອນ = {monthly_depreciation:,.2f}"
-                else:
-                    month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
-                                        Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    period_type = "ງວດປົກກະຕິ (ບາງສ່ວນ)"
-                    calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+#             else:
+#                 if days_in_period == total_days_in_month:
+#                     month_depreciation = monthly_depreciation
+#                     period_type = "ງວດປົກກະຕິ (ເຕັມເດືອນ)"
+#                     calculation_note = f"ເຕັມເດືອນ = {monthly_depreciation:,.2f}"
+#                 else:
+#                     month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+#                                         Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#                     period_type = "ງວດປົກກະຕິ (ບາງສ່ວນ)"
+#                     calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
             
-            total_depreciation += month_depreciation
+#             total_depreciation += month_depreciation
             
-            monthly_details.append({
-                'month_number': month_num,
-                'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
-                'month_year': f"{get_month_name_la(month_start.month)} {month_start.year}",
-                'days_count': days_in_period,
-                'total_days_in_month': total_days_in_month,
-                'period_type': period_type,
-                'monthly_depreciation': float(month_depreciation),
-                'calculation_note': calculation_note
-            })
+#             monthly_details.append({
+#                 'month_number': month_num,
+#                 'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+#                 'month_year': f"{get_month_name_la(month_start.month)} {month_start.year}",
+#                 'days_count': days_in_period,
+#                 'total_days_in_month': total_days_in_month,
+#                 'period_type': period_type,
+#                 'monthly_depreciation': float(month_depreciation),
+#                 'calculation_note': calculation_note
+#             })
         
-        # ✅ ຄິດຜົນລວມ
-        new_accumulated = old_accumulated + total_depreciation
-        new_remaining = asset_value - new_accumulated
+#         # ✅ ຄິດຜົນລວມ
+#         new_accumulated = old_accumulated + total_depreciation
+#         new_remaining = asset_value - new_accumulated
         
-        if new_accumulated > depreciable_amount:
-            excess = new_accumulated - depreciable_amount
-            total_depreciation = total_depreciation - excess
-            new_accumulated = depreciable_amount
-            new_remaining = salvage_value
+#         if new_accumulated > depreciable_amount:
+#             excess = new_accumulated - depreciable_amount
+#             total_depreciation = total_depreciation - excess
+#             new_accumulated = depreciable_amount
+#             new_remaining = salvage_value
         
-        months_processed = len(months_to_process)
-        is_fully_depreciated = new_accumulated >= depreciable_amount
+#         months_processed = len(months_to_process)
+#         is_fully_depreciated = new_accumulated >= depreciable_amount
         
-        return {
-            'success': True,
-            'bulk_depreciation_processed': {
-                'processing_period': f"{start_date.strftime('%d/%m/%Y')} - {actual_end_date.strftime('%d/%m/%Y')}",
-                'months_processed': months_processed,
-                'total_depreciation': float(total_depreciation),
-                'old_accumulated': float(old_accumulated),
-                'new_accumulated': float(new_accumulated),
-                'remaining_value': float(new_remaining),
-                'is_asset_completed': is_asset_completed,
-                'is_fully_depreciated': is_fully_depreciated,
-                'monthly_breakdown': monthly_details,
-                'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ"
-            },
-            'updated_status': {
-                'C_dpac': months_processed,
-                'total_months': total_months,
-                'remaining_months': max(0, total_months - months_processed),
-                'is_completed': is_fully_depreciated or months_processed >= total_months,
-                'completion_status': "ຫັກຄົບແລ້ວ" if is_fully_depreciated else f"ຫັກແລ້ວ {months_processed}/{total_months} ເດືອນ"
-            }
-        }
+#         return {
+#             'success': True,
+#             'bulk_depreciation_processed': {
+#                 'processing_period': f"{start_date.strftime('%d/%m/%Y')} - {actual_end_date.strftime('%d/%m/%Y')}",
+#                 'months_processed': months_processed,
+#                 'total_depreciation': float(total_depreciation),
+#                 'old_accumulated': float(old_accumulated),
+#                 'new_accumulated': float(new_accumulated),
+#                 'remaining_value': float(new_remaining),
+#                 'is_asset_completed': is_asset_completed,
+#                 'is_fully_depreciated': is_fully_depreciated,
+#                 'monthly_breakdown': monthly_details,
+#                 'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ"
+#             },
+#             'updated_status': {
+#                 'C_dpac': months_processed,
+#                 'total_months': total_months,
+#                 'remaining_months': max(0, total_months - months_processed),
+#                 'is_completed': is_fully_depreciated or months_processed >= total_months,
+#                 'completion_status': "ຫັກຄົບແລ້ວ" if is_fully_depreciated else f"ຫັກແລ້ວ {months_processed}/{total_months} ເດືອນ"
+#             }
+#         }
         
-    except Exception as e:
-        return {"error": f"Bulk depreciation catch-up error: {str(e)}"}
+#     except Exception as e:
+#         return {"error": f"Bulk depreciation catch-up error: {str(e)}"}
 
 def auto_reject_related_journals(asset_list_id, reason, user_id, request=None):
     """
@@ -12764,8 +12941,188 @@ def process_bulk_depreciation_catch_up_with_journal(mapping_id, user_id=None, cu
         return {"error": f"Catch-up with journal error: {str(e)}"}
 
 
+# def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
+#     """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດເດືອນປະຈຸບັນ"""
+#     try:
+#         # ກວດສອບສະຖານະກ່ອນ
+#         calc_result = calculate_depreciation_schedule(mapping_id)
+#         if 'error' in calc_result:
+#             return calc_result
+        
+#         # ດຶງຂໍ້ມູນ asset
+#         accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+#         if accounting_method.asset_list_id:
+#             asset = accounting_method.asset_list_id
+#         else:
+#             asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+        
+#         # ✅ ຂໍ້ມູນພື້ນຖານ
+#         start_date = asset.dpca_start_date
+#         useful_life = int(asset.asset_useful_life)
+#         total_months = useful_life * 12
+#         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+        
+#         # ກຳນົດ current_date
+#         if current_date:
+#             target_date = datetime.strptime(current_date, '%Y-%m-%d').date()
+#         else:
+#             target_date = datetime.now().date()
+        
+#         # ✅ ຄິດໄລຍະເວລາທີ່ຕ້ອງຫັກ
+#         # ເລືອກວັນທີ່ທີ່ນ້ອຍກວ່າ: ວັນສິ້ນສຸດອາຍຸການໃຊ້ ຫຼື ວັນທີ່ປະຈຸບັນ
+#         actual_end_date = min(end_date, target_date)
+        
+#         # ຄິດຈຳນວນເດືອນທີ່ຕ້ອງຫັກ
+#         months_to_process = []
+#         current_month_start = start_date
+#         month_counter = 1
+        
+#         while current_month_start <= actual_end_date:
+#             # ວັນເລີ່ມຕົ້ນແລະສິ້ນສຸດຂອງເດືອນ
+#             if month_counter == 1:
+#                 # ງວດທຳອິດ: ເລີ່ມຈາກວັນທີ່ start_date
+#                 month_actual_start = start_date
+#                 month_end = datetime(start_date.year, start_date.month, 
+#                                    get_last_day_of_month(start_date.year, start_date.month)).date()
+#             else:
+#                 # ງວດອື່ນໆ: ເລີ່ມວັນທີ່ 1
+#                 month_actual_start = datetime(current_month_start.year, current_month_start.month, 1).date()
+#                 month_end = datetime(current_month_start.year, current_month_start.month,
+#                                    get_last_day_of_month(current_month_start.year, current_month_start.month)).date()
+            
+#             # ປັບ month_end ຖ້າເກີນ actual_end_date
+#             if month_end > actual_end_date:
+#                 month_end = actual_end_date
+            
+#             months_to_process.append({
+#                 'month_number': month_counter,
+#                 'start_date': month_actual_start,
+#                 'end_date': month_end,
+#                 'year_month': f"{current_month_start.year}-{current_month_start.month:02d}"
+#             })
+            
+#             # ເລື່ອນໄປເດືອນຕໍ່ໄປ
+#             current_month_start = current_month_start + relativedelta(months=1)
+#             month_counter += 1
+            
+#             # ຢຸດຖ້າເກີນອາຍຸການໃຊ້
+#             if month_counter > total_months:
+#                 break
+        
+#         # ✅ ຄິດຄ່າເສື່ອມ
+#         asset_value = Decimal(str(asset.asset_value or 0))
+#         salvage_value = Decimal(str(asset.asset_salvage_value or 0))
+#         depreciable_amount = asset_value - salvage_value
+#         old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
+        
+#         # ຄ່າເສື່ອມຕໍ່ປີ ແລະ ຕໍ່ເດືອນ
+#         annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+#         monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+#         # ຄິດຄ່າເສື່ອມແຕ່ລະເດືອນ
+#         monthly_details = []
+#         total_depreciation = Decimal('0')
+#         is_asset_completed = actual_end_date >= end_date
+        
+#         for i, month_data in enumerate(months_to_process):
+#             month_num = month_data['month_number']
+#             month_start = month_data['start_date']
+#             month_end = month_data['end_date']
+            
+#             # ຄິດຈຳນວນວັນ
+#             days_in_period = (month_end - month_start + timedelta(days=1)).days
+#             total_days_in_month = get_last_day_of_month(month_start.year, month_start.month)
+            
+#             # ກຳນົດປະເພດງວດ
+#             is_first_month = (month_num == 1)
+#             is_last_month_of_asset = (month_num == total_months) and is_asset_completed
+#             is_current_final_month = (i == len(months_to_process) - 1) and not is_asset_completed
+            
+#             # ✅ ຄິດຄ່າເສື່ອມຕາມປະເພດງວດ
+#             if is_first_month:
+#                 # 🎯 ງວດທຳອິດ: pro-rated
+#                 month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+#                                     Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#                 period_type = "ງວດທຳອິດ"
+#                 calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+                
+#             elif is_last_month_of_asset:
+#                 # 🎯 ງວດສຸດທ້າຍຂອງຊັບສິນ: ປັບໃຫ້ຄົບ depreciable_amount
+#                 remaining_to_depreciate = depreciable_amount - (old_accumulated + total_depreciation)
+#                 month_depreciation = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#                 period_type = "ງວດສຸດທ້າຍ (ຄົບອາຍຸ)"
+#                 calculation_note = f"ປັບໃຫ້ຄົບ {depreciable_amount:,.0f} ກີບ (ເຫຼືອ {remaining_to_depreciate:,.2f})"
+                
+#             else:
+#                 # 🎯 ງວດປົກກະຕິ: ຫັກຕາມວັນຈິງ
+#                 if days_in_period == total_days_in_month:
+#                     # ເຕັມເດືອນ
+#                     month_depreciation = monthly_depreciation
+#                     period_type = "ງວດປົກກະຕິ (ເຕັມເດືອນ)"
+#                     calculation_note = f"ເຕັມເດືອນ = {monthly_depreciation:,.2f}"
+#                 else:
+#                     # ບໍ່ເຕັມເດືອນ (pro-rated)
+#                     month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
+#                                         Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#                     period_type = "ງວດປົກກະຕິ (ບາງສ່ວນ)"
+#                     calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
+            
+#             total_depreciation += month_depreciation
+            
+#             monthly_details.append({
+#                 'month_number': month_num,
+#                 'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+#                 'month_year': f"{get_month_name_la(month_start.month)} {month_start.year}",
+#                 'days_count': days_in_period,
+#                 'total_days_in_month': total_days_in_month,
+#                 'period_type': period_type,
+#                 'monthly_depreciation': float(month_depreciation),
+#                 'calculation_note': calculation_note
+#             })
+        
+#         # ✅ ຄິດຜົນລວມ
+#         new_accumulated = old_accumulated + total_depreciation
+#         new_remaining = asset_value - new_accumulated
+        
+#         # ກວດສອບບໍ່ໃຫ້ເກີນ depreciable_amount
+#         if new_accumulated > depreciable_amount:
+#             excess = new_accumulated - depreciable_amount
+#             total_depreciation = total_depreciation - excess
+#             new_accumulated = depreciable_amount
+#             new_remaining = salvage_value
+        
+#         # ✅ ກຳນົດສະຖານະໃໝ່
+#         months_processed = len(months_to_process)
+#         is_fully_depreciated = new_accumulated >= depreciable_amount
+        
+#         return {
+#             'success': True,
+#             'bulk_depreciation_processed': {
+#                 'processing_period': f"{start_date.strftime('%d/%m/%Y')} - {actual_end_date.strftime('%d/%m/%Y')}",
+#                 'months_processed': months_processed,
+#                 'total_depreciation': float(total_depreciation),
+#                 'old_accumulated': float(old_accumulated),
+#                 'new_accumulated': float(new_accumulated),
+#                 'remaining_value': float(new_remaining),
+#                 'is_asset_completed': is_asset_completed,
+#                 'is_fully_depreciated': is_fully_depreciated,
+#                 'monthly_breakdown': monthly_details,
+#                 'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ"
+#             },
+#             'updated_status': {
+#                 'C_dpac': months_processed,
+#                 'total_months': total_months,
+#                 'remaining_months': max(0, total_months - months_processed),
+#                 'is_completed': is_fully_depreciated or months_processed >= total_months,
+#                 'completion_status': "ຫັກຄົບແລ້ວ" if is_fully_depreciated else f"ຫັກແລ້ວ {months_processed}/{total_months} ເດືອນ"
+#             }
+#         }
+        
+#     except Exception as e:
+#         return {"error": f"Bulk depreciation error: {str(e)}"}
+
 def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
-    """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດເດືອນປະຈຸບັນ"""
+    """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດ latest EOD date"""
     try:
         # ກວດສອບສະຖານະກ່ອນ
         calc_result = calculate_depreciation_schedule(mapping_id)
@@ -12785,14 +13142,26 @@ def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=No
         total_months = useful_life * 12
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
         
-        # ກຳນົດ current_date
+        # 🎯 ປ່ຽນການກຳນົດ target_date ເປັນ latest EOD date
         if current_date:
             target_date = datetime.strptime(current_date, '%Y-%m-%d').date()
         else:
-            target_date = datetime.now().date()
+            # ຫາ Start_Date ທີ່ມີ date_id ໃຫຍ່ສຸດ ແລະ eod_time = 'Y'
+            try:
+                latest_eod = STTB_Dates.objects.filter(eod_time='Y').order_by('-date_id').first()
+                if latest_eod and latest_eod.Start_Date:
+                    target_date = latest_eod.Start_Date.date()
+                    print(f"🎯 Using latest EOD date: {target_date} (date_id: {latest_eod.date_id})")
+                else:
+                    # Fallback ໃຊ້ມື້ປະຈຸບັນຖ້າບໍ່ພົບ EOD record
+                    target_date = datetime.now().date()
+                    print(f"⚠️ No EOD record found, using current date: {target_date}")
+            except Exception as eod_error:
+                print(f"⚠️ Error getting EOD date: {str(eod_error)}, using current date")
+                target_date = datetime.now().date()
         
         # ✅ ຄິດໄລຍະເວລາທີ່ຕ້ອງຫັກ
-        # ເລືອກວັນທີ່ທີ່ນ້ອຍກວ່າ: ວັນສິ້ນສຸດອາຍຸການໃຊ້ ຫຼື ວັນທີ່ປະຈຸບັນ
+        # ເລືອກວັນທີ່ທີ່ນ້ອຍກວ່າ: ວັນສິ້ນສຸດອາຍຸການໃຊ້ ຫຼື target_date (EOD date)
         actual_end_date = min(end_date, target_date)
         
         # ຄິດຈຳນວນເດືອນທີ່ຕ້ອງຫັກ
@@ -12918,6 +13287,19 @@ def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=No
         months_processed = len(months_to_process)
         is_fully_depreciated = new_accumulated >= depreciable_amount
         
+        # 🎯 ເພີ່ມຂໍ້ມູນ EOD date ໃນ return
+        eod_info = None
+        try:
+            latest_eod = STTB_Dates.objects.filter(eod_time='Y').order_by('-date_id').first()
+            if latest_eod:
+                eod_info = {
+                    'date_id': latest_eod.date_id,
+                    'eod_date': latest_eod.Start_Date.strftime('%d/%m/%Y') if latest_eod.Start_Date else None,
+                    'used_as_target': target_date.strftime('%d/%m/%Y')
+                }
+        except:
+            eod_info = {'error': 'Could not get EOD info'}
+        
         return {
             'success': True,
             'bulk_depreciation_processed': {
@@ -12930,7 +13312,8 @@ def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=No
                 'is_asset_completed': is_asset_completed,
                 'is_fully_depreciated': is_fully_depreciated,
                 'monthly_breakdown': monthly_details,
-                'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ"
+                'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ",
+                'eod_date_info': eod_info  # ເພີ່ມຂໍ້ມູນ EOD
             },
             'updated_status': {
                 'C_dpac': months_processed,
@@ -12943,8 +13326,6 @@ def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=No
         
     except Exception as e:
         return {"error": f"Bulk depreciation error: {str(e)}"}
-
-
 # ✅ Helper function ສຳລັບທົດສອບ
 def test_bulk_depreciation():
     """ຟັງຊັນທົດສອບ bulk depreciation"""
@@ -13117,13 +13498,13 @@ def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=Non
         
         print(f"✅ Depreciation success for mapping_id {mapping_id}")
         
-        # ຖ້າບໍ່ຕ້ອງການສ້າງ Journal Entry
+       
         if not create_journal:
             print(f"ℹ️ Journal creation disabled for mapping_id {mapping_id}")
             depreciation_result['journal_entry'] = {'success': False, 'message': 'Journal creation disabled'}
             return depreciation_result
         
-        # ຖ້າບໍ່ມີ request object
+        
         if not request:
             print(f"⚠️ No request object for mapping_id {mapping_id}")
             depreciation_result['journal_entry'] = {
@@ -13135,14 +13516,14 @@ def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=Non
         try:
             print(f"📝 Creating journal entry for mapping_id {mapping_id}")
             
-            # ດຶງຂໍ້ມູນທີ່ຈຳເປັນ
+           
             accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
             if accounting_method.asset_list_id:
                 asset = accounting_method.asset_list_id
             else:
                 asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
             
-            # ດຶງຂໍ້ມູນການຫັກຄ່າເສື່ອມ
+           
             depreciation_processed = depreciation_result['depreciation_processed']
             depreciation_amount = Decimal(str(depreciation_processed['monthly_depreciation']))
             current_count = depreciation_processed['month_number']
@@ -13150,7 +13531,7 @@ def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=Non
             
             print(f"💰 Amount: {depreciation_amount}, Month: {current_count}/{total_months}")
             
-            # ສ້າງຂໍ້ມູນ Journal Entry
+          
             journal_data_result = create_journal_entry_data(
                 asset, accounting_method, depreciation_amount, current_count, total_months
             )
@@ -28456,47 +28837,291 @@ def journal_report_get_view(request):
 # sone__________________________________________________________________________________________________________________________________________________________________________
 from django.http import JsonResponse
 from django.views import View
-from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from django.utils.dateparse import parse_datetime
-from .services import AssetService  # import service
-import json
+from django.utils.decorators import method_decorator
+from django.db import connection
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+class AssetService:
+    """Service class ສຳລັບຈັດການຂໍ້ມູນ Asset"""
+    
+    @staticmethod
+    def get_asset_by_id(asset_list_id):
+        """
+        ດຶງຂໍ້ມູນ Asset ດ້ວຍ asset_list_id ຈຸດດຽວ
+        """
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM SAMCSYS_fa_asset_lists
+                    WHERE asset_list_id = %s
+                """, [asset_list_id])
+                
+                columns = [col[0] for col in cursor.description]
+                results = []
+                
+                for row in cursor.fetchall():
+                    row_dict = {}
+                    for i, value in enumerate(row):
+                        column_name = columns[i]
+                        # ແປງ datetime ເປັນ string ສຳລັບ JSON
+                        if isinstance(value, datetime):
+                            row_dict[column_name] = value.isoformat()
+                        else:
+                            row_dict[column_name] = value
+                    results.append(row_dict)
+                
+                logger.info(f"Retrieved {len(results)} asset records for ID: {asset_list_id}")
+                return results
+                
+        except Exception as e:
+            logger.error(f"Error in get_asset_by_id: {str(e)}")
+            return []
+
+    @staticmethod
+    def get_assets_by_criteria(asset_list_id=None, asset_type_id=None, asset_status=None, start_date=None, end_date=None):
+        """
+        ດຶງລາຍການ Assets ດ້ວຍເງື່ອນໄຂຕ່າງໆ
+        """
+        try:
+            with connection.cursor() as cursor:
+                # ສ້າງ SQL query ແບບ dynamic
+                base_query = "SELECT * FROM SAMCSYS_fa_asset_lists WHERE 1=1"
+                params = []
+                
+                if asset_list_id:
+                    base_query += " AND asset_list_id = %s"
+                    params.append(asset_list_id)
+                
+                if asset_type_id:
+                    base_query += " AND asset_type_id_id = %s"
+                    params.append(asset_type_id)
+                
+                if asset_status:
+                    base_query += " AND asset_status = %s"
+                    params.append(asset_status)
+                
+                if start_date and end_date:
+                    base_query += " AND asset_date BETWEEN %s AND %s"
+                    params.extend([start_date, end_date])
+                elif start_date:
+                    base_query += " AND asset_date >= %s"
+                    params.append(start_date)
+                elif end_date:
+                    base_query += " AND asset_date <= %s"
+                    params.append(end_date)
+                
+                base_query += " ORDER BY asset_type_id_id, C_dpac"
+                
+                cursor.execute(base_query, params)
+                
+                columns = [col[0] for col in cursor.description]
+                results = []
+                
+                for row in cursor.fetchall():
+                    row_dict = {}
+                    for i, value in enumerate(row):
+                        column_name = columns[i]
+                        if isinstance(value, datetime):
+                            row_dict[column_name] = value.isoformat()
+                        else:
+                            row_dict[column_name] = value
+                    results.append(row_dict)
+                
+                logger.info(f"Retrieved {len(results)} asset records")
+                return results
+                
+        except Exception as e:
+            logger.error(f"Error in get_assets_by_criteria: {str(e)}")
+            return []
+
+
+def parse_date_parameter(date_str):
+    """ປັບແຕ່ງ parameter ວັນທີ່ຢ່າງປອດໄພ"""
+    if not date_str or date_str.strip() == '':
+        return None
+    
+    try:
+        date_formats = [
+            '%Y-%m-%d',           # 2024-01-01
+            '%Y-%m-%dT%H:%M:%S',  # ISO format
+            '%d/%m/%Y',           # 01/01/2024
+            '%m/%d/%Y',           # 01/01/2024
+            '%Y%m%d'              # 20240101
+        ]
+        
+        for fmt in date_formats:
+            try:
+                parsed_date = datetime.strptime(date_str.strip(), fmt)
+                return parsed_date
+            except ValueError:
+                continue
+                
+        logger.warning(f"Cannot parse date: {date_str}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error parsing date {date_str}: {str(e)}")
+        return None
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class AssetListAPIView(View):
-    """API View ສຳລັບດຶງລາຍການ Asset"""
+    """
+    API View ສຳລັບ /api/assets/ endpoint
+    ຮອງຮັບການດຶງຂໍ້ມູນ Asset ດ້ວຍ asset_list_id ແລະເງື່ອນໄຂອື່ນໆ
+    """
     
     def get(self, request):
-        """GET method - ໃຊ້ query parameters"""
+        """GET method - ຮອງຮັບການດຶງ assets ດ້ວຍເງື່ອນໄຂຕ່າງໆ"""
         try:
+            # ດຶງ parameters
+            asset_list_id = request.GET.get('asset_list_id', '').strip()
+            asset_type_id = request.GET.get('asset_type_id', '').strip()
+            asset_status = request.GET.get('asset_status', '').strip()
+            start_date_str = request.GET.get('start_date', '').strip()
+            end_date_str = request.GET.get('end_date', '').strip()
             
-            asset_type_id = request.GET.get('asset_type_id')
-            asset_status = request.GET.get('asset_status') 
-            start_date_str = request.GET.get('start_date')
-            end_date_str = request.GET.get('end_date')
+            # ປ່ຽນ empty strings ເປັນ None
+            asset_list_id = asset_list_id if asset_list_id else None
+            asset_type_id = asset_type_id if asset_type_id else None
+            asset_status = asset_status if asset_status else None
             
-            
+            # ປັບແຕ່ງວັນທີ່
             start_date = None
             end_date = None
             
             if start_date_str:
-                start_date = parse_datetime(start_date_str)
-                if not start_date:
+                start_date = parse_date_parameter(start_date_str)
+                if start_date is None:
                     return JsonResponse({
                         'success': False,
-                        'error': 'Invalid start_date format. Use ISO format: YYYY-MM-DDTHH:MM:SS'
+                        'error': 'Invalid start_date format. Use: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, DD/MM/YYYY'
                     }, status=400)
             
             if end_date_str:
-                end_date = parse_datetime(end_date_str)
-                if not end_date:
+                end_date = parse_date_parameter(end_date_str)
+                if end_date is None:
                     return JsonResponse({
                         'success': False,
-                        'error': 'Invalid end_date format. Use ISO format: YYYY-MM-DDTHH:MM:SS'
+                        'error': 'Invalid end_date format. Use: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, DD/MM/YYYY'
                     }, status=400)
             
-           
-            assets = AssetService.get_asset_list_by_criteria(
+            # Log request
+            logger.info(f"Assets API request - asset_list_id={asset_list_id}, "
+                       f"type={asset_type_id}, status={asset_status}, "
+                       f"dates={start_date_str} to {end_date_str}")
+            
+            # ດຶງຂໍ້ມູນ
+            assets = AssetService.get_assets_by_criteria(
+                asset_list_id=asset_list_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # ຖ້າບໍ່ພົບຂໍ້ມູນ
+            if not assets:
+                return JsonResponse({
+                    'success': True,
+                    'data': [],
+                    'count': 0,
+                    'message': 'ບໍ່ພົບຂໍ້ມູນຊັບສິນທີ່ຕົງຕາມເງື່ອນໄຂ',
+                    'filters': {
+                        'asset_list_id': asset_list_id,
+                        'asset_type_id': asset_type_id,
+                        'asset_status': asset_status,
+                        'start_date': start_date_str,
+                        'end_date': end_date_str
+                    }
+                })
+            
+            # ຄິດໄລ່ສະຖິຕິ
+            total_asset_value = 0
+            active_count = 0
+            status_breakdown = {}
+            
+            for asset in assets:
+                # ຄິດລວມມູນຄ່າ
+                try:
+                    asset_value = float(asset.get('asset_value', 0) or 0)
+                    total_asset_value += asset_value
+                except (ValueError, TypeError):
+                    pass
+                
+                # ນັບຕາມສະຖານະ
+                status = asset.get('asset_status', 'Unknown')
+                status_breakdown[status] = status_breakdown.get(status, 0) + 1
+                
+                if status == 'AC':  # Active
+                    active_count += 1
+            
+            return JsonResponse({
+                'success': True,
+                'data': assets,
+                'count': len(assets),
+                'statistics': {
+                    'total_count': len(assets),
+                    'active_count': active_count,
+                    'inactive_count': len(assets) - active_count,
+                    'total_asset_value': total_asset_value,
+                    'status_breakdown': status_breakdown
+                },
+                'filters': {
+                    'asset_list_id': asset_list_id,
+                    'asset_type_id': asset_type_id,
+                    'asset_status': asset_status,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                },
+                'message': f'ພົບຂໍ້ມູນຊັບສິນ {len(assets)} ລາຍການ'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in AssetsAPIView: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດໃນລະບົບ: {str(e)}',
+                'message': 'ກະລຸນາກວດສອບ log ສຳລັບລາຍລະອຽດ'
+            }, status=500)
+
+    def post(self, request):
+        """POST method - ຮອງຮັບ JSON payload"""
+        try:
+            import json
+            
+            # Parse JSON data
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except json.JSONDecodeError as e:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Invalid JSON data: {str(e)}'
+                }, status=400)
+            
+            # ດຶງ parameters ຈາກ JSON
+            asset_list_id = data.get('asset_list_id', '').strip()
+            asset_type_id = data.get('asset_type_id', '').strip()
+            asset_status = data.get('asset_status', '').strip()
+            start_date_str = data.get('start_date', '').strip()
+            end_date_str = data.get('end_date', '').strip()
+            
+            # ແປງເປັນ None ຖ້າຫວ່າງ
+            asset_list_id = asset_list_id if asset_list_id else None
+            asset_type_id = asset_type_id if asset_type_id else None
+            asset_status = asset_status if asset_status else None
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str) if start_date_str else None
+            end_date = parse_date_parameter(end_date_str) if end_date_str else None
+            
+            # ດຶງຂໍ້ມູນ
+            assets = AssetService.get_assets_by_criteria(
+                asset_list_id=asset_list_id,
                 asset_type_id=asset_type_id,
                 asset_status=asset_status,
                 start_date=start_date,
@@ -28507,81 +29132,53 @@ class AssetListAPIView(View):
                 'success': True,
                 'data': assets,
                 'count': len(assets),
-                'filters': {
-                    'asset_type_id': asset_type_id,
-                    'asset_status': asset_status,
-                    'start_date': start_date_str,
-                    'end_date': end_date_str
-                }
+                'message': f'ພົບຂໍ້ມູນຊັບສິນ {len(assets)} ລາຍການ'
             })
             
         except Exception as e:
+            logger.error(f"Error in AssetsAPIView POST: {str(e)}", exc_info=True)
             return JsonResponse({
                 'success': False,
-                'error': str(e)
-            }, status=500)
-    
-    def post(self, request):
-        """POST method - ໃຊ້ JSON payload"""
-        try:
-            data = json.loads(request.body)
-            
-            asset_type_id = data.get('asset_type_id')
-            asset_status = data.get('asset_status')
-            start_date_str = data.get('start_date')
-            end_date_str = data.get('end_date')
-            
-          
-            start_date = None
-            end_date = None
-            
-            if start_date_str:
-                start_date = parse_datetime(start_date_str)
-            if end_date_str:
-                end_date = parse_datetime(end_date_str)
-            
-           
-            assets = AssetService.get_asset_list_by_criteria(
-                asset_type_id=asset_type_id,
-                asset_status=asset_status,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            return JsonResponse({
-                'success': True,
-                'data': assets,
-                'count': len(assets)
-            })
-            
-        except json.JSONDecodeError:
-            return JsonResponse({
-                'success': False,
-                'error': 'Invalid JSON data'
-            }, status=400)
-        except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'error': str(e)
+                'error': f'ເກີດຂໍ້ຜິດພາດໃນລະບົບ: {str(e)}'
             }, status=500)
 
+
+@method_decorator(csrf_exempt, name='dispatch')
 class AssetSummaryView(View):
-    """API View ສຳລັບສະຖິຕິສະຫຼຸບ"""
+    """API View ສຳລັບສະຖິຕິສະຫຼຸບ - ປັບປຸງແລ້ວ"""
     
     def get(self, request):
         try:
-            asset_type_id = request.GET.get('asset_type_id')
-            start_date_str = request.GET.get('start_date')
-            end_date_str = request.GET.get('end_date')
+            # ດຶງ parameters
+            asset_type_id = request.GET.get('asset_type_id', '').strip()
+            start_date_str = request.GET.get('start_date', '').strip()
+            end_date_str = request.GET.get('end_date', '').strip()
+            
+            # ປ່ຽນ empty strings ເປັນ None
+            asset_type_id = asset_type_id if asset_type_id else None
             
             # Parse dates
             start_date = None
             end_date = None
             
             if start_date_str:
-                start_date = parse_datetime(start_date_str)
+                start_date = parse_date_parameter(start_date_str)
+                if start_date is None:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Invalid start_date format'
+                    }, status=400)
+            
             if end_date_str:
-                end_date = parse_datetime(end_date_str)
+                end_date = parse_date_parameter(end_date_str)
+                if end_date is None:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Invalid end_date format'
+                    }, status=400)
+            
+            logger.info(f"Asset summary request - Filters: type={asset_type_id}, "
+                       f"dates={start_date_str} to {end_date_str}")
             
             # Get summary stats
             summary = AssetService.get_asset_summary_stats(
@@ -28590,20 +29187,106 @@ class AssetSummaryView(View):
                 end_date=end_date
             )
             
+            # ຄິດໄລ່ມູນຄ່າລວມ
+            total_asset_value = 0
+            depreciation_info = {}
+            
+            for asset in summary.get('raw_data', []):
+                # ຄິດລວມມູນຄ່າ
+                try:
+                    asset_value = float(asset.get('asset_value', 0) or 0)
+                    total_asset_value += asset_value
+                except (ValueError, TypeError):
+                    pass
+                
+                # ຂໍ້ມູນການຫຼຸດມູນຄ່າ
+                dpca_type = asset.get('dpca_type', 'Unknown')
+                if dpca_type not in depreciation_info:
+                    depreciation_info[dpca_type] = {'count': 0, 'total_value': 0}
+                depreciation_info[dpca_type]['count'] += 1
+                try:
+                    depreciation_info[dpca_type]['total_value'] += float(asset.get('asset_value', 0) or 0)
+                except (ValueError, TypeError):
+                    pass
+            
             return JsonResponse({
                 'success': True,
                 'summary': {
                     'total_count': summary['total_count'],
                     'status_breakdown': summary['status_breakdown'],
-                    'type_breakdown': summary['type_breakdown']
-                }
-                # ບໍ່ສົ່ງ raw_data ໃນ summary
+                    'type_breakdown': summary['type_breakdown'],
+                    'total_asset_value': total_asset_value,
+                    'depreciation_methods': depreciation_info
+                },
+                'filters': {
+                    'asset_type_id': asset_type_id,
+                    'start_date': start_date_str,
+                    'end_date': end_date_str
+                },
+                'message': f'ສະຫຼຸບຂໍ້ມູນຊັບສິນ {summary["total_count"]} ລາຍການ'
+                # ບໍ່ສົ່ງ raw_data ໃນ summary ເພື່ອປົກປ້ອງຂະໜາດ response
             })
             
         except Exception as e:
+            logger.error(f"Error in AssetSummaryView: {str(e)}", exc_info=True)
             return JsonResponse({
                 'success': False,
-                'error': str(e)
+                'error': f'ເກີດຂໍ້ຜິດພາດໃນລະບົບ: {str(e)}'
+            }, status=500)
+
+
+# ເພີ່ມ View ສຳລັບດຶງ Asset Types ແລະ Status options
+@method_decorator(csrf_exempt, name='dispatch')
+class AssetOptionsView(View):
+    """API View ສຳລັບດຶງ options ຕ່າງໆ ສຳລັບ dropdown"""
+    
+    def get(self, request):
+        try:
+            with connection.cursor() as cursor:
+                # ດຶງລາຍການ Asset Types
+                cursor.execute("""
+                    SELECT DISTINCT asset_type_id_id, asset_type_id_id as asset_type_name
+                    FROM SAMCSYS_fa_asset_lists 
+                    WHERE asset_type_id_id IS NOT NULL 
+                    ORDER BY asset_type_id_id
+                """)
+                
+                asset_types = []
+                for row in cursor.fetchall():
+                    asset_types.append({
+                        'id': row[0],
+                        'name': row[1]
+                    })
+                
+                # ດຶງລາຍການ Asset Status
+                cursor.execute("""
+                    SELECT DISTINCT asset_status, asset_status as status_name
+                    FROM SAMCSYS_fa_asset_lists 
+                    WHERE asset_status IS NOT NULL 
+                    ORDER BY asset_status
+                """)
+                
+                asset_statuses = []
+                for row in cursor.fetchall():
+                    asset_statuses.append({
+                        'id': row[0],
+                        'name': row[1]
+                    })
+            
+            return JsonResponse({
+                'success': True,
+                'options': {
+                    'asset_types': asset_types,
+                    'asset_statuses': asset_statuses
+                },
+                'message': f'ດຶງຕົວເລືອກສຳເລັດ: {len(asset_types)} ປະເພດ, {len(asset_statuses)} ສະຖານະ'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in AssetOptionsView: {str(e)}")
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດໃນການດຶງຕົວເລືອກ: {str(e)}'
             }, status=500)
 
 
@@ -28749,7 +29432,7 @@ def parse_date_parameter(date_string):
 # ===============================
 
 @method_decorator(csrf_exempt, name='dispatch')
-class AssetDepreciationReportView(View):
+class AssetDepreciationReportView1(View):
     """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ"""
     
     def get(self, request):
@@ -28979,3 +29662,364 @@ POST /api/assets/depreciation/ with JSON payload
     "filters": {...}
 }
 """
+from django.http import JsonResponse
+from django.views import View
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+def parse_date_parameter(date_str):
+    """
+    ປັບແຕ່ງ parameter ວັນທີ່ຢ່າງປອດໄພ
+    """
+    if not date_str or date_str.strip() == '':
+        return None
+    
+    try:
+        # ລອງຫຼາຍແບບ date format
+        date_formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%Y%m%d']
+        
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(date_str.strip(), fmt).date()
+            except ValueError:
+                continue
+                
+        # ຖ້າບໍ່ສາມາດ parse ໄດ້
+        logger.warning(f"Cannot parse date: {date_str}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error parsing date {date_str}: {str(e)}")
+        return None
+
+
+def safe_float_conversion(value, default=0.0):
+    """
+    ແປງຄ່າເປັນ float ຢ່າງປອດໄພ
+    """
+    if value is None or value == '':
+        return default
+    
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)
+        
+        # ຖ້າເປັນ string ໃຫ້ລົບ comma ແລະ space
+        if isinstance(value, str):
+            clean_value = value.replace(',', '').replace(' ', '')
+            return float(clean_value) if clean_value else default
+            
+        return float(value)
+    except (ValueError, TypeError):
+        logger.warning(f"Cannot convert to float: {value}, using default: {default}")
+        return default
+
+
+def group_depreciation_data_by_asset(data):
+    """
+    ຈັດກຸ່ມຂໍ້ມູນການຫຼຸດມູນຄ່າຕາມ asset_list_id (ປັບປຸງແລ້ວ)
+    """
+    from collections import defaultdict
+    
+    if not data:
+        return {}
+    
+    grouped = defaultdict(lambda: {
+        'asset_info': {},
+        'depreciation_records': [],
+        'summary': {}
+    })
+    
+    try:
+        for record in data:
+            # ກວດສອບວ່າ record ມີຂໍ້ມູນຄົບຖ້ວນບໍ່
+            if not isinstance(record, dict) or not record.get('asset_list_id'):
+                logger.warning(f"Invalid record structure: {record}")
+                continue
+                
+            asset_id = record['asset_list_id']
+            
+            # ຂໍ້ມູນພື້ນຖານຂອງຊັບສິນ (ເອົາຄັ້ງດຽວ)
+            if not grouped[asset_id]['asset_info']:
+                grouped[asset_id]['asset_info'] = {
+                    'asset_list_id': record.get('asset_list_id', ''),
+                    'asset_list_code': record.get('asset_list_code', ''),
+                    'asset_serial_no': record.get('asset_serial_no', ''),
+                    'asset_tag': record.get('asset_tag', ''),
+                    'asset_spec': record.get('asset_spec', ''),
+                    'asset_type_id': record.get('asset_type_id_id', record.get('asset_type_id', '')),
+                    'asset_location_id': record.get('asset_location_id_id', record.get('asset_location_id', '')),
+                    'asset_value': safe_float_conversion(record.get('asset_value', 0)),
+                    'asset_salvage_value': safe_float_conversion(record.get('asset_salvage_value', 0)),
+                    'asset_useful_life': record.get('asset_useful_life', 0),
+                    'dpca_type': record.get('dpca_type', ''),
+                    'dpca_percentage': safe_float_conversion(record.get('dpca_percentage', 0)),
+                    'dpca_start_date': record.get('dpca_start_date'),
+                    'dpca_end_date': record.get('dpca_end_date'),
+                    'asset_currency': record.get('asset_currency', ''),
+                    'asset_status': record.get('asset_status', '')
+                }
+            
+            # ຂໍ້ມູນການຫຼຸດມູນຄ່າແຕ່ລະເດືອນ
+            depreciation_record = {
+                'aldm_id': record.get('aldm_id', ''),
+                'dpca_year': record.get('dpca_year', 0),
+                'dpca_month': record.get('dpca_month', 0),
+                'dpca_date': record.get('dpca_date'),
+                'dpca_desc': record.get('dpca_desc', ''),
+                'dpca_value': safe_float_conversion(record.get('dpca_value', 0)),
+                'remaining_value': safe_float_conversion(record.get('remaining_value', 0)),
+                'accumulated_dpca': safe_float_conversion(record.get('accumulated_dpca', 0)),
+                'dpca_no_of_days': record.get('dpca_no_of_days', 0),
+                'dpca_ac_yesno': record.get('dpca_ac_yesno', ''),
+                'Auth_Status': record.get('Auth_Status', ''),
+                'Maker_Id': record.get('Maker_Id_id', record.get('Maker_Id', '')),
+                'Maker_DT_Stamp': record.get('Maker_DT_Stamp')
+            }
+            
+            grouped[asset_id]['depreciation_records'].append(depreciation_record)
+        
+        # ຄິດໄລ່ສະຫຼຸບສຳລັບແຕ່ລະຊັບສິນ
+        for asset_id, asset_data in grouped.items():
+            records = asset_data['depreciation_records']
+            
+            if not records:
+                continue
+            
+            # ຈັດເລຽງຕາມວັນທີ່ (ຖ້າມີ)
+            records_with_date = [r for r in records if r.get('dpca_date')]
+            if records_with_date:
+                try:
+                    records.sort(key=lambda x: x['dpca_date'] if x.get('dpca_date') else '')
+                except Exception as e:
+                    logger.warning(f"Cannot sort records by date: {str(e)}")
+            
+            # ຄິດໄລ່ສະຫຼຸບ
+            total_depreciation = sum(r['dpca_value'] for r in records if r['dpca_value'])
+            latest_remaining = records[-1]['remaining_value'] if records else 0
+            latest_accumulated = records[-1]['accumulated_dpca'] if records else 0
+            
+            asset_data['summary'] = {
+                'total_periods': len(records),
+                'total_depreciation_amount': total_depreciation,
+                'latest_remaining_value': latest_remaining,
+                'latest_accumulated_depreciation': latest_accumulated,
+                'first_depreciation_date': records[0]['dpca_date'] if records else None,
+                'last_depreciation_date': records[-1]['dpca_date'] if records else None,
+                'average_monthly_depreciation': total_depreciation / len(records) if records and total_depreciation > 0 else 0
+            }
+        
+        return dict(grouped)
+        
+    except Exception as e:
+        logger.error(f"Error in group_depreciation_data_by_asset: {str(e)}")
+        return {}
+
+
+def format_grouped_response(grouped_data):
+    """
+    ຈັດຮູບແບບ response ສຳລັບ API (ປັບປຸງແລ້ວ)
+    """
+    if not grouped_data:
+        return {
+            'success': True,
+            'grouped_by': 'asset_list_id',
+            'data': [],
+            'grand_totals': {
+                'total_assets': 0,
+                'total_depreciation_records': 0,
+                'total_depreciation_amount': 0.0,
+                'total_remaining_value': 0.0
+            }
+        }
+    
+    try:
+        formatted_assets = []
+        
+        for asset_id, asset_data in grouped_data.items():
+            formatted_asset = {
+                **asset_data['asset_info'],
+                'depreciation_schedule': asset_data['depreciation_records'],
+                'depreciation_summary': asset_data['summary']
+            }
+            formatted_assets.append(formatted_asset)
+        
+        # ຄິດໄລ່ສະຫຼຸບລວມທັງໝົດ
+        grand_totals = {
+            'total_assets': len(formatted_assets),
+            'total_depreciation_records': sum(len(asset.get('depreciation_schedule', [])) for asset in formatted_assets),
+            'total_depreciation_amount': sum(asset.get('depreciation_summary', {}).get('total_depreciation_amount', 0) for asset in formatted_assets),
+            'total_remaining_value': sum(asset.get('depreciation_summary', {}).get('latest_remaining_value', 0) for asset in formatted_assets)
+        }
+        
+        return {
+            'success': True,
+            'grouped_by': 'asset_list_id',
+            'data': formatted_assets,
+            'grand_totals': grand_totals
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in format_grouped_response: {str(e)}")
+        return {
+            'success': False,
+            'error': f'Error formatting response: {str(e)}',
+            'data': []
+        }
+
+
+def calculate_asset_totals(assets):
+    """
+    ຄິດໄລ່ຍອດລວມສຳລັບແບບບໍ່ຈັດກຸ່ມ
+    """
+    if not assets:
+        return {
+            'total_count': 0,
+            'total_asset_value': 0.0,
+            'total_depreciation_value': 0.0,
+            'total_remaining_value': 0.0,
+            'total_accumulated_depreciation': 0.0
+        }
+    
+    try:
+        return {
+            'total_count': len(assets),
+            'total_asset_value': sum(safe_float_conversion(asset.get('asset_value', 0)) for asset in assets),
+            'total_depreciation_value': sum(safe_float_conversion(asset.get('dpca_value', 0)) for asset in assets),
+            'total_remaining_value': sum(safe_float_conversion(asset.get('remaining_value', 0)) for asset in assets),
+            'total_accumulated_depreciation': sum(safe_float_conversion(asset.get('accumulated_dpca', 0)) for asset in assets)
+        }
+    except Exception as e:
+        logger.error(f"Error calculating totals: {str(e)}")
+        return {
+            'total_count': len(assets) if assets else 0,
+            'total_asset_value': 0.0,
+            'total_depreciation_value': 0.0,
+            'total_remaining_value': 0.0,
+            'total_accumulated_depreciation': 0.0
+        }
+
+
+# ສົມມຸດວ່າມີຟັງຊັນນີ້ຢູ່ແລ້ວ - ເພີ່ມ error handling
+def get_asset_depreciation_report(asset_list_id=None, division_id=None, asset_type_id=None, 
+                                asset_status=None, start_date=None, end_date=None):
+    """
+    ເອີ້ນ Stored Procedure ເພື່ອດຶງຂໍ້ມູນ
+    """
+    try:
+        # ໃສ່ໂຄດເອີ້ນ stored procedure ຂອງທ່ານທີ່ນີ້
+        # ຕົວຢ່າງ:
+        from django.db import connection
+        
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                EXEC Asset_List_GetAllList_Depreciation_Monthly 
+                %s, %s, %s, %s, %s, %s
+            """, [asset_list_id, asset_type_id, asset_status, division_id, start_date, end_date])
+            
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in get_asset_depreciation_report: {str(e)}")
+        return []
+
+
+class AssetDepreciationReportView(View):
+    """API View ສຳລັບບົດລາຍງານການຫຼຸດມູນຄ່າຊັບສິນ - ເວີຊັນປັບປຸງ"""
+    
+    def get(self, request):
+        try:
+           
+            asset_list_id = request.GET.get('asset_list_id', '').strip()
+            asset_type_id = request.GET.get('asset_type_id', '').strip() or request.GET.get('type', '').strip()
+            division_id = request.GET.get('division_id', '').strip()
+            asset_status = request.GET.get('asset_status', '').strip() or request.GET.get('status', '').strip()
+            start_date_str = request.GET.get('start_date', '').strip() or request.GET.get('start', '').strip()
+            end_date_str = request.GET.get('end_date', '').strip() or request.GET.get('end', '').strip()
+            group_by = request.GET.get('group_by', 'asset').strip().lower()
+            
+            # ປັບແຕ່ງ empty strings ເປັນ None
+            asset_list_id = asset_list_id if asset_list_id else None
+            asset_type_id = asset_type_id if asset_type_id else None
+            division_id = division_id if division_id else None
+            asset_status = asset_status if asset_status else None
+            
+            # ປັບແຕ່ງວັນທີ່
+            start_date = parse_date_parameter(start_date_str)
+            end_date = parse_date_parameter(end_date_str)
+            
+            logger.info(f"Asset depreciation request - Filters: asset_id={asset_list_id}, "
+                       f"type={asset_type_id}, status={asset_status}, division={division_id}, "
+                       f"dates={start_date} to {end_date}, group_by={group_by}")
+            
+            # ດຶງຂໍ້ມູນຈາກ Stored Procedure
+            assets = get_asset_depreciation_report(
+                asset_list_id=asset_list_id,
+                division_id=division_id,
+                asset_type_id=asset_type_id,
+                asset_status=asset_status,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            logger.info(f"Retrieved {len(assets)} records from database")
+            
+            
+            if group_by == 'asset' and assets:
+                grouped_data = group_depreciation_data_by_asset(assets)
+                response_data = format_grouped_response(grouped_data)
+                
+                response_data.update({
+                    'filters': {
+                        'asset_list_id': asset_list_id,
+                        'asset_type_id': asset_type_id,
+                        'asset_status': asset_status,
+                        'start_date': start_date_str,
+                        'division_id': division_id,
+                        'end_date': end_date_str,
+                        'group_by': group_by
+                    },
+                    'message': f'ພົບຂໍ້ມູນ {len(grouped_data)} ຊັບສິນ'
+                })
+                
+                return JsonResponse(response_data)
+            
+          
+            else:
+                totals = calculate_asset_totals(assets)
+                return JsonResponse({
+                    'success': True,
+                    'data': assets,
+                    'totals': totals,
+                    'filters': {
+                        'asset_list_id': asset_list_id,
+                        'asset_type_id': asset_type_id,
+                        'asset_status': asset_status,
+                        'division_id': division_id,
+                        'start_date': start_date_str,
+                        'end_date': end_date_str,
+                        'group_by': group_by or 'none'
+                    },
+                    'message': f'ພົບຂໍ້ມູນ {len(assets)} ລາຍການ'
+                })
+                
+        except Exception as e:
+            logger.error(f"Error in AssetDepreciationReportView: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດໃນລະບົບ: {str(e)}',
+                'data': [],
+                'message': 'ກະລຸນາກວດສອບ log ສຳລັບລາຍລະອຽດ'
+            }, status=500)
+    
+    def post(self, request):
+        """ສຳລັບ POST request ຖ້າຈຳເປັນ"""
+        return JsonResponse({
+            'success': False,
+            'error': 'Method not allowed. Use GET request.'
+        }, status=405)
