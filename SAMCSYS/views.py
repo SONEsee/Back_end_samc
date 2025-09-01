@@ -8392,11 +8392,24 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
+        
+        # ຄົ້ນຫາດ້ວຍ asset_list_id
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
-        return queryset
         
+        # ຄົ້ນຫາດ້ວຍ gain_loss
+        gain_loss = self.request.query_params.get('gain_loss')
+        if gain_loss:
+            queryset = queryset.filter(gain_loss=gain_loss)
+        
+        # ຄົ້ນຫາດ້ວຍ disposal_type
+        disposal_type = self.request.query_params.get('disposal_type')
+        if disposal_type:
+            queryset = queryset.filter(disposal_type=disposal_type)
+            
+        return queryset
+    
     def perform_create(self, serializer):
         user = self.request.user
         instance = serializer.save(
@@ -8433,23 +8446,6 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 # ຖ້າມີ error ກໍ່ຜ່ານໄປ
                 print(f"Error updating asset status: {e}")
-                pass
-
-    def perform_update(self, serializer):
-        user = self.request.user
-        instance = serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-        
-        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
-        if instance.asset_list_id:
-            try:
-                asset_list = FA_Asset_Lists.objects.get(id=instance.asset_list_id)
-                asset_list.asset_status = 'DS'
-                asset_list.save()
-            except FA_Asset_Lists.DoesNotExist:
-                # ຖ້າບໍ່ເຈົ້າ record ໃນ FA_Asset_Lists ກໍ່ຜ່ານໄປ
                 pass
 
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
