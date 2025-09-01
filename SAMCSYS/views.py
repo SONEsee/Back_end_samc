@@ -8392,11 +8392,24 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
+        
+        # ຄົ້ນຫາດ້ວຍ asset_list_id
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
-        return queryset
         
+        # ຄົ້ນຫາດ້ວຍ gain_loss
+        gain_loss = self.request.query_params.get('gain_loss')
+        if gain_loss:
+            queryset = queryset.filter(gain_loss=gain_loss)
+        
+        # ຄົ້ນຫາດ້ວຍ disposal_type
+        disposal_type = self.request.query_params.get('disposal_type')
+        if disposal_type:
+            queryset = queryset.filter(disposal_type=disposal_type)
+            
+        return queryset
+    
     def perform_create(self, serializer):
         user = self.request.user
         instance = serializer.save(
@@ -8433,23 +8446,6 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 # ຖ້າມີ error ກໍ່ຜ່ານໄປ
                 print(f"Error updating asset status: {e}")
-                pass
-
-    def perform_update(self, serializer):
-        user = self.request.user
-        instance = serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-        
-        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
-        if instance.asset_list_id:
-            try:
-                asset_list = FA_Asset_Lists.objects.get(id=instance.asset_list_id)
-                asset_list.asset_status = 'DS'
-                asset_list.save()
-            except FA_Asset_Lists.DoesNotExist:
-                # ຖ້າບໍ່ເຈົ້າ record ໃນ FA_Asset_Lists ກໍ່ຜ່ານໄປ
                 pass
 
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
@@ -28590,6 +28586,249 @@ def trial_balance_dairy_view(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+#  Store Procedure Journal Report 
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+def run_journal_report_proc(financial_cycle_id=None, period_code_id=None, 
+                           date_start=None, date_end=None, module_id=None):
+    """
+    Execute the EndOfDay_GetList stored procedure for journal reports
+    
+    Args:
+        financial_cycle_id (str): Financial cycle ID
+        period_code_id (str): Period code ID
+        date_start (str): Start date in YYYY-MM-DD format
+        date_end (str): End date in YYYY-MM-DD format
+        module_id (str): Module ID
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC [dbo].[EndOfDay_GetList]
+                    @financial_cycle_id = %s,
+                    @period_code_id = %s,
+                    @startDate = %s,
+                    @Enddate = %s,
+                    @module_id = %s
+            """
+            
+            cursor.execute(sql, [financial_cycle_id, period_code_id, date_start, date_end, module_id])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing journal report procedure: {str(e)}")
+        raise
+
+
+def validate_date_format(date_string: str) -> bool:
+    """
+    Validate date format (YYYY-MM-DD)
+    
+    Args:
+        date_string (str): Date string to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not date_string:
+        return True  # Allow None/empty dates
+    try:
+        datetime.strptime(date_string, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+
+def validate_date_range(date_start: str, date_end: str) -> bool:
+    """
+    Validate that start date is before or equal to end date
+    
+    Args:
+        date_start (str): Start date
+        date_end (str): End date
+    
+    Returns:
+        bool: True if valid range, False otherwise
+    """
+    if not date_start or not date_end:
+        return True  # Allow None dates
+    try:
+        start = datetime.strptime(date_start, '%Y-%m-%d')
+        end = datetime.strptime(date_end, '%Y-%m-%d')
+        return start <= end
+    except ValueError:
+        return False
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def journal_report_view(request):
+    """
+    API endpoint for journal reports using EndOfDay_GetList stored procedure
+    
+    Expected payload:
+    {
+        "financial_cycle_id": "2024", // optional
+        "period_code_id": "202401",   // optional
+        "date_start": "2024-01-01",   // optional
+        "date_end": "2024-01-31",     // optional
+        "module_id": "ACC"            // optional
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "count": number_of_records,
+        "data": [journal_records]
+    }
+    """
+    # Extract parameters from request (all optional)
+    financial_cycle_id = request.data.get("financial_cycle_id")
+    period_code_id = request.data.get("period_code_id")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+    module_id = request.data.get("module_id")
+    
+    # Validate date formats if provided
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date range if both dates provided
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[JournalReport] Executing procedure - Cycle: {financial_cycle_id}, Period: {period_code_id}, Dates: {date_start} to {date_end}, Module: {module_id}")
+        
+        # Execute stored procedure
+        result = run_journal_report_proc(
+            financial_cycle_id=financial_cycle_id,
+            period_code_id=period_code_id,
+            date_start=date_start,
+            date_end=date_end,
+            module_id=module_id
+        )
+        
+        logger.info(f"[JournalReport] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນລາຍງານສໍາເລັດແລ້ວ",
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[JournalReport] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ມີຂໍ້ຜິດພາດໃນລະບົບ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def journal_report_get_view(request):
+    """
+    GET version of journal report endpoint with query parameters
+    
+    URL: /api/journal-report/?financial_cycle_id=2024&date_start=2024-01-01&date_end=2024-01-31
+    """
+    # Extract parameters from query params
+    financial_cycle_id = request.query_params.get("financial_cycle_id")
+    period_code_id = request.query_params.get("period_code_id")
+    date_start = request.query_params.get("date_start")
+    date_end = request.query_params.get("date_end")
+    module_id = request.query_params.get("module_id")
+    
+    # Same validation as POST
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[JournalReport-GET] Executing procedure - Cycle: {financial_cycle_id}, Period: {period_code_id}, Dates: {date_start} to {date_end}, Module: {module_id}")
+        
+        # Execute stored procedure
+        result = run_journal_report_proc(
+            financial_cycle_id=financial_cycle_id,
+            period_code_id=period_code_id,
+            date_start=date_start,
+            date_end=date_end,
+            module_id=module_id
+        )
+        
+        logger.info(f"[JournalReport-GET] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນລາຍງານສໍາເລັດແລ້ວ",
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[JournalReport-GET] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ມີຂໍ້ຜິດພາດໃນລະບົບ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # sone__________________________________________________________________________________________________________________________________________________________________________
 from django.http import JsonResponse
