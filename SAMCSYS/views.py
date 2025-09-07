@@ -8150,6 +8150,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from django.db.models import F, Case, When, IntegerField
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.db import connection
+import logging
+
+logger = logging.getLogger(__name__)
+
 class FAAssetListViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListSerializer
     permission_classes = [IsAuthenticated]
@@ -8164,6 +8174,9 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
         asset_type_id = self.request.query_params.get('asset_type_id')
         asset_status = self.request.query_params.get('asset_status')
         Auth_Status = self.request.query_params.get('Auth_Status')
+        
+        # ເພີ່ມພາລາມິເຕີຫໃໝ່ສຳລັບການກອງຕາມອາຍຸການໃຊ້ງານ
+        useful_life_status = self.request.query_params.get('useful_life_status')
 
         if asset_tag:
             filters['asset_tag'] = asset_tag
@@ -8177,8 +8190,59 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
         if filters:
             queryset = queryset.filter(**filters)
 
+        # ການກອງຕາມອາຍຸການໃຊ້ງານ
+        if useful_life_status:
+            if useful_life_status == 'expired':
+                # ຄົບກຳນົດ: C_dpac >= (asset_useful_life * 12)
+                queryset = queryset.filter(C_dpac__gte=F('asset_useful_life') * 12)
+            elif useful_life_status == 'not_expired':
+                # ບໍ່ຄົບກຳນົດ: C_dpac < (asset_useful_life * 12)
+                queryset = queryset.filter(C_dpac__lt=F('asset_useful_life') * 12)
+
         return queryset
 
+    def get_queryset_with_useful_life_annotation(self):
+        """
+        ເວີຊັນທີ່ເພີ່ມ annotation ເພື່ອສະແດງສະຖານະອາຍຸການໃຊ້ງານ
+        """
+        queryset = FA_Asset_Lists.objects.select_related(
+            'asset_type_id', 'asset_location_id', 'supplier_id', 'division'
+        ).annotate(
+            useful_life_months=F('asset_useful_life') * 12,
+            is_expired=Case(
+                When(C_dpac__gte=F('asset_useful_life') * 12, then=True),
+                default=False,
+                output_field=IntegerField()
+            ),
+            remaining_months=F('asset_useful_life') * 12 - F('C_dpac')
+        ).order_by('asset_list_id')
+
+        filters = {}
+        asset_tag = self.request.query_params.get('asset_tag')
+        asset_type_id = self.request.query_params.get('asset_type_id')
+        asset_status = self.request.query_params.get('asset_status')
+        Auth_Status = self.request.query_params.get('Auth_Status')
+        useful_life_status = self.request.query_params.get('useful_life_status')
+
+        if asset_tag:
+            filters['asset_tag'] = asset_tag
+        if asset_type_id:
+            filters['asset_type_id'] = asset_type_id
+        if asset_status:
+            filters['asset_status'] = asset_status
+        if Auth_Status:
+            filters['Auth_Status'] = Auth_Status
+
+        if filters:
+            queryset = queryset.filter(**filters)
+
+        if useful_life_status:
+            if useful_life_status == 'expired':
+                queryset = queryset.filter(is_expired=True)
+            elif useful_life_status == 'not_expired':
+                queryset = queryset.filter(is_expired=False)
+
+        return queryset
 
     @action(detail=False, methods=['post'], url_path='generate-next-code')
     def generate_next_code(self, request):
@@ -8219,6 +8283,47 @@ class FAAssetListViewSet(viewsets.ModelViewSet):
                 'error': 'Database error',
                 'detail': str(e),
                 'success': False
+            }, status=500)
+
+    @action(detail=False, methods=['get'], url_path='useful-life-summary')
+    def useful_life_summary(self, request):
+        """
+        ສະຫຼຸບຂໍ້ມູນອາຍຸການໃຊ້ງານຂອງຊັບສິນ
+        """
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total_assets,
+                        SUM(CASE WHEN C_dpac >= (asset_useful_life * 12) THEN 1 ELSE 0 END) as expired_count,
+                        SUM(CASE WHEN C_dpac < (asset_useful_life * 12) THEN 1 ELSE 0 END) as not_expired_count
+                    FROM FA_Asset_Lists 
+                    WHERE asset_useful_life IS NOT NULL AND C_dpac IS NOT NULL
+                """)
+                
+                result = cursor.fetchone()
+                
+                if result:
+                    total, expired, not_expired = result
+                    return Response({
+                        'total_assets': total or 0,
+                        'expired_assets': expired or 0,
+                        'not_expired_assets': not_expired or 0,
+                        'expired_percentage': round((expired / total * 100) if total > 0 else 0, 2)
+                    })
+                else:
+                    return Response({
+                        'total_assets': 0,
+                        'expired_assets': 0,
+                        'not_expired_assets': 0,
+                        'expired_percentage': 0
+                    })
+                
+        except Exception as e:
+            logger.error(f"Useful life summary error: {str(e)}")
+            return Response({
+                'error': 'Database error',
+                'detail': str(e)
             }, status=500)
 # class FADepreciationMainViewSet(viewsets.ModelViewSet):
 #     serializer_class = FADepreciationMainSerializer
@@ -8392,11 +8497,24 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
+        
+        # ຄົ້ນຫາດ້ວຍ asset_list_id
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
-        return queryset
         
+        # ຄົ້ນຫາດ້ວຍ gain_loss
+        gain_loss = self.request.query_params.get('gain_loss')
+        if gain_loss:
+            queryset = queryset.filter(gain_loss=gain_loss)
+        
+        # ຄົ້ນຫາດ້ວຍ disposal_type
+        disposal_type = self.request.query_params.get('disposal_type')
+        if disposal_type:
+            queryset = queryset.filter(disposal_type=disposal_type)
+            
+        return queryset
+    
     def perform_create(self, serializer):
         user = self.request.user
         instance = serializer.save(
@@ -8433,23 +8551,6 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 # ຖ້າມີ error ກໍ່ຜ່ານໄປ
                 print(f"Error updating asset status: {e}")
-                pass
-
-    def perform_update(self, serializer):
-        user = self.request.user
-        instance = serializer.save(
-            Checker_Id=user,
-            Checker_DT_Stamp=timezone.now()
-        )
-        
-        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
-        if instance.asset_list_id:
-            try:
-                asset_list = FA_Asset_Lists.objects.get(id=instance.asset_list_id)
-                asset_list.asset_status = 'DS'
-                asset_list.save()
-            except FA_Asset_Lists.DoesNotExist:
-                # ຖ້າບໍ່ເຈົ້າ record ໃນ FA_Asset_Lists ກໍ່ຜ່ານໄປ
                 pass
 
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
