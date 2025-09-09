@@ -8498,17 +8498,17 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
         
-        # ຄົ້ນຫາດ້ວຍ asset_list_id
+       
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
         
-        # ຄົ້ນຫາດ້ວຍ gain_loss
+      
         gain_loss = self.request.query_params.get('gain_loss')
         if gain_loss:
             queryset = queryset.filter(gain_loss=gain_loss)
         
-        # ຄົ້ນຫາດ້ວຍ disposal_type
+       
         disposal_type = self.request.query_params.get('disposal_type')
         if disposal_type:
             queryset = queryset.filter(disposal_type=disposal_type)
@@ -8522,15 +8522,15 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             Maker_DT_Stamp=timezone.now()
         )
         
-        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+       
         if instance.asset_list_id:
             try:
-                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+               
                 asset_list = instance.asset_list_id
                 asset_list.asset_status = 'DS'
                 asset_list.save()
             except Exception as e:
-                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+                
                 print(f"Error updating asset status: {e}")
                 pass
     
@@ -8541,15 +8541,15 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
         
-        # ອັບເດດ asset_status ເປັນ 'DS' ໃນຕາຕະລາງ FA_Asset_Lists
+       
         if instance.asset_list_id:
             try:
-                # ເຂົ້າເຖິງຜ່ານ ForeignKey relationship
+               
                 asset_list = instance.asset_list_id
                 asset_list.asset_status = 'DS'
                 asset_list.save()
             except Exception as e:
-                # ຖ້າມີ error ກໍ່ຜ່ານໄປ
+               
                 print(f"Error updating asset status: {e}")
                 pass
 
@@ -19183,9 +19183,9 @@ def balance_sheet_acc_view(request):
     }
     """
     # Extract parameters from request
+    period_code_id = request.data.get("period_code_id")
     segment = request.data.get("segment")
     currency = request.data.get("currency")
-    period_code_id = request.data.get("period_code_id")  # <-- ADD THIS LINE
     
     # Validate required parameters
     if not segment or not currency:
@@ -21759,14 +21759,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: str):
+def run_income_statement_acc_proc(segment: str, currency: str):
     """
     Execute the income statement ACC stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-        period_code_id (str): Period code ID
     
     Returns:
         list: Query results as list of dictionaries
@@ -21777,12 +21776,11 @@ def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: s
             sql = """
                 EXEC dbo.incomestatement_acc_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s,
-                    @period_code_id = %s
+                    @currency = %s
             """
-
-            cursor.execute(sql, [segment, currency, period_code_id])
-
+            
+            cursor.execute(sql, [segment, currency])
+            
             # Get column names
             columns = [col[0] for col in cursor.description]
             
@@ -21795,14 +21793,14 @@ def run_income_statement_acc_proc(segment: str, currency: str, period_code_id: s
         logger.error(f"Error executing income statement ACC procedure: {str(e)}")
         raise
 
-def run_income_statement_mfi_proc(segment: str, currency: str, period_code_id: str):
+def run_income_statement_mfi_proc(segment: str, currency: str):
     """
     Execute the income statement MFI stored procedure
     
     Args:
         segment (str): FCY or LCY
         currency (str): Currency code (LAK, USD, THB, etc.)
-        period_code_id (str): Period code ID
+    
     Returns:
         list: Query results as list of dictionaries
     """
@@ -21812,12 +21810,11 @@ def run_income_statement_mfi_proc(segment: str, currency: str, period_code_id: s
             sql = """
                 EXEC dbo.incomestatement_mfi_By_Currency_And_Consolidated
                     @segment = %s,
-                    @currency = %s,
-                    @period_code_id = %s
+                    @currency = %s
             """
-
-            cursor.execute(sql, [segment, currency, period_code_id])
-
+            
+            cursor.execute(sql, [segment, currency])
+            
             # Get column names
             columns = [col[0] for col in cursor.description]
             
@@ -21868,24 +21865,6 @@ def validate_currency_code(currency_code: str) -> bool:
     
     return currency_code.upper() in allowed_currencies
 
-def validate_period_code(period_code: str):
-    """
-    Validate period code format (YYYYMM)
-    Args:
-        period_code (str): Period code to validate
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    if not period_code or not isinstance(period_code, str):
-        return False
-    # Check length based on stored procedure nvarchar(10)
-    if len(period_code) > 6:
-        return False
-    # Check format (YYYYMM)
-    if not re.match(r'^\d{6}$', period_code):
-        return False
-    return True
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def income_statement_acc_view(request):
@@ -21896,7 +21875,6 @@ def income_statement_acc_view(request):
     {
         "segment": "FCY|LCY",
         "currency": "LAK|USD|THB|etc"
-        "period_code_id": "YYYYMM"
     }
     
     Returns:
@@ -21913,13 +21891,12 @@ def income_statement_acc_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
-    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency or not period_code_id:
+    if not segment or not currency:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແລະ period_code_id ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency and period_code_id are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -21944,13 +21921,13 @@ def income_statement_acc_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[IncomeStatement-ACC] Executing procedure for segment={segment}, currency={currency}, period_code_id={period_code_id}")
+        logger.info(f"[IncomeStatement-ACC] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_income_statement_acc_proc(segment, currency, period_code_id)
-
-        logger.info(f"[IncomeStatement-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period Code ID: {period_code_id}, Records: {len(result)}")
-
+        result = run_income_statement_acc_proc(segment, currency)
+        
+        logger.info(f"[IncomeStatement-ACC] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
+        
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
         
@@ -21959,7 +21936,6 @@ def income_statement_acc_view(request):
             "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ ACC ສຳລັບ {display_currency} ສຳເລັດ (Income statement ACC data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
-            "period_code_id": period_code_id,
             "type": "ACC",
             "display_currency": display_currency,
             "count": len(result),
@@ -22001,13 +21977,12 @@ def income_statement_mfi_view(request):
     # Extract parameters from request
     segment = request.data.get("segment")
     currency = request.data.get("currency")
-    period_code_id = request.data.get("period_code_id")
     
     # Validate required parameters
-    if not segment or not currency or not period_code_id:
+    if not segment or not currency:
         return Response({
             "status": "error",
-            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແລະ period_code_id ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency and period_code_id are required)",
+            "message": "ບໍ່ມີຂໍ້ມູນທີ່ຈຳເປັນ: segment ແລະ currency ແມ່ນຕ້ອງການ (Missing required parameters: segment and currency are required)",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -22032,12 +22007,12 @@ def income_statement_mfi_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[IncomeStatement-MFI] Executing procedure for segment={segment}, currency={currency}, period_code_id={period_code_id}")
+        logger.info(f"[IncomeStatement-MFI] Executing procedure for segment={segment}, currency={currency}")
         
         # Execute stored procedure
-        result = run_income_statement_mfi_proc(segment, currency, period_code_id)
-
-        logger.info(f"[IncomeStatement-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Period Code ID: {period_code_id}, Records: {len(result)}")
+        result = run_income_statement_mfi_proc(segment, currency)
+        
+        logger.info(f"[IncomeStatement-MFI] Procedure completed successfully. Segment: {segment}, Currency: {currency}, Records: {len(result)}")
         
         # Determine display message based on segment
         display_currency = f"{currency} (FCY)" if segment == 'FCY' else f"LAK (ທຽບເທົ່າ)"
@@ -22047,7 +22022,6 @@ def income_statement_mfi_view(request):
             "message": f"ດຶງຂໍ້ມູນງົບກຳໄລຂາດທຸນ MFI ສຳລັບ {display_currency} ສຳເລັດ (Income statement MFI data retrieved successfully - {display_currency})",
             "segment": segment,
             "currency": currency,
-            "period_code_id": period_code_id,
             "type": "MFI",
             "display_currency": display_currency,
             "count": len(result),
@@ -24042,8 +24016,7 @@ def execute_eom_function(eom_function, user, processing_date=None, is_back_date=
         eom_function_mapping = {
             # 'FN010': lambda eom_func, usr: execute_eom_balancesheet_reports(eom_func, usr, processing_date),     # Balance Sheet Reports
             # 'FN010': lambda eom_func, usr: execute_eom_incomestatement_reports(eom_func, usr, processing_date), # Income Statement Reports
-            # 'FN007': lambda eom_func, usr: execute_both_reports(eom_func, usr, processing_date),
-            'FN007': lambda eom_func, usr, proc_date: execute_both_reports(eom_func, usr, proc_date),
+            'FN007': lambda eom_func, usr: execute_both_reports(eom_func, usr, processing_date),
             # Add more EOM function mappings as needed
         }
 
@@ -24057,6 +24030,7 @@ def execute_eom_function(eom_function, user, processing_date=None, is_back_date=
     except Exception as e:
         logger.error(f"Error executing EOM function {function_id}: {str(e)}", exc_info=True)
         return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ EOM {function_id}: {str(e)}"
+
 
 def execute_both_reports(eom_function, user, processing_date):
     # Call balance sheet first
@@ -24083,16 +24057,16 @@ def execute_eom_balancesheet_reports(eom_function, user, processing_date=None):
         
         # Convert to string format if it's a date object
         if isinstance(processing_date, date):
-            # Use the current month, first day (e.g., 2025-08-01 for August)
-            first_day_of_month = processing_date.replace(day=1)
-            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
+            # Get first day of the year from processing date
+            first_day_of_year = processing_date.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
         else:
-            # Parse the date and get first day of current month
+            # Parse the date and get first day of year
             date_obj = datetime.strptime(str(processing_date), '%Y-%m-%d').date()
-            first_day_of_month = date_obj.replace(day=1)
-            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
+            first_day_of_year = date_obj.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
         
-        logger.info(f"[FN007] Starting Balance Sheet Reports for date_end: {date_end_str}")
+        logger.info(f"[FN003] Starting Balance Sheet Reports for date_end: {date_end_str}")
         
         # Create request-like object for the bulk_insert functions
         class MockRequest:
@@ -24111,53 +24085,53 @@ def execute_eom_balancesheet_reports(eom_function, user, processing_date=None):
         
         # Execute Balance Sheet ACC
         try:
-            logger.info("[FN007] Processing Balance Sheet ACC...")
+            logger.info("[FN003] Processing Balance Sheet ACC...")
             result_acc = bulk_insert_monthly_balancesheet_acc_internal(mock_request)
             if result_acc.get('status') == 'success':
                 acc_inserted = result_acc.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += acc_inserted
                 reports_completed.append(f"Balance Sheet ACC: {acc_inserted} records")
-                logger.info(f"[FN007] Balance Sheet ACC completed: {acc_inserted} records")
+                logger.info(f"[FN003] Balance Sheet ACC completed: {acc_inserted} records")
             else:
                 acc_failed = result_acc.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += acc_failed
                 reports_failed.append(f"Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
-                logger.error(f"[FN007] Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
+                logger.error(f"[FN003] Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Balance Sheet ACC error: {str(e)}")
-            logger.error(f"[FN007] Balance Sheet ACC error: {str(e)}")
+            logger.error(f"[FN003] Balance Sheet ACC error: {str(e)}")
         
         # Execute Balance Sheet MFI
         try:
-            logger.info("[FN007] Processing Balance Sheet MFI...")
+            logger.info("[FN003] Processing Balance Sheet MFI...")
             result_mfi = bulk_insert_monthly_balancesheet_mfi_internal(mock_request)
             if result_mfi.get('status') == 'success':
                 mfi_inserted = result_mfi.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += mfi_inserted
                 reports_completed.append(f"Balance Sheet MFI: {mfi_inserted} records")
-                logger.info(f"[FN007] Balance Sheet MFI completed: {mfi_inserted} records")
+                logger.info(f"[FN003] Balance Sheet MFI completed: {mfi_inserted} records")
             else:
                 mfi_failed = result_mfi.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += mfi_failed
                 reports_failed.append(f"Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
-                logger.error(f"[FN007] Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
+                logger.error(f"[FN003] Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Balance Sheet MFI error: {str(e)}")
-            logger.error(f"[FN007] Balance Sheet MFI error: {str(e)}")
+            logger.error(f"[FN003] Balance Sheet MFI error: {str(e)}")
         
         # Prepare result message
         if reports_failed:
-            message = f"FN007 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
+            message = f"FN003 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
             logger.warning(f"[FN003] Partial success for {date_end_str}: {total_inserted} inserted, errors: {len(reports_failed)}")
             return len(reports_completed) > 0, message
         else:
-            message = f"FN007 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
-            logger.info(f"[FN007] Completed successfully for {date_end_str}: {total_inserted} total records")
+            message = f"FN003 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
+            logger.info(f"[FN003] Completed successfully for {date_end_str}: {total_inserted} total records")
             return True, message
             
     except Exception as e:
-        logger.error(f"[FN007] Error in EOM execution: {str(e)}", exc_info=True)
-        return False, f"FN007 ຂໍ້ຜິດພາດ: {str(e)}"
+        logger.error(f"[FN003] Error in EOM execution: {str(e)}", exc_info=True)
+        return False, f"FN003 ຂໍ້ຜິດພາດ: {str(e)}"
 
 
 def execute_eom_incomestatement_reports(eom_function, user, processing_date=None):
@@ -24172,14 +24146,14 @@ def execute_eom_incomestatement_reports(eom_function, user, processing_date=None
         
         # Convert to string format if it's a date object
         if isinstance(processing_date, date):
-            # Use the current month, first day (e.g., 2025-08-01 for August)
-            first_day_of_month = processing_date.replace(day=1)
-            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
+            # Get first day of the year from processing date
+            first_day_of_year = processing_date.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
         else:
-            # Parse the date and get first day of current month
+            # Parse the date and get first day of year
             date_obj = datetime.strptime(str(processing_date), '%Y-%m-%d').date()
-            first_day_of_month = date_obj.replace(day=1)
-            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
+            first_day_of_year = date_obj.replace(month=1, day=1)
+            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
         
         logger.info(f"[FN002] Starting Income Statement Reports for date_end: {date_end_str}")
         
@@ -24200,53 +24174,53 @@ def execute_eom_incomestatement_reports(eom_function, user, processing_date=None
         
         # Execute Income Statement ACC
         try:
-            logger.info("[FN007] Processing Income Statement ACC...")
+            logger.info("[FN002] Processing Income Statement ACC...")
             result_acc = bulk_insert_monthly_incomestatement_acc_internal(mock_request)
             if result_acc.get('status') == 'success':
                 acc_inserted = result_acc.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += acc_inserted
                 reports_completed.append(f"Income Statement ACC: {acc_inserted} records")
-                logger.info(f"[FN007] Income Statement ACC completed: {acc_inserted} records")
+                logger.info(f"[FN002] Income Statement ACC completed: {acc_inserted} records")
             else:
                 acc_failed = result_acc.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += acc_failed
                 reports_failed.append(f"Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
-                logger.error(f"[FN007] Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
+                logger.error(f"[FN002] Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Income Statement ACC error: {str(e)}")
-            logger.error(f"[FN007] Income Statement ACC error: {str(e)}")
+            logger.error(f"[FN002] Income Statement ACC error: {str(e)}")
         
         # Execute Income Statement MFI
         try:
-            logger.info("[FN007] Processing Income Statement MFI...")
+            logger.info("[FN002] Processing Income Statement MFI...")
             result_mfi = bulk_insert_monthly_incomestatement_mfi_internal(mock_request)
             if result_mfi.get('status') == 'success':
                 mfi_inserted = result_mfi.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += mfi_inserted
                 reports_completed.append(f"Income Statement MFI: {mfi_inserted} records")
-                logger.info(f"[FN007] Income Statement MFI completed: {mfi_inserted} records")
+                logger.info(f"[FN002] Income Statement MFI completed: {mfi_inserted} records")
             else:
                 mfi_failed = result_mfi.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += mfi_failed
                 reports_failed.append(f"Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
-                logger.error(f"[FN007] Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
+                logger.error(f"[FN002] Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Income Statement MFI error: {str(e)}")
-            logger.error(f"[FN007] Income Statement MFI error: {str(e)}")
+            logger.error(f"[FN002] Income Statement MFI error: {str(e)}")
         
         # Prepare result message
         if reports_failed:
-            message = f"FN007 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
+            message = f"FN002 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
             logger.warning(f"[FN002] Partial success for {date_end_str}: {total_inserted} inserted, errors: {len(reports_failed)}")
             return len(reports_completed) > 0, message
         else:
-            message = f"FN007 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
-            logger.info(f"[FN007] Completed successfully for {date_end_str}: {total_inserted} total records")
+            message = f"FN002 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
+            logger.info(f"[FN002] Completed successfully for {date_end_str}: {total_inserted} total records")
             return True, message
             
     except Exception as e:
-        logger.error(f"[FN007] Error in EOM execution: {str(e)}", exc_info=True)
-        return False, f"FN007 ຂໍ້ຜິດພາດ: {str(e)}"
+        logger.error(f"[FN002] Error in EOM execution: {str(e)}", exc_info=True)
+        return False, f"FN002 ຂໍ້ຜິດພາດ: {str(e)}"
 
 
 # Internal functions for Balance Sheet and Income Statement (you'll need to add these based on your existing functions)
@@ -30150,3 +30124,42 @@ class AssetDepreciationReportView(View):
             'success': False,
             'error': 'Method not allowed. Use GET request.'
         }, status=405)
+
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from .models import STTB_Dates
+
+def get_latest_eod_date(request):
+    """
+    ດຶງຂໍ້ມູນ date_id ໃຫຍ່ທີ່ສຸດທີ່ມີ eod_time = 'Y'
+    """
+    try:
+        # ຄົ້ນຫາ record ທີ່ມີ eod_time = 'Y' ແລະ date_id ໃຫຍ່ທີ່ສຸດ
+        latest_record = STTB_Dates.objects.filter(eod_time='Y').order_by('-date_id').first()
+        
+        if latest_record:
+            data = {
+                'success': True,
+                'data': {
+                    'date_id': latest_record.date_id,
+                    'start_date': latest_record.Start_Date.isoformat() if latest_record.Start_Date else None,
+                    'prev_working_day': latest_record.prev_Working_Day.isoformat() if latest_record.prev_Working_Day else None,
+                    'next_working_day': latest_record.next_working_Day.isoformat() if latest_record.next_working_Day else None,
+                    'eod_time': latest_record.eod_time
+                }
+            }
+        else:
+            data = {
+                'success': False,
+                'message': 'ບໍ່ພົບຂໍ້ມູນທີ່ມີ eod_time = Y',
+                'data': None
+            }
+            
+        return JsonResponse(data)
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}',
+            'data': None
+        }, status=500)
