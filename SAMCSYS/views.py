@@ -20362,6 +20362,439 @@ def get_gltype_lookup_dict():
 
 
 
+# from django.db import transaction, connection
+# from django.http import JsonResponse
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from rest_framework import status
+# from datetime import datetime, date
+# import logging
+# import re
+
+# logger = logging.getLogger(__name__)
+
+# # EOD Integration Function for FN007
+# def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
+#     """
+#     Execute FN007: Somtop Trial Balancesheet for EOD processing.
+#     This function integrates with the EOD system to use the current processing date.
+#     """
+#     try:
+#         # Get current processing date from system or use provided date
+#         if not processing_date:
+#             processing_date = date.today()
+        
+#         # Convert to string format if it's a date object
+#         if isinstance(processing_date, date):
+#             date_str = processing_date.strftime('%Y-%m-%d')
+#         else:
+#             date_str = str(processing_date)
+
+
+#         logger.info(f"[FN007] Starting Somtop Trial Balancesheet for processing date: {date_str}")
+        
+#         # Auto-calculate period_code and fin_year from processing date
+#         processing_date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+#         period_code = processing_date_obj.strftime('%Y%m')
+#         fin_year = processing_date_obj.strftime('%Y')
+        
+#         # Create request-like object for the bulk_insert function
+#         class MockRequest:
+#             def __init__(self, user, date_str, period_code, fin_year):
+#                 self.user = user
+#                 self.data = {
+#                     'date_start': date_str,
+#                     'date_end': date_str,
+#                     'period_code': period_code,
+#                     'fin_year': fin_year,
+#                     'category': 'TRIAL_BALANCE'
+#                 }
+        
+#         mock_request = MockRequest(user, date_str, period_code, fin_year)
+        
+#         # Execute the bulk insert function
+#         result = bulk_insert_somtop_trial_balancesheet_internal(mock_request)
+        
+#         if result.get('status') == 'success':
+#             message = f"FN007 ສຳເລັດ: {result.get('statistics', {}).get('totals', {}).get('inserted', 0)} ລາຍການ"
+#             logger.info(f"[FN007] Completed successfully for {date_str}")
+#             return True, message
+#         else:
+#             error_message = result.get('message', 'Unknown error')
+#             logger.error(f"[FN007] Failed for {date_str}: {error_message}")
+#             return False, f"FN007 ຜິດພາດ: {error_message}"
+            
+#     except Exception as e:
+#         logger.error(f"[FN007] Error in EOD execution: {str(e)}", exc_info=True)
+#         return False, f"FN007 ຂໍ້ຜິດພາດ: {str(e)}"
+
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def bulk_insert_somtop_trial_balancesheet(request):
+#     """
+#     API endpoint for bulk inserting Somtop Trial Balancesheet.
+#     This is the public API that can be called directly or through EOD processing.
+#     """
+#     result = bulk_insert_somtop_trial_balancesheet_internal(request)
+    
+#     if result['status'] == 'success':
+#         return Response(result, status=status.HTTP_201_CREATED)
+#     else:
+#         return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# def bulk_insert_somtop_trial_balancesheet_internal(request):
+#     """
+#     Internal function for bulk inserting Somtop Trial Balancesheet.
+#     This can be called by both the API endpoint and EOD processing.
+    
+#     Expected payload in request.data:
+#     {
+#         "date_start": "YYYY-MM-DD",
+#         "date_end": "YYYY-MM-DD",
+#         "fin_year": "2025",
+#         "period_code": "202508",
+#         "category": "TRIAL_BALANCE"
+#     }
+#     """
+#     try:
+#         # Validate request data
+#         date_start = request.data.get("date_start")
+#         date_end = request.data.get("date_end")
+#         fin_year = request.data.get("fin_year", "2025")
+#         period_code = request.data.get("period_code", "")
+#         default_category = request.data.get("category", "TRIAL_BALANCE")
+
+#         if not all([date_start, date_end]):
+#             return {
+#                 'status': 'error',
+#                 'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
+#             }
+
+#         # Date validation
+#         try:
+#             start_date_obj = datetime.strptime(date_start, '%Y-%m-%d').date()
+#             end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
+            
+#             if start_date_obj > end_date_obj:
+#                 return {
+#                     'status': 'error',
+#                     'message': 'ວັນທີເລີ່ມຕົ້ນຕ້ອງນ້ອຍກວ່າວັນທີສິ້ນສຸດ (Start date must be before end date)'
+#                 }
+                
+#         except ValueError:
+#             return {
+#                 'status': 'error',
+#                 'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
+#             }
+
+#         logger.info(f"[BulkInsertSomtopTrialBalancesheet] Starting bulk insert operation from {date_start} to {date_end}")
+
+#         # Statistics tracking
+#         stats = {
+#             'cleared_records': 0,
+#             'fcy_records_fetched': 0,
+#             'fcy_records_inserted': 0,
+#             'fcy_records_failed': 0,
+#             'lcy_records_fetched': 0,
+#             'lcy_records_inserted': 0,
+#             'lcy_records_failed': 0,
+#             'total_inserted': 0,
+#             'total_failed': 0
+#         }
+        
+#         failed_records = []
+#         created_records = []
+
+#         # Create glType lookup dictionary for performance
+#         logger.info("Creating glType lookup dictionary...")
+#         gltype_lookup = get_gltype_lookup_dict()
+#         logger.info(f"glType lookup created with {len(gltype_lookup)} mappings")
+
+#         # Get related objects once
+#         ccy_objects = {}
+#         fin_year_obj = None
+#         period_obj = None
+
+#         try:
+#             if fin_year:
+#                 from .models import MTTB_Fin_Cycle  # Replace with actual import
+#                 fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
+#         except Exception as e:
+#             logger.warning(f"Financial year {fin_year} not found: {str(e)}")
+
+#         try:
+#             if period_code:
+#                 from .models import MTTB_Per_Code  # Replace with actual import
+#                 period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
+#         except Exception as e:
+#             logger.warning(f"Period code {period_code} not found: {str(e)}")
+
+#         with transaction.atomic():
+#             # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data
+#             try:
+#                 from .models import STTB_Somtop_Trial_Balancesheet  # Replace with actual import
+#                 logger.info("Clearing existing STTB_Somtop_Trial_Balancesheet data...")
+#                 stats['cleared_records'] = STTB_Somtop_Trial_Balancesheet.objects.all().count()
+#                 STTB_Somtop_Trial_Balancesheet.objects.all().delete()
+#                 logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
+                
+#             except Exception as e:
+#                 logger.error(f"Error clearing STTB_Somtop_Trial_Balancesheet data: {str(e)}")
+#                 return {
+#                     'status': 'error',
+#                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
+#                 }
+
+#             # Step 2: Execute FCY stored procedure and insert FCY data
+#             logger.info("Executing FCY afterEOC stored procedure...")
+#             try:
+#                 with connection.cursor() as cursor:
+#                     fcy_query = """
+#                         EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy_afterEOC
+#                             @DateStart = %s,
+#                             @DateEnd = %s
+#                     """
+#                     cursor.execute(fcy_query, [date_start, date_end])
+#                     fcy_columns = [col[0] for col in cursor.description]
+#                     fcy_results = [dict(zip(fcy_columns, row)) for row in cursor.fetchall()]
+
+#                 stats['fcy_records_fetched'] = len(fcy_results)
+#                 logger.info(f"FCY afterEOC stored procedure completed. Rows fetched: {stats['fcy_records_fetched']}")
+
+#                 # Insert FCY data
+#                 for index, item in enumerate(fcy_results):
+#                     try:
+#                         gl_code = item.get('GL', '')
+#                         currency_code = item.get('Currency', '')
+                        
+#                         # Get or create currency object
+#                         if currency_code and currency_code not in ccy_objects:
+#                             try:
+#                                 from .models import MTTB_Ccy_DEFN  # Replace with actual import
+#                                 ccy_objects[currency_code] = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
+#                             except Exception:
+#                                 logger.warning(f"Currency {currency_code} not found")
+#                                 ccy_objects[currency_code] = None
+
+#                         # Determine glType
+#                         record_gltype = default_category
+#                         if gl_code and re.search(r'\.0', str(gl_code)):
+#                             record_gltype = '6'
+#                         else:
+#                             lookup_gltype = gltype_lookup.get(gl_code)
+#                             if lookup_gltype:
+#                                 record_gltype = lookup_gltype
+#                             else:
+#                                 direct_gltype = get_gltype_from_gl_code(gl_code)
+#                                 if direct_gltype:
+#                                     record_gltype = direct_gltype
+
+#                         # Create STTB_Somtop_Trial_Balancesheet record with FCY data
+#                         somtop_report = STTB_Somtop_Trial_Balancesheet(
+#                             gl_code=gl_code,
+#                             Desc=item.get('_Desc', ''),
+#                             CCy_Code=ccy_objects.get(currency_code),
+#                             Fin_year=fin_year_obj,
+#                             Period_code=period_obj,
+#                             Category=record_gltype,
+#                             StartDate=start_date_obj,
+#                             EndDate=end_date_obj,
+#                             OP_DR=safe_decimal_convert(item.get('Opening_Dr_FCY', 0)),
+#                             OP_CR=safe_decimal_convert(item.get('Opening_Cr_FCY', 0)),
+#                             Mo_DR=safe_decimal_convert(item.get('Flow_Dr_FCY', 0)),
+#                             Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_FCY', 0)),
+#                             C1_DR=safe_decimal_convert(item.get('Closing_Dr_FCY', 0)),
+#                             C1_CR=safe_decimal_convert(item.get('Closing_Cr_FCY', 0)),
+#                             OP_DR_lcy=safe_decimal_convert(0),
+#                             OP_CR_lcy=safe_decimal_convert(0),
+#                             Mo_DR_lcy=safe_decimal_convert(0),
+#                             Mo_Cr_lcy=safe_decimal_convert(0),
+#                             C1_DR_lcy=safe_decimal_convert(0),
+#                             C1_CR_lcy=safe_decimal_convert(0),
+#                             Maker_Id=request.user,
+#                             MSegment=item.get('MSegment', '')
+#                         )
+                        
+#                         somtop_report.full_clean()
+#                         somtop_report.save()
+                        
+#                         stats['fcy_records_inserted'] += 1
+#                         created_records.append({
+#                             'type': 'FCY',
+#                             'gl_code': gl_code,
+#                             'currency': currency_code,
+#                             'category': record_gltype
+#                         })
+                        
+#                     except Exception as e:
+#                         stats['fcy_records_failed'] += 1
+#                         error_msg = f"FCY record {index} error: {str(e)}"
+#                         logger.error(error_msg)
+#                         failed_records.append({
+#                             'type': 'FCY',
+#                             'index': index,
+#                             'gl_code': item.get('GL', 'Unknown'),
+#                             'currency': item.get('Currency', ''),
+#                             'error': error_msg
+#                         })
+
+#             except Exception as e:
+#                 logger.error(f"Error executing FCY afterEOC stored procedure: {str(e)}")
+#                 return {
+#                     'status': 'error',
+#                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ FCY afterEOC stored procedure: {str(e)}'
+#                 }
+
+#             # Step 3: Execute LCY stored procedure and insert LCY data
+#             logger.info("Executing LCY consolidated afterEOC stored procedure...")
+#             try:
+#                 with connection.cursor() as cursor:
+#                     lcy_query = """
+#                         EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy_afterEOC
+#                             @DateStart = %s,
+#                             @DateEnd = %s
+#                     """
+#                     cursor.execute(lcy_query, [date_start, date_end])
+#                     lcy_columns = [col[0] for col in cursor.description]
+#                     lcy_results = [dict(zip(lcy_columns, row)) for row in cursor.fetchall()]
+
+#                 stats['lcy_records_fetched'] = len(lcy_results)
+#                 logger.info(f"LCY consolidated afterEOC stored procedure completed. Rows fetched: {stats['lcy_records_fetched']}")
+
+#                 # Get LAK currency object
+#                 lak_ccy_obj = None
+#                 try:
+#                     from .models import MTTB_Ccy_DEFN  # Replace with actual import
+#                     lak_ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code='LAK')
+#                 except Exception:
+#                     logger.warning("LAK currency not found")
+
+#                 # Insert LCY data
+#                 for index, item in enumerate(lcy_results):
+#                     try:
+#                         gl_code = item.get('GL_Code', '')
+                        
+#                         # Determine glType
+#                         record_gltype = default_category
+#                         if gl_code and re.search(r'\.0', str(gl_code)):
+#                             record_gltype = '6'
+#                         else:
+#                             lookup_gltype = gltype_lookup.get(gl_code)
+#                             if lookup_gltype:
+#                                 record_gltype = lookup_gltype
+#                             else:
+#                                 direct_gltype = get_gltype_from_gl_code(gl_code)
+#                                 if direct_gltype:
+#                                     record_gltype = direct_gltype
+
+#                         # Create STTB_Somtop_Trial_Balancesheet record with LCY data
+#                         somtop_report = STTB_Somtop_Trial_Balancesheet(
+#                             gl_code=gl_code,
+#                             Desc=item.get('Description', ''),
+#                             CCy_Code=lak_ccy_obj,
+#                             Fin_year=fin_year_obj,
+#                             Period_code=period_obj,
+#                             Category=record_gltype,
+#                             StartDate=start_date_obj,
+#                             EndDate=end_date_obj,
+#                             OP_DR=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
+#                             OP_CR=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
+#                             Mo_DR=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
+#                             Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
+#                             C1_DR=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
+#                             C1_CR=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
+#                             OP_DR_lcy=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
+#                             OP_CR_lcy=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
+#                             Mo_DR_lcy=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
+#                             Mo_Cr_lcy=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
+#                             C1_DR_lcy=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
+#                             C1_CR_lcy=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
+#                             Maker_Id=request.user,
+#                             MSegment=item.get('MSegment', '')
+#                         )
+                        
+#                         somtop_report.full_clean()
+#                         somtop_report.save()
+                        
+#                         stats['lcy_records_inserted'] += 1
+#                         created_records.append({
+#                             'type': 'LCY',
+#                             'gl_code': gl_code,
+#                             'currency': 'LAK',
+#                             'category': record_gltype
+#                         })
+                        
+#                     except Exception as e:
+#                         stats['lcy_records_failed'] += 1
+#                         error_msg = f"LCY record {index} error: {str(e)}"
+#                         logger.error(error_msg)
+#                         failed_records.append({
+#                             'type': 'LCY',
+#                             'index': index,
+#                             'gl_code': item.get('GL_Code', 'Unknown'),
+#                             'currency': 'LAK',
+#                             'error': error_msg
+#                         })
+
+#             except Exception as e:
+#                 logger.error(f"Error executing LCY consolidated afterEOC stored procedure: {str(e)}")
+#                 return {
+#                     'status': 'error',
+#                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ LCY consolidated afterEOC stored procedure: {str(e)}'
+#                 }
+
+#         # Calculate totals
+#         stats['total_inserted'] = stats['fcy_records_inserted'] + stats['lcy_records_inserted']
+#         stats['total_failed'] = stats['fcy_records_failed'] + stats['lcy_records_failed']
+
+#         # Prepare response
+#         response_data = {
+#             'status': 'success',
+#             'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records)',
+#             'date_range': f"{date_start} to {date_end}",
+#             'statistics': {
+#                 'cleared_records': stats['cleared_records'],
+#                 'fcy_procedure': {
+#                     'fetched': stats['fcy_records_fetched'],
+#                     'inserted': stats['fcy_records_inserted'],
+#                     'failed': stats['fcy_records_failed']
+#                 },
+#                 'lcy_procedure': {
+#                     'fetched': stats['lcy_records_fetched'],
+#                     'inserted': stats['lcy_records_inserted'],
+#                     'failed': stats['lcy_records_failed']
+#                 },
+#                 'totals': {
+#                     'inserted': stats['total_inserted'],
+#                     'failed': stats['total_failed']
+#                 }
+#             },
+#             'sample_created_records': created_records[:5] if created_records else []
+#         }
+
+#         if failed_records:
+#             response_data['failed_records_sample'] = failed_records[:5]
+#             response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
+
+#         logger.info(f"Bulk insert Somtop Trial Balancesheet operation completed successfully:")
+#         logger.info(f"- Cleared: {stats['cleared_records']} records")
+#         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
+#         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
+#         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
+
+#         return response_data
+
+#     except Exception as e:
+#         logger.error(f"Bulk insert Somtop Trial Balancesheet error: {str(e)}")
+#         return {
+#             'status': 'error',
+#             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
+#         }
+
+
 from django.db import transaction, connection
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
@@ -20391,7 +20824,6 @@ def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
         else:
             date_str = str(processing_date)
 
-
         logger.info(f"[FN007] Starting Somtop Trial Balancesheet for processing date: {date_str}")
         
         # Auto-calculate period_code and fin_year from processing date
@@ -20404,8 +20836,8 @@ def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
             def __init__(self, user, date_str, period_code, fin_year):
                 self.user = user
                 self.data = {
-                    'date_start': date_str,
-                    'date_end': date_str,
+                    'date_start': date_str,  # Both start and end are same for EOD
+                    'date_end': date_str,    # Both start and end are same for EOD
                     'period_code': period_code,
                     'fin_year': fin_year,
                     'category': 'TRIAL_BALANCE'
@@ -20436,6 +20868,15 @@ def bulk_insert_somtop_trial_balancesheet(request):
     """
     API endpoint for bulk inserting Somtop Trial Balancesheet.
     This is the public API that can be called directly or through EOD processing.
+    
+    Expected POST body:
+    {
+        "date_start": "2025-09-01",
+        "date_end": "2025-09-08", 
+        "fin_year": "2025",
+        "period_code": "202509",
+        "category": "TRIAL_BALANCE"
+    }
     """
     result = bulk_insert_somtop_trial_balancesheet_internal(request)
     
@@ -20533,19 +20974,37 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
             logger.warning(f"Period code {period_code} not found: {str(e)}")
 
         with transaction.atomic():
-            # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data
+            # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data for the specific date range only
             try:
                 from .models import STTB_Somtop_Trial_Balancesheet  # Replace with actual import
-                logger.info("Clearing existing STTB_Somtop_Trial_Balancesheet data...")
-                stats['cleared_records'] = STTB_Somtop_Trial_Balancesheet.objects.all().count()
-                STTB_Somtop_Trial_Balancesheet.objects.all().delete()
-                logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
+                logger.info(f"Clearing existing STTB_Somtop_Trial_Balancesheet data for date range {date_start} to {date_end}...")
+                
+                # Build filter conditions for selective deletion
+                deletion_filters = {
+                    'StartDate__gte': start_date_obj,
+                    'EndDate__lte': end_date_obj
+                }
+                
+                # Add additional filters if provided
+                if fin_year_obj:
+                    deletion_filters['Fin_year'] = fin_year_obj
+                if period_obj:
+                    deletion_filters['Period_code'] = period_obj
+                
+                # Count records to be deleted before deletion
+                existing_records = STTB_Somtop_Trial_Balancesheet.objects.filter(**deletion_filters)
+                stats['cleared_records'] = existing_records.count()
+                
+                # Delete only matching records
+                existing_records.delete()
+                
+                logger.info(f"Successfully cleared {stats['cleared_records']} existing records for the specified date range")
                 
             except Exception as e:
                 logger.error(f"Error clearing STTB_Somtop_Trial_Balancesheet data: {str(e)}")
                 return {
                     'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data for date range)'
                 }
 
             # Step 2: Execute FCY stored procedure and insert FCY data
@@ -20753,7 +21212,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         # Prepare response
         response_data = {
             'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records)',
+            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າໃນຊ່ວງວັນທີ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} records for date range, inserted {stats["total_inserted"]} new records)',
             'date_range': f"{date_start} to {date_end}",
             'statistics': {
                 'cleared_records': stats['cleared_records'],
@@ -20780,7 +21239,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
             response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
 
         logger.info(f"Bulk insert Somtop Trial Balancesheet operation completed successfully:")
-        logger.info(f"- Cleared: {stats['cleared_records']} records")
+        logger.info(f"- Cleared: {stats['cleared_records']} records for date range {date_start} to {date_end}")
         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
@@ -20793,6 +21252,9 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }
+
+
+
 def execute_dairy_somtop_trailbalance(eod_function, user, processing_date=None):
     """
     Execute FN004: Dairy and Somtop Trail Balance for EOD processing.
