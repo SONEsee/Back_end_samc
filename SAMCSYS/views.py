@@ -24448,15 +24448,52 @@ def is_last_working_day_of_year(check_date=None):
     except Exception as e:
         logger.error(f"Error in is_last_working_day_of_month: {str(e)}")
         return False
+# def execute_eom_process(user, processing_date, is_back_date=False):
+#     """
+#     Execute all EOM functions in sequence for back-date or normal processing.
+#     """
+#     try:
+#         with transaction.atomic():
+#             # Get EOM functions from MTTB_EOC_MAINTAIN table
+#             eom_functions = MTTB_EOC_MAINTAIN.objects.filter(
+#                 eoc_type='EOM',  # End of Month functions
+#                 Auth_Status='A',
+#                 Record_Status='O'
+#             ).select_related('function_id').order_by('eoc_seq_no')
+
+#             if not eom_functions:
+#                 return False, "No active EOM functions found"
+
+#             total_executed = 0
+#             execution_results = []
+
+#             for eom_function in eom_functions:
+#                 func_success, func_message = execute_eom_function(eom_function, user, processing_date)
+#                 if not func_success:
+#                     return False, f"EOM Function {eom_function.function_id.description_la} failed: {func_message}"
+                    
+#                 total_executed += 1
+#                 execution_results.append({
+#                     'function': eom_function.function_id.description_la,
+#                     'status': 'success',
+#                     'message': func_message
+#                 })
+#                 logger.info(f"EOM Function {eom_function.function_id.function_id} executed successfully for {processing_date}")
+
+#             return True, f"Successfully executed {total_executed} EOM functions for {processing_date}"
+
+#     except Exception as e:
+#         logger.error(f"Error in EOM process execution: {str(e)}")
+#         return False, f"Error in EOM process execution: {str(e)}"
+
 def execute_eom_process(user, processing_date, is_back_date=False):
     """
-    Execute all EOM functions in sequence for back-date or normal processing.
+    Execute all EOM functions in sequence with simple logging.
     """
     try:
         with transaction.atomic():
-            # Get EOM functions from MTTB_EOC_MAINTAIN table
             eom_functions = MTTB_EOC_MAINTAIN.objects.filter(
-                eoc_type='EOM',  # End of Month functions
+                eoc_type='EOM',
                 Auth_Status='A',
                 Record_Status='O'
             ).select_related('function_id').order_by('eoc_seq_no')
@@ -24468,24 +24505,45 @@ def execute_eom_process(user, processing_date, is_back_date=False):
             execution_results = []
 
             for eom_function in eom_functions:
-                func_success, func_message = execute_eom_function(eom_function, user, processing_date)
-                if not func_success:
-                    return False, f"EOM Function {eom_function.function_id.description_la} failed: {func_message}"
+                # Create initial status log
+                status_log = create_eoc_status_log(
+                    eoc_function=eom_function,
+                    eoc_type='EOM',
+                    processing_date=processing_date,
+                    status='N'
+                )
+                
+                try:
+                    # Update status to Working
+                    update_eoc_status_log(status_log, 'W')
                     
-                total_executed += 1
-                execution_results.append({
-                    'function': eom_function.function_id.description_la,
-                    'status': 'success',
-                    'message': func_message
-                })
-                logger.info(f"EOM Function {eom_function.function_id.function_id} executed successfully for {processing_date}")
+                    func_success, func_message = execute_eom_function(eom_function, user, processing_date)
+                    
+                    if not func_success:
+                        # Update status to Error
+                        update_eoc_status_log(status_log, 'E', func_message)
+                        return False, f"EOM Function {eom_function.function_id.description_la} failed: {func_message}"
+                    
+                    # Update status to Completed
+                    update_eoc_status_log(status_log, 'C')
+                    
+                    total_executed += 1
+                    execution_results.append({
+                        'function': eom_function.function_id.description_la,
+                        'status': 'success',
+                        'message': func_message
+                    })
+                    logger.info(f"EOM Function {eom_function.function_id.function_id} executed successfully for {processing_date}")
+                    
+                except Exception as func_error:
+                    # Update status to Error
+                    update_eoc_status_log(status_log, 'E', str(func_error))
+                    raise func_error
 
             return True, f"Successfully executed {total_executed} EOM functions for {processing_date}"
 
     except Exception as e:
-        logger.error(f"Error in EOM process execution: {str(e)}")
         return False, f"Error in EOM process execution: {str(e)}"
-
 
 def execute_eom_function(eom_function, user, processing_date=None, is_back_date=False):
     """
