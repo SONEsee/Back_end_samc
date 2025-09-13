@@ -10107,7 +10107,7 @@ class EOCMaintainViewSet(viewsets.ModelViewSet):
     filterset_fields = ['eoc_type', 'Record_Status', 'Auth_Status', 'Once_Auth', 'module_id', 'function_id']
     search_fields = ['eoc_type', 'module_id__module_name', 'function_id__description_la']
     ordering_fields = ['eoc_id', 'eoc_seq_no', 'Maker_DT_Stamp', 'Checker_DT_Stamp']
-    ordering = ['eoc_seq_no', 'eoc_id']  # Changed to order by sequence first
+    ordering = ['Record_Status', 'eoc_type']  # Changed to order by sequence first
 
     def get_queryset(self):
         """Custom queryset with optimized joins"""
@@ -23699,7 +23699,7 @@ def validate_journal_approvals(processing_date):
 
 def execute_eod_process(user, processing_date, is_back_date=False):
     """
-    Execute all EOD functions in sequence for back-date or normal processing.
+    Execute all EOD functions in sequence with simple logging.
     """
     try:
         with transaction.atomic():
@@ -23716,23 +23716,45 @@ def execute_eod_process(user, processing_date, is_back_date=False):
             execution_results = []
 
             for eod_function in eod_functions:
-                func_success, func_message = execute_eod_function(eod_function, user, processing_date)
-                if not func_success:
-                    return False, f"Function {eod_function.function_id.description_la} failed: {func_message}"
-                total_executed += 1
-                execution_results.append({
-                    'function': eod_function.function_id.description_la,
-                    'status': 'success',
-                    'message': func_message
-                })
-                logger.info(f"EOD Function {eod_function.function_id.function_id} executed successfully for {processing_date}")
+                # Create initial status log
+                status_log = create_eoc_status_log(
+                    eoc_function=eod_function,
+                    eoc_type='EOD',
+                    processing_date=processing_date,
+                    status='N'
+                )
+                
+                try:
+                    # Update status to Working
+                    update_eoc_status_log(status_log, 'W')
+                    
+                    func_success, func_message = execute_eod_function(eod_function, user, processing_date)
+                    
+                    if not func_success:
+                        # Update status to Error
+                        update_eoc_status_log(status_log, 'E', func_message)
+                        return False, f"Function {eod_function.function_id.description_la} failed: {func_message}"
+                    
+                    # Update status to Completed
+                    update_eoc_status_log(status_log, 'C')
+                    
+                    total_executed += 1
+                    execution_results.append({
+                        'function': eod_function.function_id.description_la,
+                        'status': 'success',
+                        'message': func_message
+                    })
+                    logger.info(f"EOD Function {eod_function.function_id.function_id} executed successfully for {processing_date}")
+                    
+                except Exception as func_error:
+                    # Update status to Error
+                    update_eoc_status_log(status_log, 'E', str(func_error))
+                    raise func_error
 
             return True, f"Successfully executed {total_executed} EOD functions for {processing_date}"
 
     except Exception as e:
         return False, f"Error in EOD process execution: {str(e)}"
-
-
 
 def execute_eod_function(eod_function, user, processing_date=None, is_back_date=False):
     """
@@ -24061,17 +24083,17 @@ def create_eoc_status_log(eoc_function, eoc_type, processing_date, status='N'):
 
 def update_eoc_status_log(status_log, new_status, error_message=None):
     """
-    Update an existing EOC status log entry.
+    Simple function to update EOC status log.
     """
     try:
         if status_log:
             status_log.eoc_status = new_status
-            if error_message and new_status == 'E':
-                status_log.error = error_message[:550]  # Truncate to field limit
+            if error_message:
+                # Truncate error message to fit field length
+                status_log.error = error_message[:550] if len(error_message) > 550 else error_message
             status_log.save()
-            
-            logger.info(f"Updated EOC status log ID {status_log.eoc_stt_id} to status {new_status}")
-            
+            logger.info(f"Updated EOC status log {status_log.eoc_stt_id} to status {new_status}")
+        
     except Exception as e:
         logger.error(f"Error updating EOC status log: {str(e)}")
 
@@ -24478,7 +24500,8 @@ def execute_eom_function(eom_function, user, processing_date=None, is_back_date=
         eom_function_mapping = {
             # 'FN010': lambda eom_func, usr: execute_eom_balancesheet_reports(eom_func, usr, processing_date),     # Balance Sheet Reports
             # 'FN010': lambda eom_func, usr: execute_eom_incomestatement_reports(eom_func, usr, processing_date), # Income Statement Reports
-            'FN007': lambda eom_func, usr: execute_both_reports(eom_func, usr, processing_date),
+            # 'FN007': lambda eom_func, usr: execute_both_reports(eom_func, usr, processing_date),
+            'FN007': lambda eom_func, usr, proc_date: execute_both_reports(eom_func, usr, proc_date),
             # Add more EOM function mappings as needed
         }
 
@@ -24492,7 +24515,6 @@ def execute_eom_function(eom_function, user, processing_date=None, is_back_date=
     except Exception as e:
         logger.error(f"Error executing EOM function {function_id}: {str(e)}", exc_info=True)
         return False, f"ຂໍ້ຜິດພາດໃນການປະມວນຜົນ EOM {function_id}: {str(e)}"
-
 
 def execute_both_reports(eom_function, user, processing_date):
     # Call balance sheet first
@@ -24519,16 +24541,16 @@ def execute_eom_balancesheet_reports(eom_function, user, processing_date=None):
         
         # Convert to string format if it's a date object
         if isinstance(processing_date, date):
-            # Get first day of the year from processing date
-            first_day_of_year = processing_date.replace(month=1, day=1)
-            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+            # Use the current month, first day (e.g., 2025-08-01 for August)
+            first_day_of_month = processing_date.replace(day=1)
+            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
         else:
-            # Parse the date and get first day of year
+            # Parse the date and get first day of current month
             date_obj = datetime.strptime(str(processing_date), '%Y-%m-%d').date()
-            first_day_of_year = date_obj.replace(month=1, day=1)
-            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+            first_day_of_month = date_obj.replace(day=1)
+            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
         
-        logger.info(f"[FN003] Starting Balance Sheet Reports for date_end: {date_end_str}")
+        logger.info(f"[FN007] Starting Balance Sheet Reports for date_end: {date_end_str}")
         
         # Create request-like object for the bulk_insert functions
         class MockRequest:
@@ -24547,53 +24569,53 @@ def execute_eom_balancesheet_reports(eom_function, user, processing_date=None):
         
         # Execute Balance Sheet ACC
         try:
-            logger.info("[FN003] Processing Balance Sheet ACC...")
+            logger.info("[FN007] Processing Balance Sheet ACC...")
             result_acc = bulk_insert_monthly_balancesheet_acc_internal(mock_request)
             if result_acc.get('status') == 'success':
                 acc_inserted = result_acc.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += acc_inserted
                 reports_completed.append(f"Balance Sheet ACC: {acc_inserted} records")
-                logger.info(f"[FN003] Balance Sheet ACC completed: {acc_inserted} records")
+                logger.info(f"[FN007] Balance Sheet ACC completed: {acc_inserted} records")
             else:
                 acc_failed = result_acc.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += acc_failed
                 reports_failed.append(f"Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
-                logger.error(f"[FN003] Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
+                logger.error(f"[FN007] Balance Sheet ACC failed: {result_acc.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Balance Sheet ACC error: {str(e)}")
-            logger.error(f"[FN003] Balance Sheet ACC error: {str(e)}")
+            logger.error(f"[FN007] Balance Sheet ACC error: {str(e)}")
         
         # Execute Balance Sheet MFI
         try:
-            logger.info("[FN003] Processing Balance Sheet MFI...")
+            logger.info("[FN007] Processing Balance Sheet MFI...")
             result_mfi = bulk_insert_monthly_balancesheet_mfi_internal(mock_request)
             if result_mfi.get('status') == 'success':
                 mfi_inserted = result_mfi.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += mfi_inserted
                 reports_completed.append(f"Balance Sheet MFI: {mfi_inserted} records")
-                logger.info(f"[FN003] Balance Sheet MFI completed: {mfi_inserted} records")
+                logger.info(f"[FN007] Balance Sheet MFI completed: {mfi_inserted} records")
             else:
                 mfi_failed = result_mfi.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += mfi_failed
                 reports_failed.append(f"Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
-                logger.error(f"[FN003] Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
+                logger.error(f"[FN007] Balance Sheet MFI failed: {result_mfi.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Balance Sheet MFI error: {str(e)}")
-            logger.error(f"[FN003] Balance Sheet MFI error: {str(e)}")
+            logger.error(f"[FN007] Balance Sheet MFI error: {str(e)}")
         
         # Prepare result message
         if reports_failed:
-            message = f"FN003 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
+            message = f"FN007 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
             logger.warning(f"[FN003] Partial success for {date_end_str}: {total_inserted} inserted, errors: {len(reports_failed)}")
             return len(reports_completed) > 0, message
         else:
-            message = f"FN003 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
-            logger.info(f"[FN003] Completed successfully for {date_end_str}: {total_inserted} total records")
+            message = f"FN007 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
+            logger.info(f"[FN007] Completed successfully for {date_end_str}: {total_inserted} total records")
             return True, message
             
     except Exception as e:
-        logger.error(f"[FN003] Error in EOM execution: {str(e)}", exc_info=True)
-        return False, f"FN003 ຂໍ້ຜິດພາດ: {str(e)}"
+        logger.error(f"[FN007] Error in EOM execution: {str(e)}", exc_info=True)
+        return False, f"FN007 ຂໍ້ຜິດພາດ: {str(e)}"
 
 
 def execute_eom_incomestatement_reports(eom_function, user, processing_date=None):
@@ -24608,14 +24630,14 @@ def execute_eom_incomestatement_reports(eom_function, user, processing_date=None
         
         # Convert to string format if it's a date object
         if isinstance(processing_date, date):
-            # Get first day of the year from processing date
-            first_day_of_year = processing_date.replace(month=1, day=1)
-            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+            # Use the current month, first day (e.g., 2025-08-01 for August)
+            first_day_of_month = processing_date.replace(day=1)
+            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
         else:
-            # Parse the date and get first day of year
+            # Parse the date and get first day of current month
             date_obj = datetime.strptime(str(processing_date), '%Y-%m-%d').date()
-            first_day_of_year = date_obj.replace(month=1, day=1)
-            date_end_str = first_day_of_year.strftime('%Y-%m-%d')
+            first_day_of_month = date_obj.replace(day=1)
+            date_end_str = first_day_of_month.strftime('%Y-%m-%d')
         
         logger.info(f"[FN002] Starting Income Statement Reports for date_end: {date_end_str}")
         
@@ -24636,53 +24658,54 @@ def execute_eom_incomestatement_reports(eom_function, user, processing_date=None
         
         # Execute Income Statement ACC
         try:
-            logger.info("[FN002] Processing Income Statement ACC...")
+            logger.info("[FN007] Processing Income Statement ACC...")
             result_acc = bulk_insert_monthly_incomestatement_acc_internal(mock_request)
             if result_acc.get('status') == 'success':
                 acc_inserted = result_acc.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += acc_inserted
                 reports_completed.append(f"Income Statement ACC: {acc_inserted} records")
-                logger.info(f"[FN002] Income Statement ACC completed: {acc_inserted} records")
+                logger.info(f"[FN007] Income Statement ACC completed: {acc_inserted} records")
             else:
                 acc_failed = result_acc.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += acc_failed
                 reports_failed.append(f"Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
-                logger.error(f"[FN002] Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
+                logger.error(f"[FN007] Income Statement ACC failed: {result_acc.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Income Statement ACC error: {str(e)}")
-            logger.error(f"[FN002] Income Statement ACC error: {str(e)}")
+            logger.error(f"[FN007] Income Statement ACC error: {str(e)}")
         
         # Execute Income Statement MFI
         try:
-            logger.info("[FN002] Processing Income Statement MFI...")
+            logger.info("[FN007] Processing Income Statement MFI...")
             result_mfi = bulk_insert_monthly_incomestatement_mfi_internal(mock_request)
             if result_mfi.get('status') == 'success':
                 mfi_inserted = result_mfi.get('statistics', {}).get('totals', {}).get('inserted', 0)
                 total_inserted += mfi_inserted
                 reports_completed.append(f"Income Statement MFI: {mfi_inserted} records")
-                logger.info(f"[FN002] Income Statement MFI completed: {mfi_inserted} records")
+                logger.info(f"[FN007] Income Statement MFI completed: {mfi_inserted} records")
             else:
                 mfi_failed = result_mfi.get('statistics', {}).get('totals', {}).get('failed', 0)
                 total_failed += mfi_failed
                 reports_failed.append(f"Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
-                logger.error(f"[FN002] Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
+                logger.error(f"[FN007] Income Statement MFI failed: {result_mfi.get('message', 'Unknown error')}")
         except Exception as e:
             reports_failed.append(f"Income Statement MFI error: {str(e)}")
-            logger.error(f"[FN002] Income Statement MFI error: {str(e)}")
+            logger.error(f"[FN007] Income Statement MFI error: {str(e)}")
         
         # Prepare result message
         if reports_failed:
-            message = f"FN002 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
+            message = f"FN007 ບາງສ່ວນສຳເລັດ: {total_inserted} ລາຍການ. ຜິດພາດ: {', '.join(reports_failed)}"
             logger.warning(f"[FN002] Partial success for {date_end_str}: {total_inserted} inserted, errors: {len(reports_failed)}")
             return len(reports_completed) > 0, message
         else:
-            message = f"FN002 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
-            logger.info(f"[FN002] Completed successfully for {date_end_str}: {total_inserted} total records")
+            message = f"FN007 ສຳເລັດ: {total_inserted} ລາຍການ ({', '.join(reports_completed)})"
+            logger.info(f"[FN007] Completed successfully for {date_end_str}: {total_inserted} total records")
             return True, message
             
     except Exception as e:
-        logger.error(f"[FN002] Error in EOM execution: {str(e)}", exc_info=True)
-        return False, f"FN002 ຂໍ້ຜິດພາດ: {str(e)}"
+        logger.error(f"[FN007] Error in EOM execution: {str(e)}", exc_info=True)
+        return False, f"FN007 ຂໍ້ຜິດພາດ: {str(e)}"
+
 
 
 # Internal functions for Balance Sheet and Income Statement (you'll need to add these based on your existing functions)
