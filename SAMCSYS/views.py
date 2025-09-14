@@ -8883,7 +8883,8 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         """อัพเดท Journal Entries เมื่อแก้ไข"""
         try:
             
-
+            
+            # สร้าง entries ใหม่
             return self.create_journal_entries(disposal_instance, account_result)
             
         except Exception as e:
