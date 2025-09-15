@@ -717,7 +717,7 @@ class AssetTypeDetailSerializer(serializers.ModelSerializer):
 class AssetTypeDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = FA_Asset_Type
-        fields = ['type_code', 'type_name_la', 'type_name_en']
+        fields = ['type_code', 'type_name_la', 'type_name_en', 'is_tangible']
 
 class AssetListDetailsSerializer(serializers.ModelSerializer):
     class Meta:
