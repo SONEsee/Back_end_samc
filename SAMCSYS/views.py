@@ -3921,10 +3921,26 @@ def GLTreeAll(request, gl_code_id=None):
 
         gl_master = None
 
+        # ປ່ຽນຈາກ get_object_or_404 ເປັນການກວດສອບແບບປົກກະຕິ
         if gl_code_id:
-            gl_master = get_object_or_404(MTTB_GLMaster, glid=gl_code_id)
+            try:
+                gl_master = MTTB_GLMaster.objects.get(glid=gl_code_id)
+            except MTTB_GLMaster.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'message': f'GL Master with ID {gl_code_id} not found',
+                    'data': []
+                }, status=status.HTTP_200_OK)  # ປ່ຽນຈາກ 404 ເປັນ 200
+                
         elif gl_code_param:
-            gl_master = get_object_or_404(MTTB_GLMaster, gl_code=str(gl_code_param))
+            try:
+                gl_master = MTTB_GLMaster.objects.get(gl_code=str(gl_code_param))
+            except MTTB_GLMaster.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'message': f'GL Master with code "{gl_code_param}" not found',
+                    'data': []
+                }, status=status.HTTP_200_OK)  # ປ່ຽງຈາກ 404 ເປັນ 200
 
         # If either gl_code_id or gl_code was used, return filtered GLSub
         if gl_master:
@@ -3935,9 +3951,22 @@ def GLTreeAll(request, gl_code_id=None):
             if not glsub_records.exists():
                 return Response({
                     'success': False,
-                    'message': 'No GLSub records found for the provided GL code.',
+                    'message': f'No GLSub records found for GL code "{gl_master.gl_code}"',
+                    'gl_master_info': {
+                        'glid': gl_master.glid,
+                        'gl_code': gl_master.gl_code,
+                        'gl_Desc_en': gl_master.gl_Desc_en,
+                        'gl_Desc_la': gl_master.gl_Desc_la,
+                        'glType': gl_master.glType,
+                        'category': gl_master.category,
+                        'retal': gl_master.retal,
+                        'ccy_Res': getattr(gl_master.ccy_Res, 'ccy_code', gl_master.ccy_Res),
+                        'Res_ccy': getattr(gl_master.Res_ccy, 'ccy_code', gl_master.Res_ccy),
+                        'Record_Status': gl_master.Record_Status,
+                        'Auth_Status': gl_master.Auth_Status
+                    },
                     'data': []
-                }, status=status.HTTP_404_NOT_FOUND)
+                }, status=status.HTTP_200_OK)  # ປ່ຽນຈາກ 404 ເປັນ 200
 
             serializer = GLSubSerializer(glsub_records, many=True)
 
@@ -3968,7 +3997,7 @@ def GLTreeAll(request, gl_code_id=None):
                 'success': False,
                 'message': 'No GLSub records found in the system',
                 'data': []
-            }, status=status.HTTP_404_NOT_FOUND)
+            }, status=status.HTTP_200_OK)  # ປ່ຽນຈາກ 404 ເປັນ 200
 
         gl_master_groups = defaultdict(list)
         for glsub in glsub_records:
@@ -4007,20 +4036,12 @@ def GLTreeAll(request, gl_code_id=None):
             'data': tree_data
         }, status=status.HTTP_200_OK)
 
-    except MTTB_GLMaster.DoesNotExist:
-        return Response({
-            'success': False,
-            'message': 'GL Master not found',
-            'data': []
-        }, status=status.HTTP_404_NOT_FOUND)
-
     except Exception as e:
         return Response({
             'success': False,
             'message': f'An error occurred: {str(e)}',
             'data': []
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8491,6 +8512,73 @@ class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
     
+# class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
+#     serializer_class = FAAssetListDisposalSerializer
+#     permission_classes = [IsAuthenticated]
+    
+#     def get_queryset(self):
+#         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
+        
+       
+#         asset_list_id = self.request.query_params.get('asset_list_id')
+#         if asset_list_id:
+#             queryset = queryset.filter(asset_list_id=asset_list_id)
+        
+      
+#         gain_loss = self.request.query_params.get('gain_loss')
+#         if gain_loss:
+#             queryset = queryset.filter(gain_loss=gain_loss)
+        
+       
+#         disposal_type = self.request.query_params.get('disposal_type')
+#         if disposal_type:
+#             queryset = queryset.filter(disposal_type=disposal_type)
+            
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         user = self.request.user
+#         instance = serializer.save(
+#             Maker_Id=user,
+#             Maker_DT_Stamp=timezone.now()
+#         )
+        
+       
+#         if instance.asset_list_id:
+#             try:
+               
+#                 asset_list = instance.asset_list_id
+#                 asset_list.asset_status = 'DS'
+#                 asset_list.save()
+#             except Exception as e:
+                
+#                 print(f"Error updating asset status: {e}")
+#                 pass
+    
+#     def perform_update(self, serializer):
+#         user = self.request.user
+#         instance = serializer.save(
+#             Checker_Id=user,
+#             Checker_DT_Stamp=timezone.now()
+#         )
+        
+       
+#         if instance.asset_list_id:
+#             try:
+               
+#                 asset_list = instance.asset_list_id
+#                 asset_list.asset_status = 'DS'
+#                 asset_list.save()
+#             except Exception as e:
+               
+#                 print(f"Error updating asset status: {e}")
+#                 pass
+from django.utils import timezone
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
+
+
 class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDisposalSerializer
     permission_classes = [IsAuthenticated]
@@ -8498,17 +8586,14 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
         
-       
         asset_list_id = self.request.query_params.get('asset_list_id')
         if asset_list_id:
             queryset = queryset.filter(asset_list_id=asset_list_id)
         
-      
         gain_loss = self.request.query_params.get('gain_loss')
         if gain_loss:
             queryset = queryset.filter(gain_loss=gain_loss)
         
-       
         disposal_type = self.request.query_params.get('disposal_type')
         if disposal_type:
             queryset = queryset.filter(disposal_type=disposal_type)
@@ -8516,43 +8601,306 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
+        """ສ້າງການຊຳລະສະສາງຊັບສິນໃໝ່"""
         user = self.request.user
+        
+        print("=== DEBUG Asset Disposal Create ===")
+        print(f"Request data keys: {list(self.request.data.keys())}")
+        
+        # ປະມວນຜົນບັນຊີກ່ອນບັນທຶກ
+        disposal_data = dict(self.request.data)
+        account_result = self.process_disposal_accounts(disposal_data)
+        
+        # ບັນທຶກຂໍ້ມູນການຖອນ
         instance = serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now()
         )
         
-       
-        if instance.asset_list_id:
-            try:
-               
-                asset_list = instance.asset_list_id
-                asset_list.asset_status = 'DS'
-                asset_list.save()
-            except Exception as e:
-                
-                print(f"Error updating asset status: {e}")
-                pass
+        # ປ່ຽນສະຖານະຊັບສິນເປັນ Disposed
+        self.update_asset_status(instance)
+        
+        # ສ້າງ Journal Entries
+        if account_result['success']:
+            journal_result = self.create_journal_entries(instance, account_result)
+            if journal_result['success']:
+                print(f"Journal entries created: {len(journal_result['entries'])} entries")
+            else:
+                print(f"Journal creation error: {journal_result['error']}")
+        else:
+            print(f"Account processing error: {account_result['error']}")
     
     def perform_update(self, serializer):
+        """ອັບເດດການຊຳລະສະສາງຊັບສິນ"""
         user = self.request.user
+        
+        disposal_data = dict(self.request.data)
+        account_result = self.process_disposal_accounts(disposal_data)
+        
         instance = serializer.save(
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
         
-       
-        if instance.asset_list_id:
-            try:
-               
-                asset_list = instance.asset_list_id
-                asset_list.asset_status = 'DS'
-                asset_list.save()
-            except Exception as e:
-               
-                print(f"Error updating asset status: {e}")
-                pass
+        self.update_asset_status(instance)
+        
+        if account_result['success']:
+            journal_result = self.update_journal_entries(instance, account_result)
+            if journal_result['success']:
+                print("Journal entries updated successfully")
+    
+    def update_asset_status(self, disposal_instance):
+        """ປ່ຽນສະຖານະຊັບສິນເປັນ Disposed"""
+        try:
+            if disposal_instance.asset_list_id:
+                asset = disposal_instance.asset_list_id
+                asset.asset_status = 'DS'
+                asset.save()
+                print(f"Asset status updated to DS: {asset}")
+        except Exception as e:
+            print(f"Error updating asset status: {e}")
+    
+    def process_disposal_accounts(self, disposal_data):
+        """
+        ປະມວນຜົນບັນຊີຕາມຫຼັກການ:
+        1. ແຍກຕົວເລກຈາກ dps_account ເປັນ 3 ໂຕ
+        2. ຄົ້ນຫາໃນ MTTB_GLSub ດ້ວຍ 3 ໂຕ + asset_list_code
+        3. ສຳລັບບັນຊີ 450xxx, 550xxx ໃຊ້ gain_loss_account ຕົງໆ
+        4. ຈັບຄູ່ບັນຊີເປັນຄູ່ 2 ໂຕ
+        """
+        try:
+            dps_account = disposal_data.get('dps_account')
+            asset_list_code = disposal_data.get('asset_list_code')
+            gain_loss_account = disposal_data.get('gain_loss_account', '').strip()
+            
+            print(f"Processing accounts: dps_account='{dps_account}', asset_code='{asset_list_code}'")
+            
+            if not dps_account or not asset_list_code:
+                return {
+                    'success': False,
+                    'error': 'dps_account และ asset_list_code จำเป็นต้องมี'
+                }
+            
+            # แยกบัญชีจาก dps_account
+            account_list = dps_account.split('|')
+            
+            if len(account_list) % 2 != 0:
+                return {
+                    'success': False,
+                    'error': f'dps_account ต้องมีจำนวนบัญชีเป็นคู่, ได้รับ {len(account_list)}'
+                }
+            
+            processed_accounts = []
+            
+            # ประมวลผลแต่ละบัญชี
+            for account in account_list:
+                print(f"ປະມວນຜົນບັນຊີ: '{account}'")
+                
+                # เอาแต่ตัวเลขและตัดให้เหลือ 3 ตัว
+                digits_only = ''.join([c for c in account if c.isdigit()])
+                account_3digit = digits_only[:3] if len(digits_only) >= 3 else digits_only.ljust(3, '0')
+                
+                print(f"ປ່ຽນ '{account}' -> digits: '{digits_only}' -> 3digit: '{account_3digit}'")
+                
+                # ตรวจสอบว่าเป็นบัญชีกำไร/ขาดทุน
+                if account_3digit in ['450', '550'] and gain_loss_account:
+                    processed_account = gain_loss_account
+                    print(f"ໃຊ້ gain_loss_account: {processed_account}")
+                else:
+                    # ค้นหาใน MTTB_GLSub
+                    processed_account = self.find_account_in_glsub(account_3digit, asset_list_code)
+                
+                # ຖ້າບໍ່ພົບບັນຊີໃຫ້ຂ້າມ
+                if processed_account is None:
+                    print(f"❌ ບໍ່ພົບບັນຊີສຳລັບ '{account}' - ຂ້າມບັນຊີນີ້")
+                    continue
+                    
+                processed_accounts.append(processed_account)
+            
+            # ກວດສອບວ່າມີບັນຊີທີ່ພົບແລ້ວພໍສຳລັບການຈັບຄູ່ບໍ່
+            if len(processed_accounts) % 2 != 0:
+                print(f"⚠️ ບັນຊີທີ່ພົບມີ {len(processed_accounts)} ໂຕ ບໍ່ສາມາດຈັບຄູ່ໄດ້")
+                return {
+                    'success': False,
+                    'error': f'ບັນຊີທີ່ພົບມີ {len(processed_accounts)} ໂຕ ບໍ່ສາມາດຈັບຄູ່ໄດ້ (ຕ້ອງເປັນຄູ່)'
+                }
+            
+            # จัดคู่บัญชี
+            account_pairs = []
+            for i in range(0, len(processed_accounts), 2):
+                pair = {
+                    "pair_number": (i // 2) + 1,
+                    "debit_account": processed_accounts[i],
+                    "credit_account": processed_accounts[i + 1],
+                    "debit_original": account_list[i],
+                    "credit_original": account_list[i + 1]
+                }
+                account_pairs.append(pair)
+                print(f"ຄູ່ທີ {pair['pair_number']}: ({pair['debit_account']}, {pair['credit_account']})")
+            
+            return {
+                'success': True,
+                'total_pairs': len(account_pairs),
+                'account_pairs': account_pairs,
+                'processed_accounts': processed_accounts,
+                'original_accounts': account_list
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'ຂໍ້ຜິດພາດໃນການປະມວນຜົນບັນຊີ: {str(e)}'
+            }
+    
+    def find_account_in_glsub(self, account_prefix, asset_list_code):
+        """
+        ຄົ້ນຫາບັນຊີໃນ MTTB_GLSub ດ້ວຍ 3 ໂຕໜ້າ + asset_list_code
+        ຕົວຢ່າງ: '148' + '0000259' -> ຫາ '1481181.0000259'
+        """
+        try:
+            print(f"ຄົ້ນຫາບັນຊີ: {account_prefix} + {asset_list_code}")
+            
+            # ວິທີທີ 1: ຄົ້ນຫາທີ່ເລີ່ມຕົ້ນດ້ວຍ prefix ແລະ ລົງທ້າຍດ້ວຍ asset_code
+            result = MTTB_GLSub.objects.filter(
+                glsub_code__startswith=account_prefix,
+                glsub_code__endswith=asset_list_code
+            ).first()
+            
+            if result:
+                print(f"ພົບບັນຊີ (direct match): {result.glsub_code}")
+                return result.glsub_code
+            
+            # ວິທີທີ 2: ຄົ້ນຫາດ້ວຍ LIKE pattern สำหรับ SQL Server
+            like_pattern = f"{account_prefix}%.{asset_list_code}"
+            result_like = MTTB_GLSub.objects.extra(
+                where=["glsub_code LIKE %s"],
+                params=[like_pattern]
+            ).first()
+            
+            if result_like:
+                print(f"ພົບບັນຊີ (LIKE pattern): {result_like.glsub_code}")
+                return result_like.glsub_code
+            
+            # ວິທີທີ 3: ຄົ້ນຫາທັງໝົດທີ່ລົງທ້າຍດ້ວຍ asset_code แล้ว filter ด้วยตัวเอง
+            matching_assets = MTTB_GLSub.objects.filter(
+                glsub_code__endswith=asset_list_code
+            ).values_list('glsub_code', flat=True)[:10]
+            
+            print(f"ບັນຊີທັງໝົດທີ່ລົງທ້າຍດ້ວຍ {asset_list_code}: {list(matching_assets)}")
+            
+            # หาที่เริ่มต้นด้วย prefix ในรายการที่พบ
+            for account_code in matching_assets:
+                if account_code.startswith(account_prefix):
+                    print(f"ພົບບັນຊີ (manual filter): {account_code}")
+                    return account_code
+            
+            # ถ้าไม่พบตาม prefix ใช้ fallback
+            if matching_assets:
+                fallback = matching_assets[0]
+                print(f"ໃຊ້ fallback account: {fallback}")
+                return fallback
+            
+            # สร้าง default account
+            default_account = f"{account_prefix}100.{asset_list_code}"
+            print(f"ສ້າງ default account: {default_account}")
+            return default_account
+                
+        except Exception as e:
+            print(f"Error ໃນການຄົ້ນຫາບັນຊີ: {e}")
+            return f"{account_prefix}100.{asset_list_code}"
+    
+    def create_journal_entries(self, disposal_instance, account_result):
+        """ສ້າງ Journal Entries ສຳລັບການຖອນຊັບສິນ"""
+        try:
+            current_date = timezone.now()
+            reference_no = f"DSP-{current_date.strftime('%Y%m%d')}-{disposal_instance.alds_id}"
+            
+            journal_entries = []
+            
+            for pair in account_result['account_pairs']:
+                amount = self.calculate_entry_amount(disposal_instance, pair)
+                
+                entry_data = {
+                    "reference_no": reference_no,
+                    "disposal_id": disposal_instance.alds_id,
+                    "pair_number": pair['pair_number'],
+                    "debit_account": pair['debit_account'],
+                    "credit_account": pair['credit_account'],
+                    "amount": amount,
+                    "value_date": disposal_instance.disposal_date,
+                    "description": f"Asset Disposal - {disposal_instance.asset_list_id}",
+                    "disposal_type": disposal_instance.disposal_type,
+                    "gain_loss_status": disposal_instance.gain_loss,
+                    "created_by": disposal_instance.Maker_Id,
+                    "created_date": current_date
+                }
+                
+                journal_entries.append(entry_data)
+                print(f"Journal Entry {pair['pair_number']}: Dr.{pair['debit_account']} / Cr.{pair['credit_account']} = {amount}")
+            
+            # บันทึกลงฐานข้อมูล (uncomment เมื่อพร้อม)
+            # self.save_journal_entries_to_db(journal_entries)
+            
+            return {
+                'success': True,
+                'entries': journal_entries,
+                'reference_no': reference_no
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'ຂໍ້ຜິດພາດໃນການສ້າງ journal entries: {str(e)}'
+            }
+    
+    def calculate_entry_amount(self, disposal_instance, account_pair):
+        """ຄຳນວນມູນຄ່າສຳລັບ journal entry"""
+        try:
+            disposal_proceeds = float(disposal_instance.disposal_proceeds or 0)
+            disposal_cost = float(disposal_instance.disposal_cost or 0)
+            disposal_value = float(disposal_instance.disposal_value or 0)
+            
+            debit_account = account_pair['debit_account']
+            debit_prefix = debit_account[:3] if len(debit_account) >= 3 else ''
+            
+            # กำหนด logic การคำนวณตามประเภทบัญชี
+            if debit_prefix == '143':  # เงินสด/เงินฝาก
+                return disposal_proceeds
+            elif debit_prefix in ['144', '148']:  # ค่าเสื่อมสะสม
+                return disposal_value
+            elif debit_prefix in ['450', '550', '460']:  # กำไร/ขาดทุน
+                net_proceeds = disposal_proceeds - disposal_cost
+                return abs(net_proceeds - disposal_value)
+            else:
+                # default ใช้ disposal_proceeds
+                return disposal_proceeds
+                
+        except Exception as e:
+            print(f"Error calculating amount: {e}")
+            return 0
+    
+    def update_journal_entries(self, disposal_instance, account_result):
+        """อัพเดท Journal Entries เมื่อแก้ไข"""
+        try:
+            
 
+            return self.create_journal_entries(disposal_instance, account_result)
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'ຂໍ້ຜິດພາດໃນການອັບເດດ journal entries: {str(e)}'
+            }
+    
+    # def save_journal_entries_to_db(self, entries):
+    #     """บันทึก Journal Entries ลงฐานข้อมูล (ใช้เมื่อพร้อม)"""
+    #     for entry in entries:
+    #         # สร้าง record ในตาราง Journal Entry
+    #         pass
+    
+    # def cancel_existing_journal_entries(self, disposal_id):
+    #     """ยกเลิก Journal Entries เดิม (ใช้เมื่อพร้อม)"""
+    #     pass
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetExpenseSerializer
     permission_classes = [IsAuthenticated]
@@ -11941,6 +12289,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
             'success': False,
             'error': f"Create journal data error: {str(e)}"
         }
+
 def find_related_journal_entries(asset_list_id):
     """
     ✅ MODIFIED: ຄົ້ນຫາ Journal entries ໂດຍໃຊ້ asset_list_id ໃນ Ac_relatives
