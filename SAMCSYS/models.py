@@ -1910,6 +1910,7 @@ class Cashflow_Acc(models.Model):
     no = models.IntegerField(primary_key=True)
     report_number = models.CharField(max_length=10, null=True, blank=True)
     description = models.CharField(max_length=500, null=True, blank=True)
+    CF_command = models.TextField(null=True, blank=True) 
     formula = models.TextField(null=True, blank=True)
     Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
     Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
@@ -2162,3 +2163,26 @@ class Report_Cashflow(models.Model):
     class Meta:
         verbose_name_plural = 'Report_Cashflow'
 
+class Monthly_Cashflow_acc(models.Model):
+    mi_acc_id = models.AutoField(primary_key=True)
+    no = models.CharField(max_length=20, null=True, blank=True)
+    report_number = models.CharField(max_length=20, null=True, blank=True)
+    description = models.CharField(max_length=500, null=True, blank=True)
+    previous_month = models.CharField(max_length=50, null=True, blank=True)
+    current_month = models.CharField(max_length=50, null=True, blank=True)
+    net_change = models.CharField(max_length=50, null=True, blank=True)
+    currency_display = models.CharField(max_length=50, null=True, blank=True)
+    segment_type = models.CharField(max_length=20, null=True, blank=True)
+    period_code = models.CharField(max_length=10, null=True, blank=True)
+
+class Monthly_Cashflow_mfi(models.Model):
+    mi_mfi_id = models.AutoField(primary_key=True)
+    no = models.CharField(max_length=20, null=True, blank=True)
+    report_number = models.CharField(max_length=20, null=True, blank=True)
+    description = models.CharField(max_length=500, null=True, blank=True)
+    previous_month = models.CharField(max_length=50, null=True, blank=True)
+    current_month = models.CharField(max_length=50, null=True, blank=True)
+    net_change = models.CharField(max_length=50, null=True, blank=True)
+    currency_display = models.CharField(max_length=50, null=True, blank=True)
+    segment_type = models.CharField(max_length=20, null=True, blank=True)
+    period_code = models.CharField(max_length=10, null=True, blank=True)
