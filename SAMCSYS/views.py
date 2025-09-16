@@ -8826,85 +8826,86 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             return None
     
     def create_journal_entries(self, disposal_instance, account_result):
-        """ສ້າງ Journal Entries ສຳລັບການຖອນຊັບສິນ - ແຍກເປັນ 1 Journal ຕໍ່ 1 ຄູ່ບັນຊີ"""
+        """ສ້າງ Journal Entries ສຳລັບການຖອນຊັບສິນ - 1 Reference_No ສຳລັບທຸກຄູ່"""
         try:
             current_date = timezone.now()
-            journal_entries_list = []
             
-            # ສ້າງ Journal ແຍກສຳລັບແຕ່ລະຄູ່ບັນຊີ
+            # ສ້າງ Reference_No ດຽວສຳລັບທຸກຄູ່ບັນຊີ
+            today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            # ນັບຈຳນວນ records AS-DPS ໃນມື້ນີ້
+            daily_count = DETB_JRNL_LOG.objects.filter(
+                Reference_No__startswith=f"AS-DPS-{current_date.strftime('%Y%m%d')}",
+                Maker_DT_Stamp__range=[today_start, today_end]
+            ).count()
+            
+            sequence_number = daily_count + 1
+            reference_no = f"AS-DPS-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
+            
+            # ສ້າງ Journal data ດຽວທີ່ມີຫຼາຍຄູ່ entries
+            all_entries = []
+            
             for pair in account_result['account_pairs']:
-                # ນັບລຳດັບ Reference_No ສຳລັບແຕ່ລະ Journal
-                today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-                
-                # ນັບຈຳນວນ records AS-DPS ໃນມື້ນີ້
-                daily_count = DETB_JRNL_LOG.objects.filter(
-                    Reference_No__startswith=f"AS-DPS-{current_date.strftime('%Y%m%d')}",
-                    Maker_DT_Stamp__range=[today_start, today_end]
-                ).count()
-                
-                # ເພີ່ມຈຳນວນທີ່ສ້າງແລ້ວໃນ loop ນີ້
-                sequence_number = daily_count + len(journal_entries_list) + 1
-                reference_no = f"AS-DPS-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
-                
                 amount = self.calculate_entry_amount(disposal_instance, pair)
                 
-                # ສ້າງ Journal data ສຳລັບຄູ່ນີ້
-                journal_data = {
-                    "Reference_No": reference_no,
-                    "Ccy_cd": "LAK", 
-                    "Txn_code": "DPS",
-                    "Value_date": disposal_instance.disposal_date.isoformat() if disposal_instance.disposal_date else current_date.date().isoformat(),
-                    "Addl_text": "ສະສາງຊັບສິນ",
-                    "fin_cycle": str(current_date.year),
-                    "module_id": "AS",
-                    "Period_code": current_date.strftime('%Y%m'),
-                    "entries": [
-                        {
-                            "Account": pair['debit_account'],
-                            "Account_no": pair['debit_account'],
-                            "Amount": amount,
-                            "Dr_cr": "D",
-                            "Addl_sub_text": "ສະສາງຊັບສິນ",
-                            "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id)
-                        },
-                        {
-                            "Account": pair['credit_account'],
-                            "Account_no": pair['credit_account'],
-                            "Amount": amount,
-                            "Dr_cr": "C", 
-                            "Addl_sub_text": "ສະສາງຊັບສິນ",
-                            "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id)
-                        }
-                    ]
+                # ເພີ່ມ Debit ແລະ Credit entry
+                debit_entry = {
+                    "Account": pair['debit_account'],
+                    "Account_no": pair['debit_account'],
+                    "Amount": amount,
+                    "Dr_cr": "D",
+                    "Addl_sub_text": "ສະສາງຊັບສິນ",
+                    "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id)
                 }
                 
-                journal_entries_list.append(journal_data)
+                credit_entry = {
+                    "Account": pair['credit_account'],
+                    "Account_no": pair['credit_account'],
+                    "Amount": amount,
+                    "Dr_cr": "C", 
+                    "Addl_sub_text": "ສະສາງຊັບສິນ",
+                    "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id)
+                }
+                
+                all_entries.extend([debit_entry, credit_entry])
                 print(f"Journal Entry {pair['pair_number']}: Dr.{pair['debit_account']} / Cr.{pair['credit_account']} = {amount}")
             
+            # ສ້າງ Journal data ດຽວທີ່ມີທຸກ entries
+            journal_data = {
+                "Reference_No": reference_no,
+                "Ccy_cd": "LAK", 
+                "Txn_code": "DPS",
+                "Value_date": disposal_instance.disposal_date.isoformat() if disposal_instance.disposal_date else current_date.date().isoformat(),
+                "Addl_text": "ສະສາງຊັບສິນ",
+                "fin_cycle": str(current_date.year),
+                "module_id": "AS",
+                "Period_code": current_date.strftime('%Y%m'),
+                "entries": all_entries
+            }
+            
             # Debug: ສະແດງຂໍ້ມູນ Journal ທີ່ສ້າງຂຶ້ນ
-            print(f"=== CREATED {len(journal_entries_list)} SEPARATE JOURNALS ===")
-            for i, journal in enumerate(journal_entries_list):
-                print(f"--- JOURNAL {i+1} ---")
-                print(f"Reference_No: {journal['Reference_No']}")
-                print(f"Ccy_cd: {journal['Ccy_cd']}")
-                print(f"Txn_code: {journal['Txn_code']}")
-                print(f"Value_date: {journal['Value_date']}")
-                print(f"Addl_text: {journal['Addl_text']}")
-                print(f"fin_cycle: {journal['fin_cycle']}")
-                print(f"module_id: {journal['module_id']}")
-                print(f"Period_code: {journal['Period_code']}")
-                print(f"Entries count: {len(journal['entries'])}")
-                for j, entry in enumerate(journal['entries']):
-                    print(f"  Entry {j+1}: {entry['Dr_cr']} {entry['Account_no']} = {entry['Amount']}")
-                    print(f"    Addl_sub_text: {entry['Addl_sub_text']}")
-                    print(f"    Ac_relatives: {entry['Ac_relatives']}")
-            print("=== END JOURNALS ===")
+            print(f"=== CREATED 1 JOURNAL WITH {len(account_result['account_pairs'])} PAIRS ===")
+            print(f"Reference_No: {journal_data['Reference_No']}")
+            print(f"Ccy_cd: {journal_data['Ccy_cd']}")
+            print(f"Txn_code: {journal_data['Txn_code']}")
+            print(f"Value_date: {journal_data['Value_date']}")
+            print(f"Addl_text: {journal_data['Addl_text']}")
+            print(f"fin_cycle: {journal_data['fin_cycle']}")
+            print(f"module_id: {journal_data['module_id']}")
+            print(f"Period_code: {journal_data['Period_code']}")
+            print(f"Total entries: {len(journal_data['entries'])}")
+            print(f"Account pairs: {len(account_result['account_pairs'])}")
+            for i, entry in enumerate(journal_data['entries']):
+                print(f"  Entry {i+1}: {entry['Dr_cr']} {entry['Account_no']} = {entry['Amount']}")
+                print(f"    Addl_sub_text: {entry['Addl_sub_text']}")
+                print(f"    Ac_relatives: {entry['Ac_relatives']}")
+            print("=== END JOURNAL ===")
             
             return {
                 'success': True,
-                'journal_entries': journal_entries_list,
-                'total_journals': len(journal_entries_list)
+                'journal_entries': [journal_data],  # ໃສ່ array ເພື່ອຮອງຮັບ existing code
+                'total_journals': 1
             }
             
         except Exception as e:
@@ -9069,6 +9070,8 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Error preparing journal data: {str(e)}")
             return journal_data
+
+
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetExpenseSerializer
     permission_classes = [IsAuthenticated]
