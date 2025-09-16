@@ -135,6 +135,7 @@ from .views import (
     income_statement_dairy_acc_view,
     journal_report_view,
     journal_report_get_view,
+    bulk_insert_monthly_cashflow
 
     
 
@@ -302,6 +303,10 @@ urlpatterns = [
     path('api/income-statement/acc/get/', income_statement_acc_get_view, name='income-statement-acc-get'),
     path('api/income-statement/mfi/', income_statement_mfi_view, name='income-statement-mfi-post'),
     path('api/income-statement/mfi/get/', income_statement_mfi_get_view, name='income-statement-mfi-get'),
+
+
+    #Store Procedure <------ CashFlow ------>
+    path('api/bulk-insert-monthly-cashflow/', bulk_insert_monthly_cashflow, name='cash-flow-acc'),
 
     # Force logout endpoints (standalone)
     path('api/verify-token/',verify_token, name='verify-token'),
