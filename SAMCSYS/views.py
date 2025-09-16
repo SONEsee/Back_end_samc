@@ -31267,3 +31267,39 @@ def get_latest_eod_date(request):
             'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}',
             'data': None
         }, status=500)
+    
+
+from .models import DETB_JRNL_LOG
+
+@api_view(['GET'])
+def get_credit_unauthorized(request):
+    try:
+        entries = DETB_JRNL_LOG.objects.filter(
+            Dr_cr='C',
+            Auth_Status='U'
+        )
+        
+        entries_data = []
+        for entry in entries:
+            entries_data.append({
+                'JRNLLog_id': entry.JRNLLog_id,
+                'Reference_No': entry.Reference_No,
+                'Fcy_Amount': str(entry.Fcy_Amount) if entry.Fcy_Amount else None,
+                'Lcy_Amount': str(entry.Lcy_Amount) if entry.Lcy_Amount else None,
+                'Dr_cr': entry.Dr_cr,
+                'Auth_Status': entry.Auth_Status,
+                'Value_date': entry.Value_date.isoformat() if entry.Value_date else None,
+                'Ac_relatives': str(entry.Ac_relatives) if entry.Ac_relatives else None,
+            })
+        
+        return Response({
+            'success': True,
+            'count': len(entries_data),
+            'data': entries_data
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
