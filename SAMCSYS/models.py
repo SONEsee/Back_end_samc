@@ -2186,3 +2186,4 @@ class Monthly_Cashflow_mfi(models.Model):
     currency_display = models.CharField(max_length=50, null=True, blank=True)
     segment_type = models.CharField(max_length=20, null=True, blank=True)
     period_code = models.CharField(max_length=10, null=True, blank=True)
+    
