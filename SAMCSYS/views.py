@@ -31282,8 +31282,6 @@ def get_latest_eod_date(request):
             'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}',
             'data': None
         }, status=500)
-<<<<<<< HEAD
-=======
 
 
 # Bulk Insert Month CashFlow -------------:
@@ -31707,7 +31705,6 @@ def execute_eom_cashflow_reports(eom_function, user, processing_date):
         error_msg = f"ເກີດຂໍ້ຜິດພາດໃນ EOM Cashflow: {str(e)}"
         logger.error(f"[EOM-FN012] {error_msg}", exc_info=True)
         return False, error_msg
->>>>>>> eb84d4082a8cf290cb903047686b3d5f90b263bf
     
 
 
