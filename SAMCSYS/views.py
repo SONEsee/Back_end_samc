@@ -9550,6 +9550,7 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
             except MTTB_GLMaster.DoesNotExist:
                 raise ValueError(f"ບໍ່ພົບ gl_code '{gl_code}' ໃນ MTTB_GLMaster")
             
+            
             glsub_record = MTTB_GLSub.objects.create(
                 glsub_code=account_code,
                 glsub_Desc_la=description,
@@ -9566,6 +9567,70 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
         except Exception as e:
             raise Exception(f"ຜິດພາດໃນການສ້າງ GLSub: {str(e)}")
     
+    def update_asset_list_by_ref_id(self, fa_accounting_instance, ref_id):
+        """ອັບເດດ FA_Asset_Lists ຕາມ ref_id"""
+        if not ref_id:
+            print("❌ ref_id ບໍ່ມີຄ່າ")
+            return None
+        
+        try:
+            # ຄົ້ນຫາ FA_Asset_Lists ດ້ວຍ asset_list_id = ref_id
+            asset_list = FA_Asset_Lists.objects.get(asset_list_id=ref_id)
+            print(f"🎯 ພົບ FA_Asset_Lists asset_list_id: {ref_id}")
+            
+            # ບັນທຶກຄ່າເດີມເພື່ອ log
+            old_values = {
+                'asset_value_remainLast': getattr(asset_list, 'asset_value_remainLast', None),
+                'asset_value_remainBegin': getattr(asset_list, 'asset_value_remainBegin', None),
+                'asset_value_remainMonth': getattr(asset_list, 'asset_value_remainMonth', None)
+            }
+            
+            # ອັບເດດຄ່າໃໝ່
+            updated = False
+            
+            # amount_end → asset_value_remainLast
+            if hasattr(fa_accounting_instance, 'amount_end') and fa_accounting_instance.amount_end is not None:
+                asset_list.asset_value_remainLast = fa_accounting_instance.amount_end
+                print(f"📝 ອັບເດດ amount_end → remainLast: {fa_accounting_instance.amount_end}")
+                updated = True
+            
+            # amount_start → asset_value_remainBegin
+            if hasattr(fa_accounting_instance, 'amount_start') and fa_accounting_instance.amount_start is not None:
+                asset_list.asset_value_remainBegin = fa_accounting_instance.amount_start
+                print(f"📝 ອັບເດດ amount_start → remainBegin: {fa_accounting_instance.amount_start}")
+                updated = True
+            
+            # amount → asset_value_remainMonth
+            if hasattr(fa_accounting_instance, 'amount') and fa_accounting_instance.amount is not None:
+                asset_list.asset_value_remainMonth = fa_accounting_instance.amount
+                print(f"📝 ອັບເດດ amount → remainMonth: {fa_accounting_instance.amount}")
+                updated = True
+            
+            if updated:
+                # ອັບເດດ audit fields
+                asset_list.Checker_Id = self.request.user
+                asset_list.Checker_DT_Stamp = timezone.now()
+                
+                asset_list.save()
+                
+                print(f"✅ ອັບເດດ FA_Asset_Lists asset_list_id {ref_id}:")
+                print(f"   remainLast: {old_values['asset_value_remainLast']} → {asset_list.asset_value_remainLast}")
+                print(f"   remainBegin: {old_values['asset_value_remainBegin']} → {asset_list.asset_value_remainBegin}")
+                print(f"   remainMonth: {old_values['asset_value_remainMonth']} → {asset_list.asset_value_remainMonth}")
+            else:
+                print("⚠️ ບໍ່ມີຂໍ້ມູນໃໝ່ໃຫ້ອັບເດດ")
+            
+            return asset_list
+            
+        except FA_Asset_Lists.DoesNotExist:
+            print(f"❌ ບໍ່ພົບ FA_Asset_Lists ທີ່ມີ asset_list_id: {ref_id}")
+            return None
+        except Exception as e:
+            print(f"❌ ຜິດພາດໃນການອັບເດດ Asset List: {str(e)}")
+            import traceback
+            print(f"📋 Full traceback: {traceback.format_exc()}")
+            return None
+
     def create(self, request, *args, **kwargs):
         """Override create method ເພື່ອກວດສອບແລະສ້າງ GLSub records"""
         
@@ -9657,11 +9722,43 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        """ອັບເດດຂໍ້ມູນພ້ອມອັບເດດ FA_Asset_Lists"""
         user = self.request.user
-        serializer.save(
+        
+        print("🚀 Starting perform_update...")
+        print(f"📨 Request data: {dict(self.request.data)}")
+        
+        # ບັນທຶກການເປີ່ຍນແປງ
+        instance = serializer.save(
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+        
+        print(f"💾 Saved instance: {instance}")
+        print(f"💾 Instance ID: {instance.pk}")
+        
+        # ຄົ້ນຫາ FA_Asset_Lists ຈາກ ref_id
+        ref_id = getattr(instance, 'ref_id', None)
+        print(f"🔍 ref_id from instance: {ref_id}")
+        
+        # ອັບເດດ FA_Asset_Lists ຖ້າມີ ref_id
+        if ref_id:
+            try:
+                print(f"🔄 ກຳລັງຄົ້ນຫາແລະອັບເດດ Asset List ດ້ວຍ ref_id: {ref_id}")
+                with transaction.atomic():
+                    result = self.update_asset_list_by_ref_id(instance, ref_id)
+                    if result:
+                        print(f"✅ ອັບເດດ Asset List ສຳເລັດ")
+                    else:
+                        print(f"⚠️ ບໍ່ສາມາດອັບເດດ Asset List ໄດ້")
+            except Exception as e:
+                print(f"❌ ຜິດພາດໃນການອັບເດດ Asset List: {str(e)}")
+                import traceback
+                print(f"📋 Full traceback: {traceback.format_exc()}")
+        else:
+            print("⚠️ ບໍ່ມີ ref_id ເພື່ອຄົ້ນຫາ Asset List")
+        
+        return instance
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def set_open(self, request, pk=None):
@@ -9691,7 +9788,6 @@ class FAAccountingMethodViewSet(viewsets.ModelViewSet):
         obj.save()
         serializer = self.get_serializer(obj)
         return Response({'message': 'Set to Close.', 'entry': serializer.data})
-    
 class FAAssetListDepreciationInMonthViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDepreciationInMonthSerializer
     permission_classes = [IsAuthenticated]
