@@ -31268,7 +31268,6 @@ def get_latest_eod_date(request):
             'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}',
             'data': None
         }, status=500)
-<<<<<<< HEAD
 
 
 # Bulk INsert Month CashFlow:
@@ -31692,7 +31691,6 @@ def execute_eom_cashflow_reports(eom_function, user, processing_date):
         error_msg = f"ເກີດຂໍ້ຜິດພາດໃນ EOM Cashflow: {str(e)}"
         logger.error(f"[EOM-FN012] {error_msg}", exc_info=True)
         return False, error_msg
-=======
     
 
 from .models import DETB_JRNL_LOG
@@ -31729,4 +31727,3 @@ def get_credit_unauthorized(request):
             'success': False,
             'error': str(e)
         }, status=500)
->>>>>>> b72494cc4ef01df7fa1f7dbd6aa945edcbd6b0ba

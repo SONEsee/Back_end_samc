@@ -135,11 +135,8 @@ from .views import (
     income_statement_dairy_acc_view,
     journal_report_view,
     journal_report_get_view,
-<<<<<<< HEAD
-    bulk_insert_monthly_cashflow
-=======
+    bulk_insert_monthly_cashflow,
     get_credit_unauthorized,
->>>>>>> b72494cc4ef01df7fa1f7dbd6aa945edcbd6b0ba
 
     
 
