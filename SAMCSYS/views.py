@@ -8573,6 +8573,12 @@ class FAAssetListDepreciationViewSet(viewsets.ModelViewSet):
                
 #                 print(f"Error updating asset status: {e}")
 #                 pass
+
+
+from django.utils import timezone
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -8624,7 +8630,12 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         if account_result['success']:
             journal_result = self.create_journal_entries(instance, account_result)
             if journal_result['success']:
-                print(f"Journal entries created: {len(journal_result['entries'])} entries")
+                journal_count = len(journal_result.get('journal_entries', []))
+                print(f"Journal entries created: {journal_count} entries")
+                
+                # ສົ່ງ Journal data ໄປບັນທຶກຜ່ານ JRNLLogViewSet
+                if journal_count > 0:
+                    self.save_to_jrnl_log_viewset(journal_result['journal_entries'])
             else:
                 print(f"Journal creation error: {journal_result['error']}")
         else:
@@ -8663,51 +8674,63 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     def process_disposal_accounts(self, disposal_data):
         """
         ປະມວນຜົນບັນຊີຕາມຫຼັກການ:
-        1. ແຍກຕົວເລກຈາກ dps_account ເປັນ 3 ໂຕ
-        2. ຄົ້ນຫາໃນ MTTB_GLSub ດ້ວຍ 3 ໂຕ + asset_list_code
-        3. ສຳລັບບັນຊີ 450xxx, 550xxx ໃຊ້ gain_loss_account ຕົງໆ
+        1. 1101xxx ໃຊ້ account_tupe_of_play ຕົງໆ
+        2. 450xxx, 550xxx ໃຊ້ gain_loss_account ຕົງໆ
+        3. ອື່ນໆ ຄົ້ນຫາໃນ MTTB_GLSub ດ້ວຍ 3 ໂຕໜ້າ + asset_list_code
         4. ຈັບຄູ່ບັນຊີເປັນຄູ່ 2 ໂຕ
         """
         try:
             dps_account = disposal_data.get('dps_account')
             asset_list_code = disposal_data.get('asset_list_code')
             gain_loss_account = disposal_data.get('gain_loss_account', '').strip()
+            account_tupe_of_play = disposal_data.get('account_tupe_of_play', '').strip()
             
             print(f"Processing accounts: dps_account='{dps_account}', asset_code='{asset_list_code}'")
+            print(f"account_tupe_of_play='{account_tupe_of_play}', gain_loss_account='{gain_loss_account}'")
             
             if not dps_account or not asset_list_code:
                 return {
                     'success': False,
-                    'error': 'dps_account และ asset_list_code จำเป็นต้องมี'
+                    'error': 'dps_account ແລະ asset_list_code ຈຳເປັນຕ້ອງມີ'
                 }
             
-            # แยกบัญชีจาก dps_account
+            # ແຍກບັນຊີຈາກ dps_account
             account_list = dps_account.split('|')
             
             if len(account_list) % 2 != 0:
                 return {
                     'success': False,
-                    'error': f'dps_account ต้องมีจำนวนบัญชีเป็นคู่, ได้รับ {len(account_list)}'
+                    'error': f'dps_account ຕ້ອງມີຈຳນວນບັນຊີເປັນຄູ່, ໄດ້ຮັບ {len(account_list)}'
                 }
             
             processed_accounts = []
             
-            # ประมวลผลแต่ละบัญชี
+            # ປະມວນຜົນແຕ່ລະບັນຊີ
             for account in account_list:
                 print(f"ປະມວນຜົນບັນຊີ: '{account}'")
                 
-                # เอาแต่ตัวเลขและตัดให้เหลือ 3 ตัว
+                # ເອົາແຕ່ຕົວເລກແລ້ວຕັດໃຫ້ເຫຼືອ 3 ໂຕ
                 digits_only = ''.join([c for c in account if c.isdigit()])
                 account_3digit = digits_only[:3] if len(digits_only) >= 3 else digits_only.ljust(3, '0')
                 
                 print(f"ປ່ຽນ '{account}' -> digits: '{digits_only}' -> 3digit: '{account_3digit}'")
                 
-                # ตรวจสอบว่าเป็นบัญชีกำไร/ขาดทุน
-                if account_3digit in ['450', '550'] and gain_loss_account:
+                # ກໍລະນີພິເສດ: ຖ້າເປັນ 1101xxx ໃຫ້ໃຊ້ account_tupe_of_play
+                if account_3digit == '110':
+                    if account_tupe_of_play:
+                        processed_account = account_tupe_of_play
+                        print(f"✅ ໃຊ້ account_tupe_of_play ສຳລັບ 1101xxx: {processed_account}")
+                    else:
+                        print(f"❌ ບໍ່ມີ account_tupe_of_play ສຳລັບ '1101xxx' - ຂ້າມບັນຊີນີ້")
+                        continue
+                        
+                # ກໍລະນີບັນຊີກຳໄລ/ຂາດທຶນ
+                elif account_3digit in ['450', '550'] and gain_loss_account:
                     processed_account = gain_loss_account
-                    print(f"ໃຊ້ gain_loss_account: {processed_account}")
+                    print(f"✅ ໃຊ້ gain_loss_account ສຳລັບ {account_3digit}xxx: {processed_account}")
+                    
+                # ກໍລະນີອື່ນໆ ຄົ້ນຫາໃນ MTTB_GLSub
                 else:
-                    # ค้นหาใน MTTB_GLSub
                     processed_account = self.find_account_in_glsub(account_3digit, asset_list_code)
                 
                 # ຖ້າບໍ່ພົບບັນຊີໃຫ້ຂ້າມ
@@ -8725,15 +8748,15 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                     'error': f'ບັນຊີທີ່ພົບມີ {len(processed_accounts)} ໂຕ ບໍ່ສາມາດຈັບຄູ່ໄດ້ (ຕ້ອງເປັນຄູ່)'
                 }
             
-            # จัดคู่บัญชี
+            # ຈັບຄູ່ບັນຊີ
             account_pairs = []
             for i in range(0, len(processed_accounts), 2):
                 pair = {
                     "pair_number": (i // 2) + 1,
                     "debit_account": processed_accounts[i],
                     "credit_account": processed_accounts[i + 1],
-                    "debit_original": account_list[i],
-                    "credit_original": account_list[i + 1]
+                    "debit_original": account_list[i] if i < len(account_list) else "N/A",
+                    "credit_original": account_list[i + 1] if (i + 1) < len(account_list) else "N/A"
                 }
                 account_pairs.append(pair)
                 print(f"ຄູ່ທີ {pair['pair_number']}: ({pair['debit_account']}, {pair['credit_account']})")
@@ -8755,7 +8778,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     def find_account_in_glsub(self, account_prefix, asset_list_code):
         """
         ຄົ້ນຫາບັນຊີໃນ MTTB_GLSub ດ້ວຍ 3 ໂຕໜ້າ + asset_list_code
-        ຕົວຢ່າງ: '148' + '0000259' -> ຫາ '1481181.0000259'
+        ຖ້າບໍ່ພົບຈະ return None
         """
         try:
             print(f"ຄົ້ນຫາບັນຊີ: {account_prefix} + {asset_list_code}")
@@ -8767,10 +8790,10 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             ).first()
             
             if result:
-                print(f"ພົບບັນຊີ (direct match): {result.glsub_code}")
+                print(f"✅ ພົບບັນຊີ (direct match): {result.glsub_code}")
                 return result.glsub_code
             
-            # ວິທີທີ 2: ຄົ້ນຫາດ້ວຍ LIKE pattern สำหรับ SQL Server
+            # ວິທີທີ 2: ຄົ້ນຫາດ້ວຍ LIKE pattern ສຳລັບ SQL Server
             like_pattern = f"{account_prefix}%.{asset_list_code}"
             result_like = MTTB_GLSub.objects.extra(
                 where=["glsub_code LIKE %s"],
@@ -8778,73 +8801,110 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             ).first()
             
             if result_like:
-                print(f"ພົບບັນຊີ (LIKE pattern): {result_like.glsub_code}")
+                print(f"✅ ພົບບັນຊີ (LIKE pattern): {result_like.glsub_code}")
                 return result_like.glsub_code
             
-            # ວິທີທີ 3: ຄົ້ນຫາທັງໝົດທີ່ລົງທ້າຍດ້ວຍ asset_code แล้ว filter ด้วยตัวเอง
+            # ວິທີທີ 3: ຄົ້ນຫາທັງໝົດທີ່ລົງທ້າຍດ້ວຍ asset_code ແລ້ວ filter ດ້ວຍຕົວເອງ
             matching_assets = MTTB_GLSub.objects.filter(
                 glsub_code__endswith=asset_list_code
             ).values_list('glsub_code', flat=True)[:10]
             
             print(f"ບັນຊີທັງໝົດທີ່ລົງທ້າຍດ້ວຍ {asset_list_code}: {list(matching_assets)}")
             
-            # หาที่เริ่มต้นด้วย prefix ในรายการที่พบ
+            # ຫາທີ່ເລີ່ມຕົ້ນດ້ວຍ prefix ໃນລາຍການທີ່ພົບ
             for account_code in matching_assets:
                 if account_code.startswith(account_prefix):
-                    print(f"ພົບບັນຊີ (manual filter): {account_code}")
+                    print(f"✅ ພົບບັນຊີ (manual filter): {account_code}")
                     return account_code
             
-            # ถ้าไม่พบตาม prefix ใช้ fallback
-            if matching_assets:
-                fallback = matching_assets[0]
-                print(f"ໃຊ້ fallback account: {fallback}")
-                return fallback
-            
-            # สร้าง default account
-            default_account = f"{account_prefix}100.{asset_list_code}"
-            print(f"ສ້າງ default account: {default_account}")
-            return default_account
+            # ຖ້າບໍ່ພົບ return None
+            print(f"❌ ບໍ່ພົບບັນຊີສຳລັບ prefix '{account_prefix}' + asset_code '{asset_list_code}'")
+            return None
                 
         except Exception as e:
-            print(f"Error ໃນການຄົ້ນຫາບັນຊີ: {e}")
-            return f"{account_prefix}100.{asset_list_code}"
+            print(f"❌ Error ໃນການຄົ້ນຫາບັນຊີ: {e}")
+            return None
     
     def create_journal_entries(self, disposal_instance, account_result):
-        """ສ້າງ Journal Entries ສຳລັບການຖອນຊັບສິນ"""
+        """ສ້າງ Journal Entries ສຳລັບການຖອນຊັບສິນ - ແຍກເປັນ 1 Journal ຕໍ່ 1 ຄູ່ບັນຊີ"""
         try:
             current_date = timezone.now()
-            reference_no = f"DSP-{current_date.strftime('%Y%m%d')}-{disposal_instance.alds_id}"
+            journal_entries_list = []
             
-            journal_entries = []
-            
+            # ສ້າງ Journal ແຍກສຳລັບແຕ່ລະຄູ່ບັນຊີ
             for pair in account_result['account_pairs']:
+                # ນັບລຳດັບ Reference_No ສຳລັບແຕ່ລະ Journal
+                today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                
+                # ນັບຈຳນວນ records AS-DPS ໃນມື້ນີ້
+                daily_count = DETB_JRNL_LOG.objects.filter(
+                    Reference_No__startswith=f"AS-DPS-{current_date.strftime('%Y%m%d')}",
+                    Maker_DT_Stamp__range=[today_start, today_end]
+                ).count()
+                
+                # ເພີ່ມຈຳນວນທີ່ສ້າງແລ້ວໃນ loop ນີ້
+                sequence_number = daily_count + len(journal_entries_list) + 1
+                reference_no = f"AS-DPS-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
+                
                 amount = self.calculate_entry_amount(disposal_instance, pair)
                 
-                entry_data = {
-                    "reference_no": reference_no,
-                    "disposal_id": disposal_instance.alds_id,
-                    "pair_number": pair['pair_number'],
-                    "debit_account": pair['debit_account'],
-                    "credit_account": pair['credit_account'],
-                    "amount": amount,
-                    "value_date": disposal_instance.disposal_date,
-                    "description": f"Asset Disposal - {disposal_instance.asset_list_id}",
-                    "disposal_type": disposal_instance.disposal_type,
-                    "gain_loss_status": disposal_instance.gain_loss,
-                    "created_by": disposal_instance.Maker_Id,
-                    "created_date": current_date
+                # ສ້າງ Journal data ສຳລັບຄູ່ນີ້
+                journal_data = {
+                    "Reference_No": reference_no,
+                    "Ccy_cd": "LAK", 
+                    "Txn_code": "DPS",
+                    "Value_date": disposal_instance.disposal_date.isoformat() if disposal_instance.disposal_date else current_date.date().isoformat(),
+                    "Addl_text": "ສະສາງຊັບສິນ",
+                    "fin_cycle": str(current_date.year),
+                    "module_id": "AS",
+                    "Period_code": current_date.strftime('%Y%m'),
+                    "entries": [
+                        {
+                            "Account": pair['debit_account'],
+                            "Account_no": pair['debit_account'],
+                            "Amount": amount,
+                            "Dr_cr": "D",
+                            "Addl_sub_text": "ສະສາງຊັບສິນ",
+                            "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id)
+                        },
+                        {
+                            "Account": pair['credit_account'],
+                            "Account_no": pair['credit_account'],
+                            "Amount": amount,
+                            "Dr_cr": "C", 
+                            "Addl_sub_text": "ສະສາງຊັບສິນ",
+                            "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id)
+                        }
+                    ]
                 }
                 
-                journal_entries.append(entry_data)
+                journal_entries_list.append(journal_data)
                 print(f"Journal Entry {pair['pair_number']}: Dr.{pair['debit_account']} / Cr.{pair['credit_account']} = {amount}")
             
-            # บันทึกลงฐานข้อมูล (uncomment เมื่อพร้อม)
-            # self.save_journal_entries_to_db(journal_entries)
+            # Debug: ສະແດງຂໍ້ມູນ Journal ທີ່ສ້າງຂຶ້ນ
+            print(f"=== CREATED {len(journal_entries_list)} SEPARATE JOURNALS ===")
+            for i, journal in enumerate(journal_entries_list):
+                print(f"--- JOURNAL {i+1} ---")
+                print(f"Reference_No: {journal['Reference_No']}")
+                print(f"Ccy_cd: {journal['Ccy_cd']}")
+                print(f"Txn_code: {journal['Txn_code']}")
+                print(f"Value_date: {journal['Value_date']}")
+                print(f"Addl_text: {journal['Addl_text']}")
+                print(f"fin_cycle: {journal['fin_cycle']}")
+                print(f"module_id: {journal['module_id']}")
+                print(f"Period_code: {journal['Period_code']}")
+                print(f"Entries count: {len(journal['entries'])}")
+                for j, entry in enumerate(journal['entries']):
+                    print(f"  Entry {j+1}: {entry['Dr_cr']} {entry['Account_no']} = {entry['Amount']}")
+                    print(f"    Addl_sub_text: {entry['Addl_sub_text']}")
+                    print(f"    Ac_relatives: {entry['Ac_relatives']}")
+            print("=== END JOURNALS ===")
             
             return {
                 'success': True,
-                'entries': journal_entries,
-                'reference_no': reference_no
+                'journal_entries': journal_entries_list,
+                'total_journals': len(journal_entries_list)
             }
             
         except Exception as e:
@@ -8863,16 +8923,16 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             debit_account = account_pair['debit_account']
             debit_prefix = debit_account[:3] if len(debit_account) >= 3 else ''
             
-            # กำหนด logic การคำนวณตามประเภทบัญชี
-            if debit_prefix == '143':  # เงินสด/เงินฝาก
+            # ກຳນົດ logic ການຄຳນວນຕາມປະເພດບັນຊີ
+            if debit_prefix in ['136', '143']:  # ເງິນສົດ/ເງິນຝາກ/account_tupe_of_play
                 return disposal_proceeds
-            elif debit_prefix in ['144', '148']:  # ค่าเสื่อมสะสม
+            elif debit_prefix in ['144', '148']:  # ຄ່າເສື່ອມສະສົມ
                 return disposal_value
-            elif debit_prefix in ['450', '550', '460']:  # กำไร/ขาดทุน
+            elif debit_prefix in ['450', '550', '460']:  # ກຳໄລ/ຂາດທຶນ
                 net_proceeds = disposal_proceeds - disposal_cost
                 return abs(net_proceeds - disposal_value)
             else:
-                # default ใช้ disposal_proceeds
+                # default ໃຊ້ disposal_proceeds
                 return disposal_proceeds
                 
         except Exception as e:
@@ -8880,10 +8940,12 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             return 0
     
     def update_journal_entries(self, disposal_instance, account_result):
-        """อัพเดท Journal Entries เมื่อแก้ไข"""
+        """ອັບເດດ Journal Entries ເມື່ອມີການແກ້ໄຂ"""
         try:
+            # ຍົກເລີກ entries ເກົ່າ (uncomment ເມື່ອພ້ອມ)
+            # self.cancel_existing_journal_entries(disposal_instance.alds_id)
             
-
+            # ສ້າງ entries ໃໝ່
             return self.create_journal_entries(disposal_instance, account_result)
             
         except Exception as e:
@@ -8892,15 +8954,121 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                 'error': f'ຂໍ້ຜິດພາດໃນການອັບເດດ journal entries: {str(e)}'
             }
     
-    # def save_journal_entries_to_db(self, entries):
-    #     """บันทึก Journal Entries ลงฐานข้อมูล (ใช้เมื่อพร้อม)"""
-    #     for entry in entries:
-    #         # สร้าง record ในตาราง Journal Entry
-    #         pass
+    def save_to_jrnl_log_viewset(self, journal_entries_list):
+        """ສົ່ງ Journal data ໄປບັນທຶກຜ່ານ JRNLLogViewSet"""
+        try:
+            print(f"=== SAVING {len(journal_entries_list)} JOURNALS TO JRNL_LOG ===")
+            
+            for i, journal_data in enumerate(journal_entries_list):
+                try:
+                    # ກະກຽມຂໍ້ມູນສຳລັບ JRNLLogViewSet
+                    processed_data = self.prepare_journal_for_jrnl_log(journal_data)
+                    
+                    print(f"📋 Journal {i+1} processed data:")
+                    print(f"   Reference_No: {processed_data['Reference_No']}")
+                    print(f"   Entries count: {len(processed_data['entries'])}")
+                    
+                    # ເອີ້ນ JRNLLogViewSet batch_create ໂດຍກົງ
+                    from SAMCSYS.views import JRNLLogViewSet
+                    
+                    viewset = JRNLLogViewSet()
+                    viewset.request = self.request
+                    viewset.format_kwarg = None
+                    
+                    # ສ້າງ fake request object ທີ່ມີ .data property
+                    class FakeRequest:
+                        def __init__(self, data, user):
+                            self._data = data
+                            self.user = user
+                        
+                        @property
+                        def data(self):
+                            return self._data
+                    
+                    fake_request = FakeRequest(processed_data, self.request.user)
+                    
+                    # ເອີ້ນ batch_create
+                    response = viewset.batch_create(fake_request)
+                    
+                    if hasattr(response, 'status_code') and response.status_code in [200, 201]:
+                        print(f"✅ Journal {i+1} saved: {journal_data['Reference_No']}")
+                        if hasattr(response, 'data'):
+                            print(f"   Response: {response.data.get('message', 'Success')}")
+                    else:
+                        print(f"❌ Journal {i+1} failed: {response}")
+                        
+                except Exception as e:
+                    print(f"❌ Error saving journal {i+1}: {str(e)}")
+                    # ສະແດງຂໍ້ມູນທີ່ເຮົາກະກຽມໄວ້ເພື່ອ debug
+                    if 'processed_data' in locals():
+                        print(f"   Debug - Data keys: {list(processed_data.keys())}")
+                    
+            print("=== END JOURNAL SAVING ===")
+            
+        except Exception as e:
+            print(f"❌ Error in save_to_jrnl_log_viewset: {str(e)}")
     
-    # def cancel_existing_journal_entries(self, disposal_id):
-    #     """ยกเลิก Journal Entries เดิม (ใช้เมื่อพร้อม)"""
-    #     pass
+    def prepare_journal_for_jrnl_log(self, journal_data):
+        """ກະກຽມຂໍ້ມູນ Journal ສຳລັບ JRNLLogViewSet"""
+        try:
+            # ຄົ້ນຫາ Currency ALT code
+            ccy_cd = journal_data.get('Ccy_cd', 'LAK')
+            try:
+                ccy_record = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_cd)
+                alt_ccy_code = ccy_record.ALT_Ccy_Code
+            except MTTB_Ccy_DEFN.DoesNotExist:
+                alt_ccy_code = ccy_cd  # fallback
+            
+            processed_entries = []
+            
+            for entry in journal_data.get('entries', []):
+                account_no = entry.get('Account_no')
+                
+                # ຄົ້ນຫາ existing GLSub record
+                try:
+                    glsub = MTTB_GLSub.objects.get(glsub_code=account_no)
+                    glsub_id = glsub.glsub_id
+                except MTTB_GLSub.DoesNotExist:
+                    print(f"❌ ບໍ່ພົບ GLSub ສຳລັບ {account_no}")
+                    glsub_id = account_no  # ໃຊ້ account_no ແທນ
+                
+                # ປັບ Account_no ດ້ວຍ ALT_Ccy_Code
+                modified_acc_no = f"{alt_ccy_code}.{account_no}"
+                
+                processed_entry = {
+                    "Account": glsub_id,
+                    "Account_no": modified_acc_no,
+                    "Amount": entry.get('Amount'),
+                    "Dr_cr": entry.get('Dr_cr'),
+                    "Addl_sub_text": entry.get('Addl_sub_text'),
+                    "Ac_relatives": entry.get('Ac_relatives'),
+                    "Maker_Id": self.request.user.user_id,
+                    "Record_Status": "O",
+                    "Auth_Status": "A"
+                }
+                processed_entries.append(processed_entry)
+            
+            # ສ້າງ processed data
+            processed_data = {
+                "Reference_No": journal_data.get('Reference_No'),
+                "Ccy_cd": journal_data.get('Ccy_cd'),
+                "Txn_code": journal_data.get('Txn_code'),
+                "Value_date": journal_data.get('Value_date'),
+                "Addl_text": journal_data.get('Addl_text'),
+                "fin_cycle": journal_data.get('fin_cycle'),
+                "Period_code": journal_data.get('Period_code'),
+                "module_id": journal_data.get('module_id'),
+                "Maker_Id": self.request.user.user_id,
+                "Record_Status": "O",
+                "Auth_Status": "A",
+                "entries": processed_entries
+            }
+            
+            return processed_data
+            
+        except Exception as e:
+            print(f"Error preparing journal data: {str(e)}")
+            return journal_data
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetExpenseSerializer
     permission_classes = [IsAuthenticated]
@@ -11972,157 +12140,6 @@ def find_gl_account(account_number):
         print(f"Error finding GL account for {account_number}: {str(e)}")
         return None
     
-
-# def create_journal_entry_data(asset, accounting_method, depreciation_amount, current_count, total_months):
-#     """
-#     ✅ ສ້າງຂໍ້ມູນສຳລັບ Journal Entry
-#     """
-#     try:
-#         current_date = timezone.now()
-        
-     
-#         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{getattr(asset, 'asset_code', None) or getattr(asset, 'asset_list_code', None) or asset.asset_list_id}"
-        
-        
-#         debit_account_number = extract_account_number(accounting_method.debit_account_id)
-#         credit_account_number = extract_account_number(accounting_method.credit_account_id)
-        
-#         debit_glid = find_gl_account(debit_account_number)
-#         credit_glid = find_gl_account(credit_account_number)
-        
-#         # ສ້າງ Additional Text
-#         addl_sub_text = f"ຫັກຄ່າເສື່ອມລາຄາ {asset.asset_spec or 'N/A'} ຄັ້ງທີ່ {current_count} ຈາກ {total_months}"
-        
-#         # ສ້າງຂໍ້ມູນ Journal Entry
-#         journal_data = {
-#             "Reference_No": reference_no,
-#             "Ccy_cd": asset.asset_currency or "",  
-#             "Txn_code": "ARD", 
-#             "Value_date": current_date.date().isoformat(),
-#             "Addl_text": "ຫັກຄ່າເສື່ອມລາຄາ",
-#             "fin_cycle": str(current_date.year),
-#             "module_id": "AS",
-#             "Period_code": current_date.strftime('%Y%m'),
-#             "entries": [
-#                 {
-#                     "Account": debit_glid,
-#                     "Account_no": str(accounting_method.debit_account_id),
-#                     "Amount": float(depreciation_amount),
-#                     "Dr_cr": "D",
-#                     "Addl_sub_text": addl_sub_text,
-#                     "Ac_relatives": str(asset.asset_list_id),
-#                 },
-#                 {
-#                     "Account": credit_glid,
-#                     "Account_no": str(accounting_method.credit_account_id),
-#                     "Amount": float(depreciation_amount),
-#                     "Dr_cr": "C",
-#                     "Addl_sub_text": addl_sub_text,
-#                     "Ac_relatives": str(asset.asset_list_id),
-#                 }
-#             ]
-#         }
-        
-#         return {
-#             'success': True,
-#             'journal_data': journal_data,
-#             'validation': {
-#                 'debit_account_number': debit_account_number,
-#                 'credit_account_number': credit_account_number,
-#                 'debit_glid': debit_glid,
-#                 'credit_glid': credit_glid,
-#                 'debit_found': debit_glid is not None,
-#                 'credit_found': credit_glid is not None
-#             }
-#         }
-        
-#     except Exception as e:
-#         return {
-#             'success': False,
-#             'error': f"Create journal data error: {str(e)}"
-#         }
-# def create_journal_entry_data(asset, accounting_method, depreciation_amount, current_count, total_months):
-#     """
-#     ✅ ສ້າງຂໍ້ມູນສຳລັບ Journal Entry
-#     """
-#     try:
-#         current_date = timezone.now()
-        
-       
-#         today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
-#         today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-        
-       
-#         daily_count = DETB_JRNL_LOG_MASTER.objects.filter(
-#             module_id="AS",
-#             Maker_DT_Stamp__range=[today_start, today_end]  
-#         ).count()
-        
-      
-#         sequence_number = daily_count + 1
-        
-       
-#         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
-        
-     
-#         debit_account_number = extract_account_number(accounting_method.debit_account_id)
-#         credit_account_number = extract_account_number(accounting_method.credit_account_id)
-        
-#         debit_glid = find_gl_account(debit_account_number)
-#         credit_glid = find_gl_account(credit_account_number)
-        
-      
-#         addl_sub_text = f"ຫັກຄ່າເສື່ອມລາຄາ {asset.asset_spec or 'N/A'} ຄັ້ງທີ່ {current_count} ຈາກ {total_months}"
-        
-      
-#         journal_data = {
-#             "Reference_No": reference_no,
-#             "Ccy_cd": asset.asset_currency or "", 
-#             "Txn_code": "ARD", 
-#             "Value_date": current_date.date().isoformat(),
-#             "Addl_text": "ຫັກຄ່າເສື່ອມລາຄາ",
-#             "fin_cycle": str(current_date.year),
-#             "module_id": "AS",
-#             "Period_code": current_date.strftime('%Y%m'),
-#             "entries": [
-#                 {
-#                     "Account": debit_glid,
-#                     "Account_no": str(accounting_method.debit_account_id),
-#                     "Amount": float(depreciation_amount),
-#                     "Dr_cr": "D",
-#                     "Addl_sub_text": addl_sub_text,
-#                     "Ac_relatives": str(asset.asset_list_id),
-#                 },
-#                 {
-#                     "Account": credit_glid,
-#                     "Account_no": str(accounting_method.credit_account_id),
-#                     "Amount": float(depreciation_amount),
-#                     "Dr_cr": "C",
-#                     "Addl_sub_text": addl_sub_text,
-#                     "Ac_relatives": str(asset.asset_list_id),
-#                 }
-#             ]
-#         }
-        
-#         return {
-#             'success': True,
-#             'journal_data': journal_data,
-#             'validation': {
-#                 'debit_account_number': debit_account_number,
-#                 'credit_account_number': credit_account_number,
-#                 'debit_glid': debit_glid,
-#                 'credit_glid': credit_glid,
-#                 'debit_found': debit_glid is not None,
-#                 'credit_found': credit_glid is not None,
-#                 'daily_sequence': sequence_number 
-#             }
-#         }
-        
-#     except Exception as e:
-#         return {
-#             'success': False,
-#             'error': f"Create journal data error: {str(e)}"
-#         }
 import datetime
 from django.utils import timezone
 from decimal import Decimal
@@ -12158,11 +12175,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         # ✅ ສ້າງ reference_no
         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
         
-        # ✅ Debug: ກວດສອບ data types
-        print(f"🔍 DEBUG asset.asset_list_id type: {type(asset.asset_list_id)}, value: {asset.asset_list_id}")
-        print(f"🔍 DEBUG asset.asset_spec type: {type(asset.asset_spec)}, value: {asset.asset_spec}")
-        print(f"🔍 DEBUG current_count type: {type(current_count)}, value: {current_count}")
-        print(f"🔍 DEBUG total_months type: {type(total_months)}, value: {total_months}")
+    
         
         # ເອົາສ່ວນທີ່ເຫຼືອແບບເກົ່າ
         debit_account_number = extract_account_number(accounting_method.debit_account_id)
