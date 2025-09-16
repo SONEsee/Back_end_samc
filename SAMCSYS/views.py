@@ -31270,7 +31270,7 @@ def get_latest_eod_date(request):
         }, status=500)
 
 
-# Bulk INsert Month CashFlow:
+# Bulk Insert Month CashFlow -------------:
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -31692,6 +31692,7 @@ def execute_eom_cashflow_reports(eom_function, user, processing_date):
         logger.error(f"[EOM-FN012] {error_msg}", exc_info=True)
         return False, error_msg
     
+
 
 from .models import DETB_JRNL_LOG
 
