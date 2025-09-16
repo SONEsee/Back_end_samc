@@ -135,7 +135,11 @@ from .views import (
     income_statement_dairy_acc_view,
     journal_report_view,
     journal_report_get_view,
+<<<<<<< HEAD
     bulk_insert_monthly_cashflow
+=======
+    get_credit_unauthorized,
+>>>>>>> b72494cc4ef01df7fa1f7dbd6aa945edcbd6b0ba
 
     
 
@@ -234,6 +238,8 @@ urlpatterns = [
     path('api/glsub-tree/<int:gl_code_id>', GLTreeAPIView, name='glsub-tree'),   
     path('api/glsub-tree-all/', GLTreeAll, name='glsub-tree-all'),   
     path('api/eod-journal/', submit_eod_journal, name='eod-journal'),
+    # urls.py
+    path('journal/credit-unauthorized/', get_credit_unauthorized, name='credit_unauthorized'),
 
 
     # Pid Bunsy nai mue 
