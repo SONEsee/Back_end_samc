@@ -31282,7 +31282,434 @@ def get_latest_eod_date(request):
             'message': f'ເກີດຂໍ້ຜິດພາດ: {str(e)}',
             'data': None
         }, status=500)
+<<<<<<< HEAD
+=======
+
+
+# Bulk Insert Month CashFlow -------------:
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_insert_monthly_cashflow(request):
+    """
+    Clear Monthly Cashflow records for specific period and insert fresh data 
+    from stored procedure for both LCY and FCY segments with multiple currencies
     
+    Expected payload:
+    {
+        "date_end": "YYYY-MM-DD",
+        "report_type": "acc" or "mfi" (optional, default: "both")
+    }
+    
+    Note: 
+    - period_code is automatically calculated from date_end (YYYYMM format)
+    - Only clears existing records for the calculated period, not the entire table
+    - report_type: "acc" = Monthly_Cashflow_acc only, "mfi" = Monthly_Cashflow_mfi only, "both" = both tables
+    
+    Data Sources:
+    - LCY segment: LAK currency only
+    - FCY segment: LAK, USD, THB currencies
+    """
+    try:
+        # Validate request data
+        date_end = request.data.get("date_end")
+        report_type = request.data.get("report_type", "both").lower()
+        
+        if not date_end:
+            return Response({
+                'status': 'error',
+                'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ສິ້ນສຸດ (Missing required parameter: date_end)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if report_type not in ['acc', 'mfi', 'both']:
+            return Response({
+                'status': 'error',
+                'message': 'ປະເພດລາຍງານບໍ່ຖືກຕ້ອງ ໃຊ້: acc, mfi, ຫຼື both (Invalid report_type, use: acc, mfi, or both)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Date validation and period_code calculation (YYYYMM format)
+        try:
+            end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
+            period_code = end_date_obj.strftime('%Y%m')  # YYYYMM format
+        except ValueError:
+            return Response({
+                'status': 'error',
+                'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.info(f"[BulkInsertMonthlyCashflow] Starting operation for period: {period_code}, report_type: {report_type}")
+
+        # Statistics tracking
+        stats = {
+            'cleared_acc_records': 0,
+            'cleared_mfi_records': 0,
+            'acc_lcy_records': 0,
+            'acc_fcy_lak_records': 0,
+            'acc_fcy_usd_records': 0,
+            'acc_fcy_thb_records': 0,
+            'mfi_lcy_records': 0,
+            'mfi_fcy_lak_records': 0,
+            'mfi_fcy_usd_records': 0,
+            'mfi_fcy_thb_records': 0,
+            'total_inserted_acc': 0,
+            'total_inserted_mfi': 0,
+            'total_failed': 0
+        }
+        
+        failed_records = []
+        created_records = []
+        
+        # Define segments and currencies to process
+        segments_config = [
+            {'segment': 'LCY', 'currency': 'LAK'},
+            {'segment': 'FCY', 'currency': 'LAK'},
+            {'segment': 'FCY', 'currency': 'USD'},
+            {'segment': 'FCY', 'currency': 'THB'}
+        ]
+
+        with transaction.atomic():
+            # Step 1: Clear existing data for this specific period
+            try:
+                from .models import Monthly_Cashflow_acc, Monthly_Cashflow_mfi
+                
+                if report_type in ['acc', 'both']:
+                    logger.info(f"Checking for existing Monthly_Cashflow_acc data for period {period_code}...")
+                    existing_acc_records = Monthly_Cashflow_acc.objects.filter(period_code=period_code)
+                    stats['cleared_acc_records'] = existing_acc_records.count()
+                    
+                    if stats['cleared_acc_records'] > 0:
+                        logger.info(f"Found {stats['cleared_acc_records']} existing ACC records for period {period_code}, clearing them...")
+                        existing_acc_records.delete()
+                        logger.info(f"Successfully cleared {stats['cleared_acc_records']} existing ACC records for period {period_code}")
+
+                if report_type in ['mfi', 'both']:
+                    logger.info(f"Checking for existing Monthly_Cashflow_mfi data for period {period_code}...")
+                    existing_mfi_records = Monthly_Cashflow_mfi.objects.filter(period_code=period_code)
+                    stats['cleared_mfi_records'] = existing_mfi_records.count()
+                    
+                    if stats['cleared_mfi_records'] > 0:
+                        logger.info(f"Found {stats['cleared_mfi_records']} existing MFI records for period {period_code}, clearing them...")
+                        existing_mfi_records.delete()
+                        logger.info(f"Successfully cleared {stats['cleared_mfi_records']} existing MFI records for period {period_code}")
+                
+            except Exception as e:
+                logger.error(f"Error clearing Monthly_Cashflow data for period {period_code}: {str(e)}")
+                return Response({
+                    'status': 'error',
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າສຳລັບຊ່ວງ {period_code}: {str(e)} (Error clearing existing data for period {period_code})'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Step 2: Process each segment and currency combination
+            for config in segments_config:
+                segment = config['segment']
+                currency = config['currency']
+                
+                logger.info(f"Processing Cashflow {segment} segment with {currency} currency...")
+                
+                try:
+                    with connection.cursor() as cursor:
+                        # Execute stored procedure
+                        sp_query = """
+                            EXEC [dbo].[Cashflows_acc_All_Currency_afterEOC]
+                                @segment = %s,
+                                @currency = %s,
+                                @period_code_id = %s
+                        """
+                        cursor.execute(sp_query, [segment, currency, period_code])
+                        
+                        # Get column names and results
+                        columns = [col[0] for col in cursor.description]
+                        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                        
+                        logger.info(f"Cashflow {segment}-{currency}: Fetched {len(results)} records")
+                        
+                        # Insert records
+                        for index, item in enumerate(results):
+                            try:
+                                # Prepare common data
+                                common_data = {
+                                    'no': item.get('no', ''),
+                                    'report_number': item.get('report_number', ''),
+                                    'description': item.get('Description', ''),
+                                    'previous_month': str(item.get('OPen_Total_amount', 0)) if item.get('OPen_Total_amount') is not None else '0',
+                                    'current_month': str(item.get('Current_Total_amount', 0)) if item.get('Current_Total_amount') is not None else '0',
+                                    'net_change': str(item.get('Net_Amount', 0)) if item.get('Net_Amount') is not None else '0',
+                                    'currency_display': item.get('currency_display', ''),
+                                    'segment_type': item.get('segment_type', ''),
+                                    'period_code': period_code
+                                }
+
+                                # Insert into Monthly_Cashflow_acc table
+                                if report_type in ['acc', 'both']:
+                                    acc_record = Monthly_Cashflow_acc(**common_data)
+                                    acc_record.full_clean()
+                                    acc_record.save()
+                                    
+                                    # Update ACC statistics
+                                    if segment == 'LCY':
+                                        stats['acc_lcy_records'] += 1
+                                    elif segment == 'FCY':
+                                        if currency == 'LAK':
+                                            stats['acc_fcy_lak_records'] += 1
+                                        elif currency == 'USD':
+                                            stats['acc_fcy_usd_records'] += 1
+                                        elif currency == 'THB':
+                                            stats['acc_fcy_thb_records'] += 1
+                                    
+                                    stats['total_inserted_acc'] += 1
+
+                                # Insert into Monthly_Cashflow_mfi table
+                                if report_type in ['mfi', 'both']:
+                                    mfi_record = Monthly_Cashflow_mfi(**common_data)
+                                    mfi_record.full_clean()
+                                    mfi_record.save()
+                                    
+                                    # Update MFI statistics
+                                    if segment == 'LCY':
+                                        stats['mfi_lcy_records'] += 1
+                                    elif segment == 'FCY':
+                                        if currency == 'LAK':
+                                            stats['mfi_fcy_lak_records'] += 1
+                                        elif currency == 'USD':
+                                            stats['mfi_fcy_usd_records'] += 1
+                                        elif currency == 'THB':
+                                            stats['mfi_fcy_thb_records'] += 1
+                                    
+                                    stats['total_inserted_mfi'] += 1
+                                
+                                created_records.append({
+                                    'segment': segment,
+                                    'currency': currency,
+                                    'no': item.get('no', ''),
+                                    'description': item.get('Description', '')[:50] + '...' if len(str(item.get('Description', ''))) > 50 else item.get('Description', ''),
+                                    'report_type': report_type
+                                })
+                                
+                            except Exception as e:
+                                stats['total_failed'] += 1
+                                error_msg = f"Cashflow {segment}-{currency} record {index} error: {str(e)}"
+                                logger.error(error_msg)
+                                failed_records.append({
+                                    'segment': segment,
+                                    'currency': currency,
+                                    'index': index,
+                                    'no': item.get('no', 'Unknown'),
+                                    'error': error_msg
+                                })
+                                
+                except Exception as e:
+                    logger.error(f"Error executing Cashflow stored procedure for {segment}-{currency}: {str(e)}")
+                    return Response({
+                        'status': 'error',
+                        'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ Cashflow stored procedure ສຳລັບ {segment}-{currency}: {str(e)}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Prepare response
+        total_inserted = stats['total_inserted_acc'] + stats['total_inserted_mfi']
+        total_cleared = stats['cleared_acc_records'] + stats['cleared_mfi_records']
+        
+        response_data = {
+            'status': 'success',
+            'message': f'🎉 ການດຳເນີນງານ Cashflow ສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າຊ່ວງ {period_code}: {total_cleared} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {total_inserted} ລາຍການ (Cashflow Operation completed successfully! Cleared {total_cleared} old records for period {period_code}, inserted {total_inserted} new records)',
+            'period_code': period_code,
+            'date_end': date_end,
+            'report_type': f'Cashflow ({report_type.upper()})',
+            'statistics': {
+                'cleared_records': {
+                    'acc_records': stats['cleared_acc_records'],
+                    'mfi_records': stats['cleared_mfi_records'],
+                    'total': total_cleared
+                },
+                'acc_segments': {
+                    'lcy_records': stats['acc_lcy_records'],
+                    'fcy_lak_records': stats['acc_fcy_lak_records'],
+                    'fcy_usd_records': stats['acc_fcy_usd_records'],
+                    'fcy_thb_records': stats['acc_fcy_thb_records']
+                },
+                'mfi_segments': {
+                    'lcy_records': stats['mfi_lcy_records'],
+                    'fcy_lak_records': stats['mfi_fcy_lak_records'],
+                    'fcy_usd_records': stats['mfi_fcy_usd_records'],
+                    'fcy_thb_records': stats['mfi_fcy_thb_records']
+                },
+                'totals': {
+                    'inserted_acc': stats['total_inserted_acc'],
+                    'inserted_mfi': stats['total_inserted_mfi'],
+                    'total_inserted': total_inserted,
+                    'failed': stats['total_failed']
+                }
+            },
+            'sample_created_records': created_records[:5] if created_records else []
+        }
+
+        if failed_records:
+            response_data['failed_records_sample'] = failed_records[:5]
+            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
+
+        logger.info(f"Monthly Cashflow insert operation completed successfully:")
+        logger.info(f"- Period: {period_code}")
+        logger.info(f"- Report Type: {report_type.upper()}")
+        logger.info(f"- Cleared existing records for period {period_code}: ACC={stats['cleared_acc_records']}, MFI={stats['cleared_mfi_records']}")
+        logger.info(f"- ACC Records: LCY={stats['acc_lcy_records']}, FCY-LAK={stats['acc_fcy_lak_records']}, FCY-USD={stats['acc_fcy_usd_records']}, FCY-THB={stats['acc_fcy_thb_records']}")
+        logger.info(f"- MFI Records: LCY={stats['mfi_lcy_records']}, FCY-LAK={stats['mfi_fcy_lak_records']}, FCY-USD={stats['mfi_fcy_usd_records']}, FCY-THB={stats['mfi_fcy_thb_records']}")
+        logger.info(f"- Total: ACC={stats['total_inserted_acc']}, MFI={stats['total_inserted_mfi']}, Failed={stats['total_failed']}")
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Bulk insert monthly Cashflow error: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ Cashflow: {str(e)} (Error in Cashflow operation)'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def execute_eom_cashflow_reports(eom_function, user, processing_date):
+    """
+    Execute EOM Cashflow reports function - wrapper for bulk_insert_monthly_cashflow
+    Called from EOM function mapping (FN012)
+    
+    Args:
+        eom_function: EOM function object
+        user: User executing the function
+        processing_date: Date for processing (YYYY-MM-DD format)
+    
+    Returns:
+        tuple: (success_boolean, message_string)
+        
+    Note: period_code will be converted to YYYYMM format (e.g., 2025-08-29 → 202508)
+    """
+    try:
+        logger.info(f"[EOM-FN012] Starting Cashflow reports execution for period: {processing_date}")
+        
+        # Convert processing_date to period_code (YYYYMM format)
+        if processing_date:
+            try:
+                # Handle both string and date object types
+                if isinstance(processing_date, str):
+                    date_obj = datetime.strptime(processing_date, '%Y-%m-%d').date()
+                elif hasattr(processing_date, 'strftime'):
+                    # It's already a date/datetime object
+                    date_obj = processing_date
+                else:
+                    error_msg = f"ປະເພດວັນທີບໍ່ຖືກຕ້ອງ: {type(processing_date)} (Invalid date type)"
+                    logger.error(f"[EOM-FN012] {error_msg}")
+                    return False, error_msg
+                
+                period_code = date_obj.strftime('%Y%m')  # YYYYMM format
+                logger.info(f"[EOM-FN012] Processing period: {period_code} from date: {date_obj}")
+            except (ValueError, AttributeError) as e:
+                error_msg = f"ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ: {processing_date} (Invalid date format: {str(e)})"
+                logger.error(f"[EOM-FN012] {error_msg}")
+                return False, error_msg
+        else:
+            error_msg = "ບໍ່ມີວັນທີປະມວນຜົນ (No processing date provided)"
+            logger.error(f"[EOM-FN012] {error_msg}")
+            return False, error_msg
+
+        # Statistics tracking
+        total_records = {'acc': 0, 'mfi': 0, 'failed': 0}
+        
+        # Define segments and currencies to process
+        segments_config = [
+            {'segment': 'LCY', 'currency': 'LAK'},
+            {'segment': 'FCY', 'currency': 'LAK'},
+            {'segment': 'FCY', 'currency': 'USD'},
+            {'segment': 'FCY', 'currency': 'THB'}
+        ]
+
+        with transaction.atomic():
+            # Clear existing data for this period
+            from .models import Monthly_Cashflow_acc, Monthly_Cashflow_mfi
+            
+            # Clear ACC records
+            acc_cleared = Monthly_Cashflow_acc.objects.filter(period_code=period_code).count()
+            Monthly_Cashflow_acc.objects.filter(period_code=period_code).delete()
+            
+            # Clear MFI records  
+            mfi_cleared = Monthly_Cashflow_mfi.objects.filter(period_code=period_code).count()
+            Monthly_Cashflow_mfi.objects.filter(period_code=period_code).delete()
+            
+            logger.info(f"[EOM-FN012] Cleared existing records: ACC={acc_cleared}, MFI={mfi_cleared}")
+
+            # Process each segment and currency combination
+            for config in segments_config:
+                segment = config['segment']
+                currency = config['currency']
+                
+                logger.info(f"[EOM-FN012] Processing {segment}-{currency}...")
+                
+                try:
+                    with connection.cursor() as cursor:
+                        # Execute stored procedure
+                        sp_query = """
+                            EXEC [dbo].[Cashflows_acc_All_Currency_afterEOC]
+                                @segment = %s,
+                                @currency = %s,
+                                @period_code_id = %s
+                        """
+                        cursor.execute(sp_query, [segment, currency, period_code])
+                        
+                        # Get results
+                        columns = [col[0] for col in cursor.description]
+                        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                        
+                        logger.info(f"[EOM-FN012] {segment}-{currency}: Fetched {len(results)} records")
+                        
+                        # Insert records into both tables
+                        for item in results:
+                            try:
+                                # Prepare common data
+                                common_data = {
+                                    'no': item.get('no', ''),
+                                    'report_number': item.get('report_number', ''),
+                                    'description': item.get('Description', ''),
+                                    'previous_month': str(item.get('OPen_Total_amount', 0)) if item.get('OPen_Total_amount') is not None else '0',
+                                    'current_month': str(item.get('Current_Total_amount', 0)) if item.get('Current_Total_amount') is not None else '0',
+                                    'net_change': str(item.get('Net_Amount', 0)) if item.get('Net_Amount') is not None else '0',
+                                    'currency_display': item.get('currency_display', ''),
+                                    'segment_type': item.get('segment_type', ''),
+                                    'period_code': period_code
+                                }
+
+                                # Insert into ACC table
+                                acc_record = Monthly_Cashflow_acc(**common_data)
+                                acc_record.full_clean()
+                                acc_record.save()
+                                total_records['acc'] += 1
+
+                                # Insert into MFI table
+                                mfi_record = Monthly_Cashflow_mfi(**common_data)
+                                mfi_record.full_clean()
+                                mfi_record.save()
+                                total_records['mfi'] += 1
+                                
+                            except Exception as e:
+                                total_records['failed'] += 1
+                                logger.error(f"[EOM-FN012] Record insert error: {str(e)}")
+                                
+                except Exception as e:
+                    error_msg = f"ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ stored procedure {segment}-{currency}: {str(e)}"
+                    logger.error(f"[EOM-FN012] {error_msg}")
+                    return False, error_msg
+
+        # Success response
+        total_inserted = total_records['acc'] + total_records['mfi']
+        success_msg = f"✅ Cashflow EOM ສຳເລັດ! ຊ່ວງ {period_code}: ACC={total_records['acc']}, MFI={total_records['mfi']}, ລວມ={total_inserted} ລາຍການ"
+        
+        if total_records['failed'] > 0:
+            success_msg += f" ⚠️ ຜິດພາດ {total_records['failed']} ລາຍການ"
+        
+        logger.info(f"[EOM-FN012] {success_msg}")
+        return True, success_msg
+
+    except Exception as e:
+        error_msg = f"ເກີດຂໍ້ຜິດພາດໃນ EOM Cashflow: {str(e)}"
+        logger.error(f"[EOM-FN012] {error_msg}", exc_info=True)
+        return False, error_msg
+>>>>>>> eb84d4082a8cf290cb903047686b3d5f90b263bf
+    
+
 
 from .models import DETB_JRNL_LOG
 
