@@ -1702,66 +1702,69 @@ class CcyDefnViewSet(viewsets.ModelViewSet):
             'entry': serializer.data
         })
 
-
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.decorators import action
 from django.utils import timezone
-from .models import MTTB_EXC_Rate, MTTB_EXC_Rate_History
+from datetime import datetime
+from .models import MTTB_EXC_Rate, MTTB_EXC_Rate_History, MTTB_Users
 from .serializers import ExcRateSerializer, ExcRateHistorySerializer
 
 class ExcRateViewSet(viewsets.ModelViewSet):
     """
     CRUD for Exchange Rates.
     """
-    queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('ccy_code__ccy_code')
+    queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('-value_date', 'ccy_code__ccy_code')
     serializer_class = ExcRateSerializer
 
     def get_queryset(self):
-        queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('ccy_code__ccy_code')
+        queryset = MTTB_EXC_Rate.objects.select_related('ccy_code').all().order_by('-value_date', 'ccy_code__ccy_code')
         ccy_code_param = self.request.query_params.get('ccy_code')
         if ccy_code_param:
             queryset = queryset.filter(ccy_code__ccy_code=ccy_code_param)
         return queryset
 
     def get_permissions(self):
-        # Allow unauthenticated create
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        maker = None
-        if self.request.user and self.request.user.is_authenticated:
-            maker = self.request.user
+        maker = self.request.user if self.request.user.is_authenticated else None
+        
         exc_rate = serializer.save(
             Maker_Id=maker,
             Maker_DT_Stamp=timezone.now()
         )
-        # Also record initial history entry
+        
+        # Create history entry
         MTTB_EXC_Rate_History.objects.create(
             ccy_code=exc_rate.ccy_code,
             Buy_Rate=exc_rate.Buy_Rate,
             Sale_Rate=exc_rate.Sale_Rate,
             INT_Auth_Status=exc_rate.INT_Auth_Status,
+            value_date=exc_rate.value_date,
             Maker_Id=maker,
             Maker_DT_Stamp=timezone.now(),
             Auth_Status=exc_rate.Auth_Status
         )
 
     def perform_update(self, serializer):
-        checker = None
-        if self.request.user and self.request.user.is_authenticated:
-            checker = self.request.user
+        checker = self.request.user if self.request.user.is_authenticated else None
+        
         exc_rate = serializer.save(
+            Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
-        # Record history on each update
+        
+        # Create history entry
         MTTB_EXC_Rate_History.objects.create(
             ccy_code=exc_rate.ccy_code,
             Buy_Rate=exc_rate.Buy_Rate,
             Sale_Rate=exc_rate.Sale_Rate,
             INT_Auth_Status=exc_rate.INT_Auth_Status,
+            value_date=exc_rate.value_date,
             Maker_Id=checker,
             Maker_DT_Stamp=timezone.now(),
             Auth_Status=exc_rate.Auth_Status
@@ -1769,20 +1772,19 @@ class ExcRateViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def authorize(self, request, pk=None):
-        """Authorize a journal entry"""
-        journal_entry = self.get_object()
+        """Authorize an exchange rate entry"""
+        exc_rate_entry = self.get_object()
 
-        if journal_entry.Auth_Status == 'A':
+        if exc_rate_entry.Auth_Status == 'A':
             return Response({'error': 'Entry is already authorized'}, 
                           status=status.HTTP_406_NOT_ACCEPTABLE)
 
-        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
-        journal_entry.Auth_Status = 'A'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
+        exc_rate_entry.Auth_Status = 'A'
+        exc_rate_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        exc_rate_entry.Checker_DT_Stamp = timezone.now()
+        exc_rate_entry.save()
 
-        serializer = self.get_serializer(journal_entry)
+        serializer = self.get_serializer(exc_rate_entry)
         return Response({
             'message': 'Entry authorized successfully',
             'entry': serializer.data
@@ -1790,20 +1792,19 @@ class ExcRateViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def unauthorize(self, request, pk=None):
-        """Unauthorize a journal entry (set Auth_Status = 'U')"""
-        journal_entry = self.get_object()
+        """Unauthorize an exchange rate entry"""
+        exc_rate_entry = self.get_object()
 
-        if journal_entry.Auth_Status == 'U':
+        if exc_rate_entry.Auth_Status == 'U':
             return Response({'error': 'Entry is already unauthorized'}, 
                           status=status.HTTP_406_NOT_ACCEPTABLE)
 
-        # Set Auth_Status = 'U'
-        journal_entry.Auth_Status = 'U'
-        journal_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
-        journal_entry.Checker_DT_Stamp = timezone.now()
-        journal_entry.save()
+        exc_rate_entry.Auth_Status = 'U'
+        exc_rate_entry.Checker_Id = MTTB_Users.objects.get(user_id=request.user.user_id)
+        exc_rate_entry.Checker_DT_Stamp = timezone.now()
+        exc_rate_entry.save()
 
-        serializer = self.get_serializer(journal_entry)
+        serializer = self.get_serializer(exc_rate_entry)
         return Response({
             'message': 'Entry unauthorized successfully',
             'entry': serializer.data
@@ -1814,11 +1815,10 @@ class ExcRateHistoryViewSet(viewsets.ModelViewSet):
     """
     CRUD for Exchange Rate History.
     """
-    queryset = MTTB_EXC_Rate_History.objects.select_related('ccy_code').all().order_by('-Maker_DT_Stamp')
+    queryset = MTTB_EXC_Rate_History.objects.select_related('ccy_code').all().order_by('-value_date', '-Maker_DT_Stamp')
     serializer_class = ExcRateHistorySerializer
 
     def get_permissions(self):
-        # Read operations require authentication; creation only via ExcRateViewSet
         if self.request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
             return [IsAuthenticated()]
         return [IsAuthenticated()]
@@ -8588,6 +8588,19 @@ from rest_framework.exceptions import ValidationError
 class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetListDisposalSerializer
     permission_classes = [IsAuthenticated]
+    @action(detail=False, methods=['post'], url_path='bulk-approve-journals')
+    def bulk_approve_journals(self, request):
+        '''
+        Bulk approve/reject disposal journal entries by asset_list_id
+    
+        POST /api/asset_list_diposal/bulk-approve-journals/
+        {
+            "asset_list_ids": ["FIX-001-202508-0000138", "FIX-001-202508-0000139"],
+            "action": "approve"
+        }
+        '''
+        return bulk_approve_journals_view(self)
+
     
     def get_queryset(self):
         queryset = FA_Asset_List_Disposal.objects.all().order_by('alds_id')
@@ -9223,6 +9236,254 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"❌ Error saving journal entries directly: {e}")
             return False
+def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=None):
+    """
+    ✅ Bulk ຢືນຢັນ Journal Entries ສຳລັບການສະສາງຊັບສິນ - ເນັ້ນ Journal ເທົ່ານັ້ນ
+    ✅ ຄືກັບ bulk_confirm_depreciation pattern
+    
+    Parameters:
+    - asset_list_ids: List of asset list IDs
+    - action: 'approve' or 'reject' 
+    - user_id: User performing the action
+    """
+    try:
+        validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+        if not validated_user_id:
+            return {"error": "ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ"}
+        
+        if action not in ['approve', 'reject']:
+            return {"error": "action ບໍ່ຖືກຕ້ອງ. ໃຊ້ 'approve' ຫຼື 'reject'"}
+        
+        if not asset_list_ids or not isinstance(asset_list_ids, list):
+            return {"error": "ໃສ່ asset_list_ids ເປັນ array"}
+        
+        results = []
+        success_count = 0
+        error_count = 0
+        total_journals_approved = 0
+        journal_approval_summary = []
+        current_time = timezone.now()
+        
+        # Map action to Auth_Status
+        auth_status = 'A' if action == 'approve' else 'R'
+        
+        with transaction.atomic():
+            for asset_list_id in asset_list_ids:
+                # ຄົ້ນຫາແລະອັບເດດ journal entries
+                result = approve_disposal_journals_by_asset(asset_list_id, auth_status, validated_user_id)
+                
+                if result.get('success'):
+                    results.append({
+                        'asset_list_id': asset_list_id,
+                        'status': 'success',
+                        'message': result['message'],
+                        'journals_processed': result.get('journals_processed', 0),
+                        'journal_auto_approval': result.get('journal_approval_info')
+                    })
+                    success_count += 1
+                    
+                    # ✅ ເກັບສະຫຼຸບ journal approvals ຄືກັບ bulk_confirm_depreciation
+                    journal_approval = result.get('journal_approval_info')
+                    if journal_approval and journal_approval.get('success'):
+                        approved_count = journal_approval.get('approved_count', 0)
+                        total_journals_approved += approved_count
+                        
+                        if approved_count > 0:
+                            journal_approval_summary.append({
+                                'asset_list_id': asset_list_id,
+                                'approved_count': approved_count,
+                                'reference_numbers': journal_approval.get('reference_numbers', [])
+                            })
+                else:
+                    results.append({
+                        'asset_list_id': asset_list_id,
+                        'status': 'error',
+                        'message': result.get('error', 'Unknown error')
+                    })
+                    error_count += 1
+        
+        action_text = 'ຢືນຢັນ' if action == 'approve' else 'ປະຕິເສດ'
+        
+        return {
+            'success': True,
+            'summary': {
+                'total_items': len(asset_list_ids),
+                'success_count': success_count,
+                'error_count': error_count,
+                'action_performed': action,
+                'action_text': action_text,
+                'processed_by': validated_user_id,
+                'processed_at': current_time.strftime('%d/%m/%Y %H:%M:%S'),
+                'total_journals_approved': total_journals_approved,  # ✅ ຄືກັບ bulk_confirm_depreciation
+                'assets_with_journals_approved': len(journal_approval_summary)
+            },
+            'details': results,
+            'journal_approval_summary': journal_approval_summary  # ✅ ຄືກັບ bulk_confirm_depreciation
+        }
+        
+    except Exception as e:
+        return {"error": f"Bulk journal approval error: {str(e)}"}
+
+
+def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
+    """
+    ✅ ອັບເດດ Journal Entries ສຳລັບຊັບສິນດຽວ - ໃຊ້ auto_approve_related_journals
+    
+    Parameters:
+    - asset_list_id: Asset List ID
+    - auth_status: 'A' (Approve) or 'R' (Reject)
+    - user_id: User performing action
+    """
+    try:
+        if auth_status != 'A':
+            # ຖ້າບໍ່ແມ່ນ approve ໃຫ້ໃຊ້ວິທີເກົ່າ (manual update)
+            return approve_disposal_journals_manual(asset_list_id, auth_status, user_id)
+        
+        # ✅ ໃຊ້ auto_approve_related_journals ສຳລັບ approve
+        print(f"🚀 Using auto_approve_related_journals for asset: {asset_list_id}")
+        
+        # ສ້າງ mock request ສຳລັບ user context
+        from unittest.mock import Mock
+        mock_request = Mock()
+        
+        # ຫາ user object
+        try:
+            from .models import MTTB_Users
+            user = MTTB_Users.objects.get(user_id=user_id)
+            mock_request.user = user
+        except:
+            mock_request.user = None
+        
+        mock_request.method = 'POST'
+        
+        # ✅ ເອີ້ນ auto_approve_related_journals
+        result = auto_approve_related_journals(asset_list_id, mock_request)
+        
+        if result.get('success'):
+            approved_count = result.get('approved_count', 0)
+            reference_numbers = result.get('reference_numbers', [])
+            
+            # ✅ ສ້າງ journal_approval_info ຄືກັບ bulk_confirm_depreciation
+            journal_approval_info = {
+                'success': True,
+                'message': result.get('message', f'ຢືນຢັນ journal entries ສຳເລັດ: {approved_count} entries ສຳລັບຊັບສິນ {asset_list_id}'),
+                'approved_count': approved_count,
+                'reference_numbers': reference_numbers,
+                'approval_details': result.get('approval_details', [])
+            }
+            
+            return {
+                'success': True,
+                'message': result.get('message', f'ຢືນຢັນ journal entries ສຳເລັດ: {approved_count} entries ສຳລັບຊັບສິນ {asset_list_id}'),
+                'journals_processed': approved_count,
+                'journal_approval_info': journal_approval_info
+            }
+        else:
+            return {
+                'success': False,
+                'error': result.get('error', 'Unknown error from auto_approve_related_journals')
+            }
+        
+    except Exception as e:
+        print(f"💥 Error in approve_disposal_journals_by_asset: {str(e)}")
+        return {
+            'success': False,
+            'error': f'Error processing journals for asset {asset_list_id}: {str(e)}'
+        }
+
+
+def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
+    """
+    ✅ Manual journal update ສຳລັບ reject (fallback method)
+    """
+    try:
+        current_time = timezone.now()
+        
+        # ຄົ້ນຫາ journal entries ທີ່ກ່ຽວຂ້ອງ
+        journal_entries = DETB_JRNL_LOG.objects.filter(
+            Ac_relatives=str(asset_list_id),
+            module_id='AS',
+            Txn_code='DPS',
+            Auth_Status='U'
+        )
+        
+        if not journal_entries.exists():
+            return {
+                'success': False,
+                'error': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງການດຳເນີນການສຳລັບຊັບສິນ {asset_list_id} (ຄົ້ນຫາ Auth_Status=U)'
+            }
+        
+        # ອັບເດດທຸກ entries
+        updated_count = 0
+        reference_numbers = []
+        
+        for entry in journal_entries:
+            entry.Auth_Status = auth_status
+            entry.Checker_Id_id = user_id
+            entry.Checker_DT_Stamp = current_time
+            entry.save()
+            
+            updated_count += 1
+            
+            if entry.Reference_No not in reference_numbers:
+                reference_numbers.append(entry.Reference_No)
+        
+        action_text = 'ປະຕິເສດ'
+        
+        journal_approval_info = {
+            'success': True,
+            'message': f'{action_text} journal entries ສຳເລັດ: {updated_count} entries ສຳລັບຊັບສິນ {asset_list_id}',
+            'approved_count': updated_count,
+            'reference_numbers': reference_numbers
+        }
+        
+        return {
+            'success': True,
+            'message': f'{action_text} journal entries ສຳເລັດ: {updated_count} entries ສຳລັບຊັບສິນ {asset_list_id}',
+            'journals_processed': updated_count,
+            'journal_approval_info': journal_approval_info
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error in manual journal update for asset {asset_list_id}: {str(e)}'
+        }
+
+
+# ✅ ViewSet method ສຳລັບ bulk approve journals
+def bulk_approve_journals_view(self):
+    """
+    API endpoint ສຳລັບ bulk approve disposal journals
+    POST /api/asset_disposal/bulk_approve_journals/
+    Body: {
+        "asset_list_ids": ["FIX-001-202508-0000138", "FIX-001-202508-0000139"],
+        "action": "approve"  // approve or reject
+    }
+    """
+    try:
+        data = self.request.data
+        asset_list_ids = data.get('asset_list_ids', [])
+        action = data.get('action', 'approve')
+        user_id = self.request.user.user_id
+        
+        if not asset_list_ids:
+            return Response({
+                'error': 'asset_list_ids ຈຳເປັນຕ້ອງມີ'
+            }, status=400)
+        
+        # ເອີ້ນ bulk approve function
+        result = bulk_approve_disposal_journals(asset_list_ids, action, user_id)
+        
+        if result.get('success'):
+            return Response(result, status=200)
+        else:
+            return Response(result, status=400)
+            
+    except Exception as e:
+        return Response({
+            'error': f'API error: {str(e)}'
+        }, status=500)
 
 class FAAssetExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = FAAssetExpenseSerializer
@@ -9248,6 +9509,7 @@ class FAAssetExpenseViewSet(viewsets.ModelViewSet):
             Checker_Id=user,
             Checker_DT_Stamp=timezone.now()
         )
+    
 
 # class FATransferLogsViewSet(viewsets.ModelViewSet):
 #     serializer_class = FATransferLogsSerializer
