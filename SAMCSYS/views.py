@@ -9442,15 +9442,17 @@ def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=Non
                                 'reference_numbers': journal_approval.get('reference_numbers', [])
                             })
                     
-                    # ✅ ເກັບສະຫຼຸບການອັບເດດສະຖານະຊັບສິນ
+                    # ✅ ເກັບສະຫຼຸບການອັບເດດສະຖານະຊັບສິນ ແລະ disposal record
                     asset_status_update = result.get('asset_status_update')
                     if asset_status_update and asset_status_update.get('success') and action == 'approve':
                         total_assets_status_updated += 1
                         asset_status_summary.append({
                             'asset_list_id': asset_status_update.get('asset_list_id'),
-                            'old_status': asset_status_update.get('old_status'),
-                            'new_status': asset_status_update.get('new_status'),
-                            'updated_at': asset_status_update.get('updated_at')
+                            'disposal_id': asset_status_update.get('disposal_id'),
+                            'asset_status': asset_status_update.get('asset_status'),
+                            'disposal_auth_status': asset_status_update.get('disposal_auth_status'),
+                            'updated_at': asset_status_update.get('updated_at'),
+                            'approved_by': asset_status_update.get('approved_by')
                         })
                         
                 else:
@@ -9485,7 +9487,6 @@ def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=Non
         
     except Exception as e:
         return {"error": f"Bulk journal approval error: {str(e)}"}
-
 # def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
 #     """
 #     ✅ ອັບເດດ Journal Entries ສຳລັບຊັບສິນດຽວ - ໃຊ້ auto_approve_related_journals
@@ -9589,8 +9590,8 @@ def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
             approved_count = result.get('approved_count', 0)
             reference_numbers = result.get('reference_numbers', [])
             
-            # ✅ ອັບເດດສະຖານະຊັບສິນເມື່ອ journal entries ຖືກ approve ສຳເລັດ
-            asset_status_result = update_asset_status_on_approval(asset_list_id)
+            # ✅ ອັບເດດສະຖານະຊັບສິນ ແລະ disposal record ເມື່ອ journal entries ຖືກ approve ສຳເລັດ
+            asset_status_result = update_asset_status_on_approval(asset_list_id, user_id)
             
             # ✅ ສ້າງ journal_approval_info ຄືກັບ bulk_confirm_depreciation
             journal_approval_info = {
@@ -9621,20 +9622,21 @@ def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
             'success': False,
             'error': f'Error processing journals for asset {asset_list_id}: {str(e)}'
         }
-
 # ✅ ສ້າງຟັງຊັນໃໝ່ສຳລັບອັບເດດສະຖານະຊັບສິນເມື່ອ approve
-def update_asset_status_on_approval(asset_list_id):
+def update_asset_status_on_approval(asset_list_id, user_id=None):
     """
-    ✅ ອັບເດດສະຖານະຊັບສິນເປັນ 'DS' (Disposed) ເມື່ອ journal entries ຖືກ approve
+    ✅ ອັບເດດສະຖານະຊັບສິນເປັນ 'DS' + ອັບເດດ Auth_Status ຂອງ disposal record ເປັນ 'A'
     
     Parameters:
     - asset_list_id: Asset List ID (string)
+    - user_id: User ID performing the approval
     
     Returns:
     - dict: ຜົນລັບການອັບເດດ
     """
     try:
-        print(f"🔄 Updating asset status for: {asset_list_id}")
+        print(f"🔄 Updating asset status and disposal auth status for: {asset_list_id}")
+        current_time = timezone.now()
         
         # ຫາ disposal record ທີ່ກ່ຽວຂ້ອງ
         try:
@@ -9656,28 +9658,57 @@ def update_asset_status_on_approval(asset_list_id):
             }
         
         # ບັນທຶກສະຖານະເກົ່າ
-        old_status = asset.asset_status
+        old_asset_status = asset.asset_status
+        old_disposal_auth_status = disposal_record.Auth_Status
         
-        # ອັບເດດສະຖານະເປັນ 'DS' (Disposed)
+        # ✅ ອັບເດດສະຖານະຊັບສິນເປັນ 'DS' (Disposed)
         asset.asset_status = 'DS'
         asset.save()
         
-        print(f"✅ Asset status updated: {asset.asset_list_id} -> {old_status} to DS")
+        # ✅ ອັບເດດ Auth_Status ຂອງ disposal record ເປັນ 'A' (Approved)
+        disposal_record.Auth_Status = 'A'
+        disposal_record.disposal_ac_yesno = 'Y'  # ເປັນໝາຍວ່າຖືກ approve ແລ້ວ
+        disposal_record.disposal_ac_date = current_time.date()
+        disposal_record.disposal_ac_datetime = current_time
+        
+        # ອັບເດດ Checker ຖ້າມີ user_id
+        if user_id:
+            try:
+                from .models import MTTB_Users
+                checker_user = MTTB_Users.objects.get(user_id=user_id)
+                disposal_record.disposal_ac_by = user_id
+                disposal_record.Checker_Id = checker_user
+                disposal_record.Checker_DT_Stamp = current_time
+            except MTTB_Users.DoesNotExist:
+                print(f"⚠️ User {user_id} not found, continuing without checker update")
+        
+        disposal_record.save()
+        
+        print(f"✅ Asset status updated: {asset.asset_list_id} -> {old_asset_status} to DS")
+        print(f"✅ Disposal Auth_Status updated: {disposal_record.alds_id} -> {old_disposal_auth_status} to A")
         
         return {
             'success': True,
-            'message': f'ອັບເດດສະຖານະຊັບສິນສຳເລັດ: {asset.asset_list_id} -> DS',
+            'message': f'ອັບເດດສະຖານະສຳເລັດ: Asset {asset.asset_list_id} -> DS, Disposal Auth_Status -> A',
             'asset_list_id': asset.asset_list_id,
-            'old_status': old_status,
-            'new_status': 'DS',
-            'updated_at': timezone.now().strftime('%d/%m/%Y %H:%M:%S')
+            'disposal_id': disposal_record.alds_id,
+            'asset_status': {
+                'old_status': old_asset_status,
+                'new_status': 'DS'
+            },
+            'disposal_auth_status': {
+                'old_status': old_disposal_auth_status,
+                'new_status': 'A'
+            },
+            'updated_at': current_time.strftime('%d/%m/%Y %H:%M:%S'),
+            'approved_by': user_id
         }
         
     except Exception as e:
-        print(f"❌ Error updating asset status: {str(e)}")
+        print(f"❌ Error updating asset and disposal status: {str(e)}")
         return {
             'success': False,
-            'error': f'ຂໍ້ຜິດພາດໃນການອັບເດດສະຖານະຊັບສິນ: {str(e)}'
+            'error': f'ຂໍ້ຜິດພາດໃນການອັບເດດສະຖານະ: {str(e)}'
         }
 
 # def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
@@ -9778,7 +9809,7 @@ def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
         # ✅ ອັບເດດສະຖານະຊັບສິນຖ້າເປັນ approve
         asset_status_result = None
         if auth_status == 'A':
-            asset_status_result = update_asset_status_on_approval(asset_list_id)
+            asset_status_result = update_asset_status_on_approval(asset_list_id, user_id)
         
         journal_approval_info = {
             'success': True,
@@ -9801,7 +9832,6 @@ def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
             'success': False,
             'error': f'Error in manual journal update for asset {asset_list_id}: {str(e)}'
         }
-
 # ✅ ViewSet method ສຳລັບ bulk approve journals
 def bulk_approve_journals_view(self):
     """
@@ -28265,8 +28295,8 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import OuterRef, Subquery
-from .models import DETB_JRNL_LOG, FA_Asset_List_Depreciation_Main
-from .serializers import DETB_JRNL_LOGSerializer_Asset,DETB_JRNL_LOG_MASTER_AC_Serializer
+from .models import DETB_JRNL_LOG, FA_Asset_List_Depreciation_Main, FA_Asset_List_Disposal
+from .serializers import DETB_JRNL_LOGSerializer_Asset,DETB_JRNL_LOG_MASTER_AC_Serializer, DETB_JRNL_LOG_MASTER_Serializer_dps
 
 class JRNLLogViewSetAsset(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -28296,6 +28326,25 @@ class JRNLLogViewSetAsset(viewsets.ReadOnlyModelViewSet):
         if ref_no:
             queryset = queryset.filter(Reference_No=ref_no)
 
+        return queryset
+class JRNLLogViewSetAssetDisposal(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DETB_JRNL_LOG_MASTER_Serializer_dps
+    
+    def get_queryset(self):
+        ref_no = self.request.query_params.get('ref_no')
+        
+        queryset = DETB_JRNL_LOG_MASTER.objects.select_related(
+            'module_id', 'Ccy_cd', 'Txn_code',
+            'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id'
+        ).filter(
+            Txn_code__trn_code='DPS',
+            delete_stat__isnull=True  # ຫຼື delete_stat!='D' ຂຶ້ນກັບລະບົບ
+        ).order_by('-Maker_DT_Stamp')
+        
+        if ref_no:
+            queryset = queryset.filter(Reference_No=ref_no)
+        
         return queryset
 
 
@@ -29360,6 +29409,1066 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 'transaction_type': 'ARD'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
        
+class DETB_JRNL_LOG_MASTER_DPS_ViewSet(viewsets.ModelViewSet):
+    serializer_class = DETB_JRNL_LOG_MASTER_AC_Serializer  # Use your existing serializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['Ccy_cd', 'fin_cycle', 'Auth_Status', 'Reference_No']
+    search_fields = ['Reference_No', 'Addl_text']
+    ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No', 'Fcy_Amount', 'Auth_Status']
+
+    def get_queryset(self):
+        """Optimized queryset with select_related for foreign keys - DPS transactions only"""
+        base_queryset = DETB_JRNL_LOG_MASTER.objects.select_related(
+            'Maker_Id',
+            'Checker_Id', 
+            'module_id',
+            'Ccy_cd',
+            'Txn_code'
+        ).filter(
+            # Include only DPS transaction codes
+            Txn_code='DPS'
+        ).filter(
+            # Include only non-deleted records
+            Q(delete_stat__isnull=True) | ~Q(delete_stat='D')
+        )
+        
+        # Permission-based filtering
+        show_all = self.request.query_params.get('show_all', 'false').lower()
+        
+        if show_all == 'true':
+            return base_queryset
+        else:
+            user_id = getattr(self.request.user, 'user_id', None) or getattr(self.request.user, 'id', None)
+            return base_queryset.filter(Maker_Id=user_id)
+
+    def _apply_filters(self, queryset, request):
+        """Apply all custom filters efficiently - for DPS transactions"""
+        try:
+            # Date filtering
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    queryset = queryset.filter(Value_date__date=filter_date)
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+            
+            # Other filters
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+            
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+            
+            auth_status = request.query_params.get('Auth_Status')
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+            
+            # Search
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search)
+                )
+            
+            # Exclude deleted
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+
+            # Note: No need to filter Txn_code since we only have DPS transactions
+            print("DEBUG: DPS ViewSet - all transactions are DPS")
+
+            # Ordering
+            ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
+            valid_fields = [
+                'Maker_DT_Stamp', '-Maker_DT_Stamp',
+                'Value_date', '-Value_date',
+                'Reference_No', '-Reference_No',
+                'Fcy_Amount', '-Fcy_Amount',
+                'Auth_Status', '-Auth_Status'
+            ]
+            if ordering in valid_fields:
+                queryset = queryset.order_by(ordering)
+            
+            return queryset
+            
+        except Exception as e:
+            logger.error(f"Error applying DPS filters: {str(e)}")
+            return queryset
+
+    @action(detail=False, methods=['get'], url_path='init-data')
+    def init_data(self, request):
+        """
+        Combined endpoint for initial data loading - DPS transactions only
+        Returns paginated journal data + summary data in one request
+        """
+        try:
+            # Get query parameters
+            page_size = min(int(request.query_params.get('page_size', 25)), 100)
+            page = int(request.query_params.get('page', 1))
+            
+            print(f"DEBUG: DPS init_data called with page={page}, page_size={page_size}")
+            
+            # Get base queryset with optimizations
+            base_queryset = self.get_queryset().select_related(
+                'Maker_Id', 'Checker_Id', 'module_id', 'Ccy_cd', 'Txn_code'
+            )
+            
+            print(f"DEBUG: DPS Base queryset count: {base_queryset.count()}")
+            
+            # Apply existing filters
+            queryset = self.filter_queryset(base_queryset)
+            
+            # Apply additional custom filters
+            queryset = self._apply_custom_filters(queryset, request)
+            
+            print(f"DEBUG: DPS Filtered queryset count: {queryset.count()}")
+            
+            # For summary - get counts WITHOUT Auth_Status filter for accurate totals
+            summary_queryset = self.filter_queryset(base_queryset)
+            summary_queryset = self._apply_custom_filters_for_summary(summary_queryset, request)
+            
+            # Get summary counts
+            summary_data = summary_queryset.aggregate(
+                total=Count('JRNLLog_id'),
+                pending=Count('JRNLLog_id', filter=Q(Auth_Status='U')),
+                approved=Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+                rejected=Count('JRNLLog_id', filter=Q(Auth_Status='R')),
+                correction=Count('JRNLLog_id', filter=Q(Auth_Status='P'))
+            )
+            
+            print(f"DEBUG: DPS Summary data: {summary_data}")
+            
+            # Get total count for pagination
+            total_count = queryset.count()
+            
+            # Paginate the results
+            start = (page - 1) * page_size
+            end = start + page_size
+            paginated_queryset = queryset[start:end]
+            
+            print(f"DEBUG: DPS Paginated queryset: {start}-{end}, count: {len(paginated_queryset)}")
+            
+            # Serialize data using your existing serializer
+            serializer = self.get_serializer(paginated_queryset, many=True)
+            
+            # Build response (NO CACHING)
+            response_data = {
+                'results': serializer.data,
+                'count': total_count,
+                'next': f"?page={page + 1}" if end < total_count else None,
+                'previous': f"?page={page - 1}" if page > 1 else None,
+                'summary': summary_data,
+                'page_info': {
+                    'current_page': page,
+                    'page_size': page_size,
+                    'total_pages': (total_count + page_size - 1) // page_size
+                },
+                'transaction_type': 'DPS'  # Indicator for frontend
+            }
+            
+            print(f"DEBUG: DPS Response ready, results count: {len(response_data['results'])}")
+            
+            return Response(response_data, status=200)
+            
+        except Exception as e:
+            print(f"ERROR in DPS init_data: {str(e)}")
+            logger.error(f"Error in DPS init_data: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            return Response({
+                'error': 'Failed to load DPS initial data',
+                'details': str(e)
+            }, status=500)
+
+    def _apply_custom_filters(self, queryset, request):
+        """Apply all custom filters including Auth_Status - DPS transactions only"""
+        try:
+            print("DEBUG: Applying DPS custom filters...")
+            
+            # Date filtering
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    queryset = queryset.filter(Value_date__date=filter_date)
+                    print(f"DEBUG: DPS Applied specific date filter: {specific_date}")
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                        print(f"DEBUG: DPS Applied date_from filter: {date_from}")
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+                        print(f"DEBUG: DPS Applied date_to filter: {date_to}")
+            
+            # Module filtering
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+                print(f"DEBUG: DPS Applied module filter: {module_id}")
+            
+            # Currency filtering
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+                print(f"DEBUG: DPS Applied currency filter: {ccy_cd}")
+            
+            # Authorization status filtering
+            auth_status = request.query_params.get('Auth_Status')
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+                print(f"DEBUG: DPS Applied auth_status filter: {auth_status}")
+            
+            # Search filtering
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search)
+                )
+                print(f"DEBUG: DPS Applied search filter: {search}")
+            
+            # Exclude soft deleted records
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+                print(f"DEBUG: DPS Applied delete_stat filter: {delete_stat_ne}")
+            
+            # Note: We don't need to handle Txn_code filtering since we only have DPS
+            print("DEBUG: DPS - All transactions are already DPS type")
+            
+            # Ordering
+            ordering = request.query_params.get('ordering', '-Maker_DT_Stamp')
+            valid_fields = [
+                'Maker_DT_Stamp', '-Maker_DT_Stamp',
+                'Value_date', '-Value_date',
+                'Reference_No', '-Reference_No',
+                'Fcy_Amount', '-Fcy_Amount',
+                'Auth_Status', '-Auth_Status'
+            ]
+            if ordering in valid_fields:
+                queryset = queryset.order_by(ordering)
+                print(f"DEBUG: DPS Applied ordering: {ordering}")
+            
+            return queryset
+            
+        except Exception as e:
+            print(f"ERROR applying DPS custom filters: {str(e)}")
+            logger.error(f"Error applying DPS custom filters: {str(e)}")
+            return queryset
+
+    def _apply_custom_filters_for_summary(self, queryset, request):
+        """Same as above but exclude Auth_Status filter for accurate summary counts - DPS only"""
+        try:
+            print("DEBUG: Applying DPS custom filters for summary...")
+            
+            # Date filtering
+            specific_date = request.query_params.get('Value_date')
+            if specific_date:
+                filter_date = parse_date(specific_date)
+                if filter_date:
+                    queryset = queryset.filter(Value_date__date=filter_date)
+            else:
+                date_from = request.query_params.get('Value_date__gte')
+                date_to = request.query_params.get('Value_date__lte')
+                
+                if date_from:
+                    from_date = parse_date(date_from)
+                    if from_date:
+                        queryset = queryset.filter(Value_date__date__gte=from_date)
+                
+                if date_to:
+                    to_date = parse_date(date_to)
+                    if to_date:
+                        queryset = queryset.filter(Value_date__date__lte=to_date)
+            
+            # Module filtering
+            module_id = request.query_params.get('module_id')
+            if module_id:
+                queryset = queryset.filter(module_id=module_id)
+            
+            # Currency filtering
+            ccy_cd = request.query_params.get('Ccy_cd')
+            if ccy_cd:
+                queryset = queryset.filter(Ccy_cd=ccy_cd)
+            
+            # Search filtering
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(Reference_No__icontains=search) | 
+                    Q(Addl_text__icontains=search)
+                )
+            
+            # Note: No need to exclude DPS since we only have DPS transactions
+            print("DEBUG: DPS Summary - all transactions are DPS type")
+            
+            # Exclude soft deleted records
+            delete_stat_ne = request.query_params.get('delete_stat__ne')
+            if delete_stat_ne:
+                queryset = queryset.exclude(delete_stat=delete_stat_ne)
+            
+            # NOTE: We EXCLUDE Auth_Status filtering here to get accurate summary counts
+            print("DEBUG: DPS Summary filters applied (excluding Auth_Status)")
+            
+            return queryset
+            
+        except Exception as e:
+            print(f"ERROR applying DPS summary filters: {str(e)}")
+            logger.error(f"Error applying DPS summary filters: {str(e)}")
+            return queryset
+
+    def _get_reference_data(self):
+        """Get reference data with caching - DPS specific"""
+        cache_key = 'ard_journal_reference_data'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return cached_data
+        
+        try:
+            # Get reference data from your existing endpoints or models
+            reference_data = {
+                'modules': self._get_modules_data(),
+                'currencies': self._get_currencies_data(),
+                'auth_status_options': [
+                    {'value': 'U', 'text': 'ລໍຖ້າອະນຸມັດ'},
+                    {'value': 'A', 'text': 'ອະນຸມັດແລ້ວ'},
+                    {'value': 'R', 'text': 'ປະຕິເສດ'},
+                    {'value': 'P', 'text': 'ຖ້າເແກ້ໄຂ'}
+                ],
+                'transaction_type': 'DPS'
+            }
+            
+            # Cache for 5 minutes
+            cache.set(cache_key, reference_data, 300)
+            return reference_data
+            
+        except Exception as e:
+            logger.error(f"Error loading DPS reference data: {str(e)}")
+            return {
+                'modules': [],
+                'currencies': [],
+                'auth_status_options': [
+                    {'value': 'U', 'text': 'ລໍຖ້າອະນຸມັດ'},
+                    {'value': 'A', 'text': 'ອະນຸມັດແລ້ວ'},
+                    {'value': 'R', 'text': 'ປະຕິເສດ'},
+                    {'value': 'P', 'text': 'ຖ້າເເກ້ໄຂ'}
+                ],
+                'transaction_type': 'DPS'
+            }
+
+    def _get_modules_data(self):
+        """Get modules data - adapt this to your actual module model"""
+        try:
+            # You'll need to adapt this based on your actual models
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT module_Id, module_name_la 
+                    FROM STTB_ModulesInfo 
+                    WHERE status = 'A'
+                    ORDER BY module_name_la
+                """)
+                return [
+                    {'module_Id': row[0], 'module_name_la': row[1]} 
+                    for row in cursor.fetchall()
+                ]
+        except Exception as e:
+            logger.error(f"Error loading modules for DPS: {str(e)}")
+            return []
+
+    def _get_currencies_data(self):
+        """Get currencies data - adapt this to your actual currency model"""
+        try:
+            # You'll need to adapt this based on your actual models
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT ccy_code, ccy_name 
+                    FROM MTTB_Ccy_DEFN 
+                    WHERE status = 'A'
+                    ORDER BY ccy_code
+                """)
+                return [
+                    {'ccy_code': row[0], 'ccy_name': row[1]} 
+                    for row in cursor.fetchall()
+                ]
+        except Exception as e:
+            logger.error(f"Error loading currencies for DPS: {str(e)}")
+            return []
+
+    # Keep all your existing methods for DPS
+    def list(self, request, *args, **kwargs):
+        """
+        Override list to add comprehensive date filtering and permission-based access - DPS only
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Permission-based filtering
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
+        
+        # If user doesn't have authorization permission, filter to only their own records
+        if not show_all:
+            user_id = getattr(request.user, 'user_id', None) or getattr(request.user, 'id', None)
+            if user_id:
+                queryset = queryset.filter(Maker_Id=user_id)
+            else:
+                queryset = queryset.none()
+        
+        # Apply additional filters
+        queryset = self._apply_filters(queryset, request)
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Override retrieve method to check permissions - DPS only"""
+        instance = self.get_object()
+        user = request.user
+        
+        # Permission check
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
+        if not show_all and instance.Maker_Id != user:
+            return Response(
+                {"detail": "You don't have permission to view this DPS record."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if instance.Auth_Status == 'A':
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No=instance.Reference_No,
+                Txn_code='DPS'  
+            ).update(Auth_Status='A')
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete_stat = 'D'
+        instance.save()
+        return Response({'detail': 'DPS record marked as deleted.'}, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'], url_path='journal-log-active')
+    def journal_log_active(self, request):
+        """
+        Get all active DPS journal log master records based on current EOD processing date.
+        This ensures consistency with EOD validation logic.
+        """
+        import pytz
+        from django.utils import timezone
+        from django.db.models import Q
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get the current processing date based on EOD logic
+            processing_date = self.get_current_processing_date(request)
+            
+            # Get query parameters
+            reference_no = request.query_params.get('Reference_No')
+            auth_status = request.query_params.get('Auth_Status')
+            
+            # Base queryset - filter by the processing date and DPS transaction code
+            queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                Txn_code='DPS',  # Only DPS transactions
+                delete_stat__isnull=True,
+                Value_date=processing_date
+            ).exclude(
+                Q(delete_stat='D')
+            ).order_by('-Maker_DT_Stamp')
+
+            # Apply additional filters if provided
+            if reference_no:
+                queryset = queryset.filter(Reference_No=reference_no)
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+
+            serializer = self.get_serializer(queryset, many=True)
+            
+            # Add metadata about the processing date
+            response_data = {
+                'results': serializer.data,
+                'processing_date': processing_date.isoformat(),
+                'is_back_date': processing_date != today,
+                'record_count': len(serializer.data),
+                'today': today.isoformat(),
+                'transaction_type': 'DPS'
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response({
+                'error': f'Error fetching DPS journal records: {str(e)}',
+                'results': [],
+                'processing_date': None,
+                'is_back_date': False,
+                'record_count': 0,
+                'transaction_type': 'DPS'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get_eod_processing_status(self, request):
+        """
+        Get the current EOD processing status to determine which date to use.
+        This mirrors the logic from check_journal_submission_available.
+        """
+        import pytz
+        from django.utils import timezone
+        from .models import MTTB_DATA_Entry, STTB_Dates  # Replace with actual import
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get MTTB_DATA_Entry configuration
+            try:
+                data_entry = MTTB_DATA_Entry.objects.filter(
+                    # Auth_Status='A'
+                ).first()
+                
+                if not data_entry:
+                    bypass_eod_check = False
+                else:
+                    bypass_eod_check = data_entry.BACK_VALUE == 'Y'
+                    
+            except Exception:
+                bypass_eod_check = False
+
+            # Get the latest EOD record
+            try:
+                latest_eod = STTB_Dates.objects.latest('date_id')
+            except STTB_Dates.DoesNotExist:
+                return {
+                    'is_back_date': False,
+                    'target_date': today.isoformat(),
+                    'current_eod': None,
+                    'bypass_enabled': False
+                }
+
+            latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+            
+            # Determine if we're in back-date mode
+            if latest_next_working < today and bypass_eod_check:
+                return {
+                    'is_back_date': True,
+                    'target_date': latest_next_working.isoformat(),
+                    'current_eod': {
+                        'date_id': latest_eod.date_id,
+                        'next_working_day': latest_next_working.isoformat(),
+                        'eod_status': latest_eod.eod_time
+                    },
+                    'bypass_enabled': True
+                }
+            else:
+                return {
+                    'is_back_date': False,
+                    'target_date': today.isoformat(),
+                    'current_eod': {
+                        'date_id': latest_eod.date_id,
+                        'next_working_day': latest_next_working.isoformat(),
+                        'eod_status': latest_eod.eod_time
+                    },
+                    'bypass_enabled': bypass_eod_check
+                }
+                
+        except Exception as e:
+            return {
+                'is_back_date': False,
+                'target_date': today.isoformat(),
+                'current_eod': None,
+                'bypass_enabled': False,
+                'error': str(e)
+            }
+        
+    @action(detail=False, methods=['get'], url_path='journal-log-detail')
+    def journal_log_detail(self, request):
+        """Get DPS journal log detail records"""
+        reference_no = request.query_params.get('Reference_No')
+        auth_status = request.query_params.get('Auth_Status')
+        
+        queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+            Txn_code='DPS',  # Only DPS transactions
+            delete_stat__isnull=True
+        ).exclude(delete_stat='D')
+
+        if reference_no:
+            queryset = queryset.filter(Reference_No=reference_no)
+        if auth_status:
+            queryset = queryset.filter(Auth_Status=auth_status)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['patch'], url_path='approve-by-reference')
+    def approve_by_reference(self, request):
+        reference_no = request.data.get('Reference_No')
+        if not reference_no:
+            return Response({'detail': 'Reference_No is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Ensure we only approve DPS transactions
+            master_record = self.get_queryset().get(
+                Reference_No=reference_no,
+                Txn_code='DPS'
+            )
+            
+            # Update master record
+            master_record.Auth_Status = 'A'
+            master_record.Checker_Id = request.data.get('Checker_Id')
+            master_record.Checker_DT_Stamp = request.data.get('Checker_DT_Stamp')
+            master_record.save()
+            
+            serializer = self.get_serializer(master_record)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except DETB_JRNL_LOG_MASTER.DoesNotExist:
+            return Response({'detail': 'DPS master record not found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=False, methods=['patch'], url_path='reject-by-reference')
+    def reject_by_reference(self, request):
+        reference_no = request.data.get('Reference_No')
+        if not reference_no:
+            return Response({'detail': 'Reference_No is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Ensure we only reject DPS transactions
+            master_record = self.get_queryset().get(
+                Reference_No=reference_no,
+                Txn_code='DPS'
+            )
+            
+            # Update master record
+            master_record.Auth_Status = 'R'
+            master_record.Checker_Id = request.data.get('Checker_Id')
+            master_record.Checker_DT_Stamp = request.data.get('Checker_DT_Stamp')
+            if request.data.get('Addl_text'):
+                master_record.Addl_text = request.data.get('Addl_text')
+            master_record.save()
+            
+            serializer = self.get_serializer(master_record)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except DETB_JRNL_LOG_MASTER.DoesNotExist:
+            return Response({'detail': 'DPS master record not found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+
+    # Additional DPS-specific actions
+    @action(detail=False, methods=['get'], url_path='ard-summary')
+    def ard_summary(self, request):
+        """Get summary statistics for DPS transactions only"""
+        from django.db.models import Sum, Count, Avg
+        from django.utils import timezone
+        import pytz
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get base queryset for DPS transactions
+            queryset = self.get_queryset()
+            
+            # Apply date filters if provided
+            date_from = request.query_params.get('date_from')
+            date_to = request.query_params.get('date_to')
+            
+            if date_from:
+                from_date = parse_date(date_from)
+                if from_date:
+                    queryset = queryset.filter(Value_date__date__gte=from_date)
+            
+            if date_to:
+                to_date = parse_date(date_to)
+                if to_date:
+                    queryset = queryset.filter(Value_date__date__lte=to_date)
+            else:
+                # Default to today if no date_to specified
+                queryset = queryset.filter(Value_date__date=today)
+            
+            # Calculate summary statistics
+            summary = queryset.aggregate(
+                total_count=Count('JRNLLog_id'),
+                total_amount=Sum('Fcy_Amount'),
+                average_amount=Avg('Fcy_Amount'),
+                pending_count=Count('JRNLLog_id', filter=Q(Auth_Status='U')),
+                approved_count=Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+                rejected_count=Count('JRNLLog_id', filter=Q(Auth_Status='R')),
+                correction_count=Count('JRNLLog_id', filter=Q(Auth_Status='P')),
+                pending_amount=Sum('Fcy_Amount', filter=Q(Auth_Status='U')),
+                approved_amount=Sum('Fcy_Amount', filter=Q(Auth_Status='A')),
+                rejected_amount=Sum('Fcy_Amount', filter=Q(Auth_Status='R')),
+            )
+            
+            # Get currency breakdown
+            currency_breakdown = queryset.values('Ccy_cd__ccy_code').annotate(
+                count=Count('JRNLLog_id'),
+                total_amount=Sum('Fcy_Amount')
+            ).order_by('-total_amount')
+            
+            # Get status breakdown by date (last 7 days)
+            from datetime import timedelta
+            date_range = []
+            for i in range(6, -1, -1):
+                check_date = today - timedelta(days=i)
+                day_data = queryset.filter(Value_date__date=check_date).aggregate(
+                    date=check_date.isoformat(),
+                    total=Count('JRNLLog_id'),
+                    pending=Count('JRNLLog_id', filter=Q(Auth_Status='U')),
+                    approved=Count('JRNLLog_id', filter=Q(Auth_Status='A')),
+                    rejected=Count('JRNLLog_id', filter=Q(Auth_Status='R'))
+                )
+                day_data['date'] = check_date.isoformat()
+                date_range.append(day_data)
+            
+            response_data = {
+                'transaction_type': 'DPS',
+                'summary_period': {
+                    'from': date_from or today.isoformat(),
+                    'to': date_to or today.isoformat()
+                },
+                'totals': summary,
+                'currency_breakdown': list(currency_breakdown),
+                'daily_trend': date_range,
+                'generated_at': timezone.now().isoformat()
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response({
+                'error': f'Error generating DPS summary: {str(e)}',
+                'transaction_type': 'DPS'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='bulk-approve')
+    def bulk_approve(self, request):
+        """Bulk approve multiple DPS transactions"""
+        reference_numbers = request.data.get('reference_numbers', [])
+        checker_id = request.data.get('checker_id')
+        checker_dt_stamp = request.data.get('checker_dt_stamp')
+        
+        if not reference_numbers:
+            return Response({
+                'detail': 'reference_numbers list is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not checker_id:
+            return Response({
+                'detail': 'checker_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get DPS records to approve
+            records = DETB_JRNL_LOG_MASTER.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='DPS',
+                Auth_Status='U'  # Only approve pending records
+            )
+            
+            if not records.exists():
+                return Response({
+                    'detail': 'No pending DPS records found for the provided reference numbers'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Update records
+            updated_count = records.update(
+                Auth_Status='A',
+                Checker_Id=checker_id,
+                Checker_DT_Stamp=checker_dt_stamp
+            )
+            
+            # Also update detail records if they exist
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='DPS'
+            ).update(Auth_Status='A')
+            
+            return Response({
+                'detail': f'Successfully approved {updated_count} DPS transactions',
+                'approved_references': reference_numbers,
+                'updated_count': updated_count
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'detail': f'Error during bulk approval: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='bulk-reject')
+    def bulk_reject(self, request):
+        """Bulk reject multiple DPS transactions"""
+        reference_numbers = request.data.get('reference_numbers', [])
+        checker_id = request.data.get('checker_id')
+        checker_dt_stamp = request.data.get('checker_dt_stamp')
+        rejection_reason = request.data.get('rejection_reason', '')
+        
+        if not reference_numbers:
+            return Response({
+                'detail': 'reference_numbers list is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not checker_id:
+            return Response({
+                'detail': 'checker_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get DPS records to reject
+            records = DETB_JRNL_LOG_MASTER.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='DPS',
+                Auth_Status='U'  # Only reject pending records
+            )
+            
+            if not records.exists():
+                return Response({
+                    'detail': 'No pending DPS records found for the provided reference numbers'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Update records
+            update_data = {
+                'Auth_Status': 'R',
+                'Checker_Id': checker_id,
+                'Checker_DT_Stamp': checker_dt_stamp
+            }
+            
+            if rejection_reason:
+                update_data['Addl_text'] = rejection_reason
+            
+            updated_count = records.update(**update_data)
+            
+            # Also update detail records if they exist
+            from .models import DETB_JRNL_LOG
+            DETB_JRNL_LOG.objects.filter(
+                Reference_No__in=reference_numbers,
+                Txn_code='DPS'
+            ).update(Auth_Status='R')
+            
+            return Response({
+                'detail': f'Successfully rejected {updated_count} DPS transactions',
+                'rejected_references': reference_numbers,
+                'updated_count': updated_count,
+                'rejection_reason': rejection_reason
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'detail': f'Error during bulk rejection: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get_current_processing_date(self, request):
+        """
+        Get the current processing date based on EOD logic.
+        This should match the same logic used in check_journal_submission_available.
+        """
+        import pytz
+        from django.utils import timezone
+        from .models import MTTB_DATA_Entry, STTB_Dates  # Replace with actual import
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get MTTB_DATA_Entry configuration
+            try:
+                data_entry = MTTB_DATA_Entry.objects.filter(
+                    # Auth_Status='A'  # Uncomment if needed
+                ).first()
+                
+                if not data_entry:
+                    bypass_eod_check = False
+                else:
+                    bypass_eod_check = data_entry.BACK_VALUE == 'Y'
+                    
+            except Exception:
+                bypass_eod_check = False
+
+            # Get the latest EOD record
+            try:
+                latest_eod = STTB_Dates.objects.latest('date_id')
+            except STTB_Dates.DoesNotExist:
+                # No EOD records - use today
+                return today
+
+            latest_next_working = latest_eod.next_working_Day.astimezone(tz).date()
+            
+            # Apply the same logic as EOD validation
+            if latest_next_working == today:
+                # Normal case - processing today's journals
+                return today
+            elif latest_next_working < today:
+                # We're ahead - check if back-dating is enabled
+                if bypass_eod_check:
+                    # Back-date mode - return the target date
+                    return latest_next_working
+                else:
+                    # No back-dating - use today (but this might mean no journals)
+                    return today
+            else:
+                # Future date (shouldn't happen normally) - use today
+                return today
+                
+        except Exception:
+            # Fallback to today if anything goes wrong
+            return timezone.now().astimezone(pytz.timezone('Asia/Bangkok')).date()
+
+    @action(detail=False, methods=['get'], url_path='journal-log-by-date')
+    def journal_log_by_date(self, request):
+        """
+        Get DPS journal log records for a specific date.
+        Used for back-date EOD processing.
+        """
+        target_date_str = request.query_params.get('date')
+        
+        if not target_date_str:
+            return Response({
+                'error': 'Date parameter is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from datetime import datetime
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            
+            # Get query parameters
+            reference_no = request.query_params.get('Reference_No')
+            auth_status = request.query_params.get('Auth_Status')
+            
+            # Query DPS journals for the specific date
+            queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                Txn_code='DPS',  # Only DPS transactions
+                delete_stat__isnull=True,
+                Value_date=target_date,
+                Auth_Status='U'
+            ).exclude(
+                Q(delete_stat='D')
+            ).order_by('-Maker_DT_Stamp')
+
+            # Apply additional filters if provided
+            if reference_no:
+                queryset = queryset.filter(Reference_No=reference_no)
+            if auth_status:
+                queryset = queryset.filter(Auth_Status=auth_status)
+
+            serializer = self.get_serializer(queryset, many=True)
+            
+            return Response({
+                'results': serializer.data,
+                'target_date': target_date.isoformat(),
+                'record_count': len(serializer.data),
+                'transaction_type': 'DPS'
+            })
+            
+        except ValueError:
+            return Response({
+                'error': 'Invalid date format. Use YYYY-MM-DD'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'error': f'Error fetching DPS journal records: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='journal-log-eod-context')
+    def journal_log_eod_context(self, request):
+        """
+        Get DPS journal log records with full EOD context.
+        Returns both current and target date journals if in back-date mode.
+        """
+        import pytz
+        from django.utils import timezone
+        from django.db.models import Q
+        
+        try:
+            tz = pytz.timezone('Asia/Bangkok')
+            today = timezone.now().astimezone(tz).date()
+            
+            # Get EOD status to determine processing context
+            eod_status = self.get_eod_processing_status(request)
+            
+            response_data = {
+                'today': today.isoformat(),
+                'eod_context': eod_status,
+                'current_journals': [],
+                'target_journals': [],
+                'transaction_type': 'DPS'
+            }
+            
+            # Get current day DPS journals (always needed for validation)
+            current_queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                Txn_code='DPS',  # Only DPS transactions
+                delete_stat__isnull=True,
+                Value_date=today
+            ).exclude(
+                Q(delete_stat='D')
+            ).order_by('-Maker_DT_Stamp')
+            
+            current_serializer = self.get_serializer(current_queryset, many=True)
+            response_data['current_journals'] = current_serializer.data
+            
+            # If in back-date mode, also get target date DPS journals
+            if eod_status.get('is_back_date') and eod_status.get('target_date'):
+                target_date_str = eod_status['target_date']
+                target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+                
+                target_queryset = DETB_JRNL_LOG_MASTER.objects.filter( 
+                    Txn_code='DPS',  # Only DPS transactions
+                    delete_stat__isnull=True,
+                    Value_date=target_date
+                ).exclude(
+                    Q(delete_stat='D')
+                ).order_by('-Maker_DT_Stamp')
+                
+                target_serializer = self.get_serializer(target_queryset, many=True)
+                response_data['target_journals'] = target_serializer.data
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response({
+                'error': f'Error fetching DPS journal records with EOD context: {str(e)}',
+                'today': today.isoformat() if 'today' in locals() else None,
+                'eod_context': {},
+                'current_journals': [],
+                'target_journals': [],
+                'transaction_type': 'DPS'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         
 from rest_framework import viewsets, status
