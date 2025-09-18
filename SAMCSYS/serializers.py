@@ -1322,6 +1322,10 @@ class DETB_JRNL_LOGSerializer_Asset(serializers.ModelSerializer):
             "aldm_id": getattr(obj, 'aldm_id', None),
             "dpca_desc": getattr(obj, 'dpca_desc', None)
         }
+class DETB_JRNL_LOG_MASTER_Serializer_dps(serializers.ModelSerializer):
+    class Meta:
+        model = DETB_JRNL_LOG_MASTER
+        fields = '__all__'
 from rest_framework import serializers
 from decimal import Decimal
 from .models import (
