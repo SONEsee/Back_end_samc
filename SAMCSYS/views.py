@@ -8626,27 +8626,27 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         print("=== DEBUG Asset Disposal Create ===")
         print(f"Request data keys: {list(self.request.data.keys())}")
         
-        # ປະມວນຜົນບັນຊີກ່ອນບັນທຶກ
+       
         disposal_data = dict(self.request.data)
         account_result = self.process_disposal_accounts(disposal_data)
         
-        # ບັນທຶກຂໍ້ມູນການຖອນ
+     
         instance = serializer.save(
             Maker_Id=user,
             Maker_DT_Stamp=timezone.now()
         )
         
-        # ປ່ຽນສະຖານະຊັບສິນເປັນ Disposed
-        self.update_asset_status(instance)
+       
+        # self.update_asset_status(instance)
         
-        # ສ້າງ Journal Entries
+      
         if account_result['success']:
             journal_result = self.create_journal_entries(instance, account_result)
             if journal_result['success']:
                 journal_count = len(journal_result.get('journal_entries', []))
                 print(f"Journal entries created: {journal_count} entries")
                 
-                # ສົ່ງ Journal data ໄປບັນທຶກຜ່ານ JRNLLogViewSet
+               
                 if journal_count > 0:
                     self.save_to_jrnl_log_viewset(journal_result['journal_entries'])
             else:
@@ -8666,7 +8666,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             Checker_DT_Stamp=timezone.now()
         )
         
-        self.update_asset_status(instance)
+        # self.update_asset_status(instance)
         
         if account_result['success']:
             journal_result = self.update_journal_entries(instance, account_result)
@@ -8707,7 +8707,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                     'error': 'dps_account ແລະ asset_list_code ຈຳເປັນຕ້ອງມີ'
                 }
             
-            # ແຍກບັນຊີຈາກ dps_account
+            
             account_list = dps_account.split('|')
             
             if len(account_list) % 2 != 0:
@@ -8718,17 +8718,17 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             
             processed_accounts = []
             
-            # ປະມວນຜົນແຕ່ລະບັນຊີ
+          
             for account in account_list:
                 print(f"ປະມວນຜົນບັນຊີ: '{account}'")
                 
-                # ເອົາແຕ່ຕົວເລກແລ້ວຕັດໃຫ້ເຫຼືອ 3 ໂຕ
+               
                 digits_only = ''.join([c for c in account if c.isdigit()])
                 account_3digit = digits_only[:3] if len(digits_only) >= 3 else digits_only.ljust(3, '0')
                 
                 print(f"ປ່ຽນ '{account}' -> digits: '{digits_only}' -> 3digit: '{account_3digit}'")
                 
-                # ກໍລະນີພິເສດ: ຖ້າເປັນ 1101xxx ໃຫ້ໃຊ້ account_tupe_of_play
+               
                 if account_3digit == '110':
                     if account_tupe_of_play:
                         processed_account = account_tupe_of_play
@@ -8737,23 +8737,23 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                         print(f"❌ ບໍ່ມີ account_tupe_of_play ສຳລັບ '1101xxx' - ຂ້າມບັນຊີນີ້")
                         continue
                         
-                # ກໍລະນີບັນຊີກຳໄລ/ຂາດທຶນ
+                
                 elif account_3digit in ['450', '550'] and gain_loss_account:
                     processed_account = gain_loss_account
                     print(f"✅ ໃຊ້ gain_loss_account ສຳລັບ {account_3digit}xxx: {processed_account}")
                     
-                # ກໍລະນີອື່ນໆ ຄົ້ນຫາໃນ MTTB_GLSub
+               
                 else:
                     processed_account = self.find_account_in_glsub(account_3digit, asset_list_code)
                 
-                # ຖ້າບໍ່ພົບບັນຊີໃຫ້ຂ້າມ
+                
                 if processed_account is None:
                     print(f"❌ ບໍ່ພົບບັນຊີສຳລັບ '{account}' - ຂ້າມບັນຊີນີ້")
                     continue
                     
                 processed_accounts.append(processed_account)
             
-            # ກວດສອບວ່າມີບັນຊີທີ່ພົບແລ້ວພໍສຳລັບການຈັບຄູ່ບໍ່
+           
             if len(processed_accounts) % 2 != 0:
                 print(f"⚠️ ບັນຊີທີ່ພົບມີ {len(processed_accounts)} ໂຕ ບໍ່ສາມາດຈັບຄູ່ໄດ້")
                 return {
@@ -8761,7 +8761,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                     'error': f'ບັນຊີທີ່ພົບມີ {len(processed_accounts)} ໂຕ ບໍ່ສາມາດຈັບຄູ່ໄດ້ (ຕ້ອງເປັນຄູ່)'
                 }
             
-            # ຈັບຄູ່ບັນຊີ
+            
             account_pairs = []
             for i in range(0, len(processed_accounts), 2):
                 pair = {
@@ -8796,7 +8796,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         try:
             print(f"ຄົ້ນຫາບັນຊີ: {account_prefix} + {asset_list_code}")
             
-            # ວິທີທີ 1: ຄົ້ນຫາທີ່ເລີ່ມຕົ້ນດ້ວຍ prefix ແລະ ລົງທ້າຍດ້ວຍ asset_code
+           
             result = MTTB_GLSub.objects.filter(
                 glsub_code__startswith=account_prefix,
                 glsub_code__endswith=asset_list_code
@@ -8806,7 +8806,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                 print(f"✅ ພົບບັນຊີ (direct match): {result.glsub_code}")
                 return result.glsub_code
             
-            # ວິທີທີ 2: ຄົ້ນຫາດ້ວຍ LIKE pattern ສຳລັບ SQL Server
+           
             like_pattern = f"{account_prefix}%.{asset_list_code}"
             result_like = MTTB_GLSub.objects.extra(
                 where=["glsub_code LIKE %s"],
@@ -8817,20 +8817,20 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                 print(f"✅ ພົບບັນຊີ (LIKE pattern): {result_like.glsub_code}")
                 return result_like.glsub_code
             
-            # ວິທີທີ 3: ຄົ້ນຫາທັງໝົດທີ່ລົງທ້າຍດ້ວຍ asset_code ແລ້ວ filter ດ້ວຍຕົວເອງ
+           
             matching_assets = MTTB_GLSub.objects.filter(
                 glsub_code__endswith=asset_list_code
             ).values_list('glsub_code', flat=True)[:10]
             
             print(f"ບັນຊີທັງໝົດທີ່ລົງທ້າຍດ້ວຍ {asset_list_code}: {list(matching_assets)}")
             
-            # ຫາທີ່ເລີ່ມຕົ້ນດ້ວຍ prefix ໃນລາຍການທີ່ພົບ
+            
             for account_code in matching_assets:
                 if account_code.startswith(account_prefix):
                     print(f"✅ ພົບບັນຊີ (manual filter): {account_code}")
                     return account_code
             
-            # ຖ້າບໍ່ພົບ return None
+          
             print(f"❌ ບໍ່ພົບບັນຊີສຳລັບ prefix '{account_prefix}' + asset_code '{asset_list_code}'")
             return None
                 
@@ -8843,11 +8843,11 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         try:
             current_date = timezone.now()
             
-            # ສ້າງ Reference_No ດຽວສຳລັບທຸກຄູ່ບັນຊີ
+           
             today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
             today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
             
-            # ນັບຈຳນວນ records AS-DPS ໃນມື້ນີ້
+            
             daily_count = DETB_JRNL_LOG.objects.filter(
                 Reference_No__startswith=f"AS-DPS-{current_date.strftime('%Y%m%d')}",
                 Maker_DT_Stamp__range=[today_start, today_end]
@@ -8856,22 +8856,22 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             sequence_number = daily_count + 1
             reference_no = f"AS-DPS-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
             
-            # ກວດສອບວ່າ Reference_No ນີ້ມີຢູ່ແລ້ວບໍ່
+            
             while DETB_JRNL_LOG.objects.filter(Reference_No=reference_no).exists():
                 sequence_number += 1
                 reference_no = f"AS-DPS-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
             
-            # ສ້າງ Journal data ດຽວທີ່ມີຫຼາຍຄູ່ entries
+            
             all_entries = []
             
             for pair_index, pair in enumerate(account_result['account_pairs']):
                 amount = self.calculate_entry_amount(disposal_instance, pair)
                 
-                # ເພີ່ມ sequence ເຂົ້າໃນ Addl_sub_text ເພື່ອເຮັດໃຫ້ unique
+              
                 addl_text_debit = f"ສະສາງຊັບສິນ-ຄູ່{pair['pair_number']}-D"
                 addl_text_credit = f"ສະສາງຊັບສິນ-ຄູ່{pair['pair_number']}-C"
                 
-                # ເພີ່ມ Debit entry
+               
                 debit_entry = {
                     "Account": pair['debit_account'],
                     "Account_no": pair['debit_account'],
@@ -8879,11 +8879,11 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                     "Dr_cr": "D",
                     "Addl_sub_text": addl_text_debit,
                     "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id),
-                    "entry_sequence": f"D{pair_index + 1:02d}",  # ເພື່ອ debug
+                    "entry_sequence": f"D{pair_index + 1:02d}",  
                     "pair_number": pair['pair_number']
                 }
                 
-                # ເພີ່ມ Credit entry
+             
                 credit_entry = {
                     "Account": pair['credit_account'],
                     "Account_no": pair['credit_account'],
@@ -8891,14 +8891,14 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                     "Dr_cr": "C", 
                     "Addl_sub_text": addl_text_credit,
                     "Ac_relatives": str(disposal_instance.asset_list_id.asset_list_id),
-                    "entry_sequence": f"C{pair_index + 1:02d}",  # ເພື່ອ debug
+                    "entry_sequence": f"C{pair_index + 1:02d}", 
                     "pair_number": pair['pair_number']
                 }
                 
                 all_entries.extend([debit_entry, credit_entry])
                 print(f"Journal Entry {pair['pair_number']}: Dr.{pair['debit_account']} / Cr.{pair['credit_account']} = {amount}")
             
-            # ສ້າງ Journal data ດຽວທີ່ມີທຸກ entries
+         
             journal_data = {
                 "Reference_No": reference_no,
                 "Ccy_cd": "LAK", 
@@ -8911,7 +8911,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                 "entries": all_entries
             }
             
-            # Debug: ສະແດງຂໍ້ມູນ Journal ທີ່ສ້າງຂຶ້ນ
+            
             print(f"=== CREATED 1 JOURNAL WITH {len(account_result['account_pairs'])} PAIRS ===")
             print(f"Reference_No: {journal_data['Reference_No']}")
             print(f"Total entries: {len(journal_data['entries'])}")
@@ -8924,7 +8924,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             
             return {
                 'success': True,
-                'journal_entries': [journal_data],  # array ດຽວ
+                'journal_entries': [journal_data], 
                 'total_journals': 1
             }
             
@@ -8944,7 +8944,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             debit_account = account_pair['debit_account']
             credit_account = account_pair['credit_account']
             
-            # ດຶງ 3 ໂຕໜ້າຂອງບັນຊີ
+         
             debit_prefix = debit_account[:3] if len(debit_account) >= 3 else ''
             credit_prefix = credit_account[:3] if len(credit_account) >= 3 else ''
             
@@ -8954,36 +8954,36 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             print(f"disposal_cost: {disposal_cost}")
             print(f"disposal_value: {disposal_value}")
             
-            # Logic ການຄຳນວນຕາມປະເພດຄູ່ບັນຊີ
+            
             if debit_prefix == '136' and credit_prefix == '144':
-                # ເງິນສົດ vs ຄ່າເສື່ອມສະສົມ
+             
                 amount = disposal_proceeds
                 print(f"Case: Cash vs Depreciation -> using disposal_proceeds: {amount}")
                 
             elif debit_prefix == '136' and credit_prefix == '550':
-                # ເງິນສົດ vs ຂາດທຶນ
+               
                 net_amount = disposal_proceeds - disposal_cost
                 amount = abs(net_amount - disposal_value) if net_amount != disposal_value else disposal_proceeds
                 print(f"Case: Cash vs Loss -> net_amount: {net_amount}, calculated: {amount}")
                 
             elif debit_prefix == '148' and credit_prefix == '144':
-                # ຄ່າເສື່ອມສະສົມ vs ຕົ້ນທຶນຊັບສິນ
+               
                 amount = disposal_value
                 print(f"Case: Accumulated Depreciation vs Asset Cost -> using disposal_value: {amount}")
                 
             elif debit_prefix in ['144', '148']:
-                # ບັນຊີທີ່ກ່ຽວຂ້ອງກັບຄ່າເສື່ອມ
+             
                 amount = disposal_value
                 print(f"Case: Depreciation related -> using disposal_value: {amount}")
                 
             elif credit_prefix in ['550', '450']:
-                # ກຳໄລ/ຂາດທຶນ
+              
                 net_proceeds = disposal_proceeds - disposal_cost
                 amount = abs(net_proceeds - disposal_value)
                 print(f"Case: Gain/Loss -> net_proceeds: {net_proceeds}, calculated: {amount}")
                 
             else:
-                # Default case
+              
                 amount = disposal_proceeds if disposal_proceeds > 0 else disposal_value
                 print(f"Case: Default -> using: {amount}")
             
@@ -9017,7 +9017,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             
             for i, journal_data in enumerate(journal_entries_list):
                 try:
-                    # ກວດສອບວ່າ Reference_No ມີຢູ່ແລ້ວບໍ່
+                  
                     existing_entries = DETB_JRNL_LOG.objects.filter(
                         Reference_No=journal_data['Reference_No']
                     ).count()
@@ -9026,26 +9026,26 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                         print(f"⚠️ Reference_No {journal_data['Reference_No']} ມີ {existing_entries} entries ຢູ່ແລ້ວ")
                         print("   ກຳລັງລຶບ entries ເກົ່າກ່ອນບັນທຶກໃໝ່...")
                         
-                        # ສ້າງ Reference_No ໃໝ່
+                        
                         original_ref = journal_data['Reference_No']
                         journal_data['Reference_No'] = f"{original_ref}-R{timezone.now().microsecond:06d}"
                         print(f"   ປ່ຽນເປັນ: {journal_data['Reference_No']}")
                     
-                    # ກະກຽມຂໍ້ມູນສຳລັບ JRNLLogViewSet
+                 
                     processed_data = self.prepare_journal_for_jrnl_log(journal_data)
                     
                     print(f"📋 Journal {i+1} processed data:")
                     print(f"   Reference_No: {processed_data['Reference_No']}")
                     print(f"   Entries count: {len(processed_data['entries'])}")
                     
-                    # ເອີ້ນ JRNLLogViewSet batch_create
+                 
                     from SAMCSYS.views import JRNLLogViewSet
                     
                     viewset = JRNLLogViewSet()
                     viewset.request = self.request
                     viewset.format_kwarg = None
                     
-                    # ສ້າງ fake request object
+               
                     class FakeRequest:
                         def __init__(self, data, user):
                             self._data = data
@@ -9057,7 +9057,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                     
                     fake_request = FakeRequest(processed_data, self.request.user)
                     
-                    # ເອີ້ນ batch_create
+                    
                     response = viewset.batch_create(fake_request)
                     
                     if hasattr(response, 'status_code') and response.status_code in [200, 201]:
@@ -9071,7 +9071,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                             
                 except Exception as e:
                     print(f"❌ Error saving journal {i+1}: {str(e)}")
-                    # ສະແດງລາຍລະອຽດເພີ່ມເຕີມ
+                   
                     if hasattr(e, 'args') and e.args:
                         print(f"   Error args: {e.args}")
             
@@ -9083,37 +9083,37 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     def prepare_journal_for_jrnl_log(self, journal_data):
         """ກະກຽມຂໍ້ມູນ Journal ສຳລັບ JRNLLogViewSet - ປ້ອງກັນ duplicate key"""
         try:
-            # ຄົ້ນຫາ Currency ALT code
+           
             ccy_cd = journal_data.get('Ccy_cd', 'LAK')
             try:
                 ccy_record = MTTB_Ccy_DEFN.objects.get(ccy_code=ccy_cd)
                 alt_ccy_code = ccy_record.ALT_Ccy_Code
             except MTTB_Ccy_DEFN.DoesNotExist:
-                alt_ccy_code = ccy_cd  # fallback
+                alt_ccy_code = ccy_cd 
             
             processed_entries = []
-            account_dr_cr_amount_tracker = {}  # ຕິດຕາມ combination ທີ່ຊ້ຳກັນ
+            account_dr_cr_amount_tracker = {}  
             
             for entry_index, entry in enumerate(journal_data.get('entries', [])):
                 account_no = entry.get('Account_no')
                 dr_cr = entry.get('Dr_cr')
                 amount = entry.get('Amount')
                 
-                # ຄົ້ນຫາ existing GLSub record
+              
                 try:
                     glsub = MTTB_GLSub.objects.get(glsub_code=account_no)
                     glsub_id = glsub.glsub_id
                 except MTTB_GLSub.DoesNotExist:
                     print(f"❌ ບໍ່ພົບ GLSub ສຳລັບ {account_no}")
-                    glsub_id = account_no  # ໃຊ້ account_no ແທນ
+                    glsub_id = account_no 
                 
-                # ສ້າງ key ສຳລັບຕິດຕາມ duplicate
+               
                 combination_key = (glsub_id, dr_cr, float(amount))
                 
-                # ຖ້າມີ combination ຊ້ຳກັນ ໃຫ້ປັບ amount ເລັກນ້ອຍ
+                
                 if combination_key in account_dr_cr_amount_tracker:
                     print(f"⚠️ Found duplicate combination: {combination_key}")
-                    # ປັບ amount ເລັກນ້ອຍ (ເພີ່ມ 0.001 * entry_index)
+                    
                     adjusted_amount = float(amount) + (0.001 * (entry_index + 1))
                     combination_key = (glsub_id, dr_cr, adjusted_amount)
                     amount = adjusted_amount
@@ -9121,10 +9121,10 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                 
                 account_dr_cr_amount_tracker[combination_key] = entry_index
                 
-                # ປັບ Account_no ດ້ວຍ ALT_Ccy_Code
+              
                 modified_acc_no = f"{alt_ccy_code}.{account_no}"
                 
-                # ສ້າງ unique Addl_sub_text ດ້ວຍ entry index
+                
                 addl_sub_text = entry.get('Addl_sub_text', 'ສະສາງຊັບສິນ')
                 if not addl_sub_text.endswith(f"-{entry_index + 1:02d}"):
                     addl_sub_text = f"{addl_sub_text}-{entry_index + 1:02d}"
@@ -9146,7 +9146,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                 print(f"  Modified Account_no: {modified_acc_no}")
                 print(f"  Addl_sub_text: {addl_sub_text}")
             
-            # ສ້າງ processed data
+         
             processed_data = {
                 "Reference_No": journal_data.get('Reference_No'),
                 "Ccy_cd": journal_data.get('Ccy_cd'),
@@ -9174,11 +9174,11 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             print(f"Error preparing journal data: {str(e)}")
             return journal_data
     
-    # ຟັງຊັນເສີມສຳລັບການຍົກເລີກ Journal entries ເກົ່າ (ໃຊ້ໃນອະນາຄົດ)
+   
     def cancel_existing_journal_entries(self, disposal_id):
-        """ຍົກເລີກ Journal Entries ເດິມ (ໃຊ້ເມື່ອພ້ອມ)"""
+       
         try:
-            # ຄົ້ນຫາ entries ທີ່ມີ Ac_relatives ເປັນ disposal_id
+     
             existing_entries = DETB_JRNL_LOG.objects.filter(
                 Ac_relatives=str(disposal_id),
                 module_id='AS',
@@ -9197,7 +9197,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Error cancelling existing journal entries: {e}")
     
-    # ຟັງຊັນເສີມສຳລັບການບັນທຶກ entries ໂດຍກົງໃສ່ table (ຖ້າບໍ່ໃຊ້ JRNLLogViewSet)
+  
     def save_journal_entries_direct(self, journal_data_list):
         """ບັນທຶກ Journal Entries ໂດຍກົງໃສ່ DETB_JRNL_LOG table"""
         try:
@@ -9206,7 +9206,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
                 processed_data = self.prepare_journal_for_jrnl_log(journal_data)
                 
                 for entry in processed_data['entries']:
-                    # ສ້າງ DETB_JRNL_LOG record
+                  
                     jrnl_entry = DETB_JRNL_LOG(
                         Reference_No=processed_data['Reference_No'],
                         Account=entry['Account'],
@@ -9236,10 +9236,96 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"❌ Error saving journal entries directly: {e}")
             return False
+# def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=None):
+#     """
+#     ✅ Bulk ຢືນຢັນ Journal Entries ສຳລັບການສະສາງຊັບສິນ - ເນັ້ນ Journal ເທົ່ານັ້ນ
+#     ✅ ຄືກັບ bulk_confirm_depreciation pattern
+    
+#     Parameters:
+#     - asset_list_ids: List of asset list IDs
+#     - action: 'approve' or 'reject' 
+#     - user_id: User performing the action
+#     """
+#     try:
+#         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+#         if not validated_user_id:
+#             return {"error": "ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ"}
+        
+#         if action not in ['approve', 'reject']:
+#             return {"error": "action ບໍ່ຖືກຕ້ອງ. ໃຊ້ 'approve' ຫຼື 'reject'"}
+        
+#         if not asset_list_ids or not isinstance(asset_list_ids, list):
+#             return {"error": "ໃສ່ asset_list_ids ເປັນ array"}
+        
+#         results = []
+#         success_count = 0
+#         error_count = 0
+#         total_journals_approved = 0
+#         journal_approval_summary = []
+#         current_time = timezone.now()
+        
+#         # Map action to Auth_Status
+#         auth_status = 'A' if action == 'approve' else 'R'
+        
+#         with transaction.atomic():
+#             for asset_list_id in asset_list_ids:
+#                 # ຄົ້ນຫາແລະອັບເດດ journal entries
+#                 result = approve_disposal_journals_by_asset(asset_list_id, auth_status, validated_user_id)
+                
+#                 if result.get('success'):
+#                     results.append({
+#                         'asset_list_id': asset_list_id,
+#                         'status': 'success',
+#                         'message': result['message'],
+#                         'journals_processed': result.get('journals_processed', 0),
+#                         'journal_auto_approval': result.get('journal_approval_info')
+#                     })
+#                     success_count += 1
+                    
+#                     # ✅ ເກັບສະຫຼຸບ journal approvals ຄືກັບ bulk_confirm_depreciation
+#                     journal_approval = result.get('journal_approval_info')
+#                     if journal_approval and journal_approval.get('success'):
+#                         approved_count = journal_approval.get('approved_count', 0)
+#                         total_journals_approved += approved_count
+                        
+#                         if approved_count > 0:
+#                             journal_approval_summary.append({
+#                                 'asset_list_id': asset_list_id,
+#                                 'approved_count': approved_count,
+#                                 'reference_numbers': journal_approval.get('reference_numbers', [])
+#                             })
+#                 else:
+#                     results.append({
+#                         'asset_list_id': asset_list_id,
+#                         'status': 'error',
+#                         'message': result.get('error', 'Unknown error')
+#                     })
+#                     error_count += 1
+        
+#         action_text = 'ຢືນຢັນ' if action == 'approve' else 'ປະຕິເສດ'
+        
+#         return {
+#             'success': True,
+#             'summary': {
+#                 'total_items': len(asset_list_ids),
+#                 'success_count': success_count,
+#                 'error_count': error_count,
+#                 'action_performed': action,
+#                 'action_text': action_text,
+#                 'processed_by': validated_user_id,
+#                 'processed_at': current_time.strftime('%d/%m/%Y %H:%M:%S'),
+#                 'total_journals_approved': total_journals_approved,  # ✅ ຄືກັບ bulk_confirm_depreciation
+#                 'assets_with_journals_approved': len(journal_approval_summary)
+#             },
+#             'details': results,
+#             'journal_approval_summary': journal_approval_summary  # ✅ ຄືກັບ bulk_confirm_depreciation
+#         }
+        
+#     except Exception as e:
+#         return {"error": f"Bulk journal approval error: {str(e)}"}
 def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=None):
     """
-    ✅ Bulk ຢືນຢັນ Journal Entries ສຳລັບການສະສາງຊັບສິນ - ເນັ້ນ Journal ເທົ່ານັ້ນ
-    ✅ ຄືກັບ bulk_confirm_depreciation pattern
+    ✅ Bulk ຢືນຢັນ Journal Entries ສຳລັບການສະສາງຊັບສິນ + ອັບເດດສະຖານະຊັບສິນ
     
     Parameters:
     - asset_list_ids: List of asset list IDs
@@ -9261,7 +9347,9 @@ def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=Non
         success_count = 0
         error_count = 0
         total_journals_approved = 0
+        total_assets_status_updated = 0  # ✅ ເພີ່ມນັບຈຳນວນຊັບສິນທີ່ອັບເດດສະຖານະ
         journal_approval_summary = []
+        asset_status_summary = []  # ✅ ເພີ່ມສະຫຼຸບການອັບເດດສະຖານະ
         current_time = timezone.now()
         
         # Map action to Auth_Status
@@ -9278,11 +9366,12 @@ def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=Non
                         'status': 'success',
                         'message': result['message'],
                         'journals_processed': result.get('journals_processed', 0),
-                        'journal_auto_approval': result.get('journal_approval_info')
+                        'journal_auto_approval': result.get('journal_approval_info'),
+                        'asset_status_update': result.get('asset_status_update')  # ✅ ເພີ່ມຂໍ້ມູນສະຖານະ
                     })
                     success_count += 1
                     
-                    # ✅ ເກັບສະຫຼຸບ journal approvals ຄືກັບ bulk_confirm_depreciation
+                    # ✅ ເກັບສະຫຼຸບ journal approvals
                     journal_approval = result.get('journal_approval_info')
                     if journal_approval and journal_approval.get('success'):
                         approved_count = journal_approval.get('approved_count', 0)
@@ -9294,6 +9383,18 @@ def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=Non
                                 'approved_count': approved_count,
                                 'reference_numbers': journal_approval.get('reference_numbers', [])
                             })
+                    
+                    # ✅ ເກັບສະຫຼຸບການອັບເດດສະຖານະຊັບສິນ
+                    asset_status_update = result.get('asset_status_update')
+                    if asset_status_update and asset_status_update.get('success') and action == 'approve':
+                        total_assets_status_updated += 1
+                        asset_status_summary.append({
+                            'asset_list_id': asset_status_update.get('asset_list_id'),
+                            'old_status': asset_status_update.get('old_status'),
+                            'new_status': asset_status_update.get('new_status'),
+                            'updated_at': asset_status_update.get('updated_at')
+                        })
+                        
                 else:
                     results.append({
                         'asset_list_id': asset_list_id,
@@ -9314,20 +9415,87 @@ def bulk_approve_disposal_journals(asset_list_ids, action='approve', user_id=Non
                 'action_text': action_text,
                 'processed_by': validated_user_id,
                 'processed_at': current_time.strftime('%d/%m/%Y %H:%M:%S'),
-                'total_journals_approved': total_journals_approved,  # ✅ ຄືກັບ bulk_confirm_depreciation
-                'assets_with_journals_approved': len(journal_approval_summary)
+                'total_journals_approved': total_journals_approved,
+                'assets_with_journals_approved': len(journal_approval_summary),
+                'total_assets_status_updated': total_assets_status_updated,  # ✅ ເພີ່ມນັບຈຳນວນ
+                'assets_status_updated': len(asset_status_summary)  # ✅ ເພີ່ມນັບຈຳນວນ
             },
             'details': results,
-            'journal_approval_summary': journal_approval_summary  # ✅ ຄືກັບ bulk_confirm_depreciation
+            'journal_approval_summary': journal_approval_summary,
+            'asset_status_summary': asset_status_summary  # ✅ ເພີ່ມສະຫຼຸບການອັບເດດສະຖານະ
         }
         
     except Exception as e:
         return {"error": f"Bulk journal approval error: {str(e)}"}
 
-
+# def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
+#     """
+#     ✅ ອັບເດດ Journal Entries ສຳລັບຊັບສິນດຽວ - ໃຊ້ auto_approve_related_journals
+    
+#     Parameters:
+#     - asset_list_id: Asset List ID
+#     - auth_status: 'A' (Approve) or 'R' (Reject)
+#     - user_id: User performing action
+#     """
+#     try:
+#         if auth_status != 'A':
+#             # ຖ້າບໍ່ແມ່ນ approve ໃຫ້ໃຊ້ວິທີເກົ່າ (manual update)
+#             return approve_disposal_journals_manual(asset_list_id, auth_status, user_id)
+        
+#         # ✅ ໃຊ້ auto_approve_related_journals ສຳລັບ approve
+#         print(f"🚀 Using auto_approve_related_journals for asset: {asset_list_id}")
+        
+#         # ສ້າງ mock request ສຳລັບ user context
+#         from unittest.mock import Mock
+#         mock_request = Mock()
+        
+#         # ຫາ user object
+#         try:
+#             from .models import MTTB_Users
+#             user = MTTB_Users.objects.get(user_id=user_id)
+#             mock_request.user = user
+#         except:
+#             mock_request.user = None
+        
+#         mock_request.method = 'POST'
+        
+#         # ✅ ເອີ້ນ auto_approve_related_journals
+#         result = auto_approve_related_journals(asset_list_id, mock_request)
+        
+#         if result.get('success'):
+#             approved_count = result.get('approved_count', 0)
+#             reference_numbers = result.get('reference_numbers', [])
+            
+#             # ✅ ສ້າງ journal_approval_info ຄືກັບ bulk_confirm_depreciation
+#             journal_approval_info = {
+#                 'success': True,
+#                 'message': result.get('message', f'ຢືນຢັນ journal entries ສຳເລັດ: {approved_count} entries ສຳລັບຊັບສິນ {asset_list_id}'),
+#                 'approved_count': approved_count,
+#                 'reference_numbers': reference_numbers,
+#                 'approval_details': result.get('approval_details', [])
+#             }
+            
+#             return {
+#                 'success': True,
+#                 'message': result.get('message', f'ຢືນຢັນ journal entries ສຳເລັດ: {approved_count} entries ສຳລັບຊັບສິນ {asset_list_id}'),
+#                 'journals_processed': approved_count,
+#                 'journal_approval_info': journal_approval_info
+#             }
+#         else:
+#             return {
+#                 'success': False,
+#                 'error': result.get('error', 'Unknown error from auto_approve_related_journals')
+#             }
+        
+#     except Exception as e:
+#         print(f"💥 Error in approve_disposal_journals_by_asset: {str(e)}")
+#         return {
+#             'success': False,
+#             'error': f'Error processing journals for asset {asset_list_id}: {str(e)}'
+#         }
 def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
     """
-    ✅ ອັບເດດ Journal Entries ສຳລັບຊັບສິນດຽວ - ໃຊ້ auto_approve_related_journals
+    ✅ ອັບເດດ Journal Entries ສຳລັບຊັບສິນດຽວ + ອັບເດດສະຖານະຊັບສິນເມື່ອ approve
     
     Parameters:
     - asset_list_id: Asset List ID
@@ -9363,20 +9531,25 @@ def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
             approved_count = result.get('approved_count', 0)
             reference_numbers = result.get('reference_numbers', [])
             
+            # ✅ ອັບເດດສະຖານະຊັບສິນເມື່ອ journal entries ຖືກ approve ສຳເລັດ
+            asset_status_result = update_asset_status_on_approval(asset_list_id)
+            
             # ✅ ສ້າງ journal_approval_info ຄືກັບ bulk_confirm_depreciation
             journal_approval_info = {
                 'success': True,
                 'message': result.get('message', f'ຢືນຢັນ journal entries ສຳເລັດ: {approved_count} entries ສຳລັບຊັບສິນ {asset_list_id}'),
                 'approved_count': approved_count,
                 'reference_numbers': reference_numbers,
-                'approval_details': result.get('approval_details', [])
+                'approval_details': result.get('approval_details', []),
+                'asset_status_update': asset_status_result  # ✅ ເພີ່ມຂໍ້ມູນການອັບເດດສະຖານະ
             }
             
             return {
                 'success': True,
                 'message': result.get('message', f'ຢືນຢັນ journal entries ສຳເລັດ: {approved_count} entries ສຳລັບຊັບສິນ {asset_list_id}'),
                 'journals_processed': approved_count,
-                'journal_approval_info': journal_approval_info
+                'journal_approval_info': journal_approval_info,
+                'asset_status_update': asset_status_result  # ✅ ເພີ່ມຂໍ້ມູນການອັບເດດສະຖານະ
             }
         else:
             return {
@@ -9391,10 +9564,124 @@ def approve_disposal_journals_by_asset(asset_list_id, auth_status, user_id):
             'error': f'Error processing journals for asset {asset_list_id}: {str(e)}'
         }
 
+# ✅ ສ້າງຟັງຊັນໃໝ່ສຳລັບອັບເດດສະຖານະຊັບສິນເມື່ອ approve
+def update_asset_status_on_approval(asset_list_id):
+    """
+    ✅ ອັບເດດສະຖານະຊັບສິນເປັນ 'DS' (Disposed) ເມື່ອ journal entries ຖືກ approve
+    
+    Parameters:
+    - asset_list_id: Asset List ID (string)
+    
+    Returns:
+    - dict: ຜົນລັບການອັບເດດ
+    """
+    try:
+        print(f"🔄 Updating asset status for: {asset_list_id}")
+        
+        # ຫາ disposal record ທີ່ກ່ຽວຂ້ອງ
+        try:
+            disposal_record = FA_Asset_List_Disposal.objects.get(
+                asset_list_id__asset_list_id=asset_list_id
+            )
+        except FA_Asset_List_Disposal.DoesNotExist:
+            return {
+                'success': False,
+                'error': f'ບໍ່ພົບ disposal record ສຳລັບຊັບສິນ {asset_list_id}'
+            }
+        
+        # ຫາ asset record
+        asset = disposal_record.asset_list_id
+        if not asset:
+            return {
+                'success': False,
+                'error': f'ບໍ່ພົບຊັບສິນທີ່ກ່ຽວຂ້ອງກັບ disposal record'
+            }
+        
+        # ບັນທຶກສະຖານະເກົ່າ
+        old_status = asset.asset_status
+        
+        # ອັບເດດສະຖານະເປັນ 'DS' (Disposed)
+        asset.asset_status = 'DS'
+        asset.save()
+        
+        print(f"✅ Asset status updated: {asset.asset_list_id} -> {old_status} to DS")
+        
+        return {
+            'success': True,
+            'message': f'ອັບເດດສະຖານະຊັບສິນສຳເລັດ: {asset.asset_list_id} -> DS',
+            'asset_list_id': asset.asset_list_id,
+            'old_status': old_status,
+            'new_status': 'DS',
+            'updated_at': timezone.now().strftime('%d/%m/%Y %H:%M:%S')
+        }
+        
+    except Exception as e:
+        print(f"❌ Error updating asset status: {str(e)}")
+        return {
+            'success': False,
+            'error': f'ຂໍ້ຜິດພາດໃນການອັບເດດສະຖານະຊັບສິນ: {str(e)}'
+        }
 
+# def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
+#     """
+#     ✅ Manual journal update ສຳລັບ reject (fallback method)
+#     """
+#     try:
+#         current_time = timezone.now()
+        
+#         # ຄົ້ນຫາ journal entries ທີ່ກ່ຽວຂ້ອງ
+#         journal_entries = DETB_JRNL_LOG.objects.filter(
+#             Ac_relatives=str(asset_list_id),
+#             module_id='AS',
+#             Txn_code='DPS',
+#             Auth_Status='U'
+#         )
+        
+#         if not journal_entries.exists():
+#             return {
+#                 'success': False,
+#                 'error': f'ບໍ່ມີ journal entries ທີ່ຕ້ອງການດຳເນີນການສຳລັບຊັບສິນ {asset_list_id} (ຄົ້ນຫາ Auth_Status=U)'
+#             }
+        
+#         # ອັບເດດທຸກ entries
+#         updated_count = 0
+#         reference_numbers = []
+        
+#         for entry in journal_entries:
+#             entry.Auth_Status = auth_status
+#             entry.Checker_Id_id = user_id
+#             entry.Checker_DT_Stamp = current_time
+#             entry.save()
+            
+#             updated_count += 1
+            
+#             if entry.Reference_No not in reference_numbers:
+#                 reference_numbers.append(entry.Reference_No)
+        
+#         action_text = 'ປະຕິເສດ'
+        
+#         journal_approval_info = {
+#             'success': True,
+#             'message': f'{action_text} journal entries ສຳເລັດ: {updated_count} entries ສຳລັບຊັບສິນ {asset_list_id}',
+#             'approved_count': updated_count,
+#             'reference_numbers': reference_numbers
+#         }
+        
+#         return {
+#             'success': True,
+#             'message': f'{action_text} journal entries ສຳເລັດ: {updated_count} entries ສຳລັບຊັບສິນ {asset_list_id}',
+#             'journals_processed': updated_count,
+#             'journal_approval_info': journal_approval_info
+#         }
+        
+#     except Exception as e:
+#         return {
+#             'success': False,
+#             'error': f'Error in manual journal update for asset {asset_list_id}: {str(e)}'
+#         }
 def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
     """
-    ✅ Manual journal update ສຳລັບ reject (fallback method)
+    ✅ Manual journal update ສຳລັບ reject ຫຼື fallback method
     """
     try:
         current_time = timezone.now()
@@ -9428,20 +9715,27 @@ def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
             if entry.Reference_No not in reference_numbers:
                 reference_numbers.append(entry.Reference_No)
         
-        action_text = 'ປະຕິເສດ'
+        action_text = 'ຢືນຢັນ' if auth_status == 'A' else 'ປະຕິເສດ'
+        
+        # ✅ ອັບເດດສະຖານະຊັບສິນຖ້າເປັນ approve
+        asset_status_result = None
+        if auth_status == 'A':
+            asset_status_result = update_asset_status_on_approval(asset_list_id)
         
         journal_approval_info = {
             'success': True,
             'message': f'{action_text} journal entries ສຳເລັດ: {updated_count} entries ສຳລັບຊັບສິນ {asset_list_id}',
             'approved_count': updated_count,
-            'reference_numbers': reference_numbers
+            'reference_numbers': reference_numbers,
+            'asset_status_update': asset_status_result  # ✅ ເພີ່ມຂໍ້ມູນການອັບເດດສະຖານະ
         }
         
         return {
             'success': True,
             'message': f'{action_text} journal entries ສຳເລັດ: {updated_count} entries ສຳລັບຊັບສິນ {asset_list_id}',
             'journals_processed': updated_count,
-            'journal_approval_info': journal_approval_info
+            'journal_approval_info': journal_approval_info,
+            'asset_status_update': asset_status_result  # ✅ ເພີ່ມຂໍ້ມູນການອັບເດດສະຖານະ
         }
         
     except Exception as e:
@@ -9449,7 +9743,6 @@ def approve_disposal_journals_manual(asset_list_id, auth_status, user_id):
             'success': False,
             'error': f'Error in manual journal update for asset {asset_list_id}: {str(e)}'
         }
-
 
 # ✅ ViewSet method ສຳລັບ bulk approve journals
 def bulk_approve_journals_view(self):
