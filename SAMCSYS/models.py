@@ -1375,7 +1375,8 @@ class FA_Asset_List_Disposal(models.Model):
     disposal_ac_yesno = models.CharField(max_length=1, null=True, blank=True, default='N') 
     disposal_ac_date = models.DateField(null=True, blank=True)  
     disposal_ac_datetime = models.DateTimeField(auto_now=False, null=True, blank=True) 
-    disposal_ac_by = models.IntegerField(null=True, blank=True)   
+    disposal_ac_by = models.IntegerField(null=True, blank=True)
+    Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')   
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_asset_list_disposal')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
@@ -1916,6 +1917,8 @@ class Cashflow_Acc(models.Model):
     formula = models.TextField(null=True, blank=True)
     Pvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ
     Mvalue = models.TextField(null=True, blank=True)  # GL Codes ທີ່ລົບ
+    Pvalue_new = models.TextField(null=True, blank=True)  # GL Codes ທີ່ບວກ (ໃນເດືອນໃໝ່)
+    Mvalue_new = models.TextField(null=True, blank=True)  # GL Codes
     category = models.CharField(max_length=50, null=True, blank=True)  # Operating, Investing, Financing
     is_subtotal = models.BooleanField(default=False, null=True, blank=True)
     is_total = models.BooleanField(default=False)
