@@ -236,12 +236,26 @@ class CcyDefnSerializer(serializers.ModelSerializer):
         read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
 
 from .models import MTTB_EXC_Rate, MTTB_EXC_Rate_History
+from rest_framework import serializers
+from .models import MTTB_EXC_Rate
 
 class ExcRateSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_EXC_Rate
-        fields = '__all__'
-        read_only_fields = ('Maker_DT_Stamp', 'Checker_DT_Stamp')
+        fields = [
+            'id', 
+            'ccy_code', 
+            'Buy_Rate', 
+            'Sale_Rate', 
+            'INT_Auth_Status', 
+            'Auth_Status',
+            'value_date',  # Include this field
+            'Maker_Id', 
+            'Checker_Id',
+            'Maker_DT_Stamp', 
+            'Checker_DT_Stamp'
+        ]
+        read_only_fields = ['id', 'Maker_DT_Stamp', 'Checker_DT_Stamp']
 
 class ExcRateHistorySerializer(serializers.ModelSerializer):
     class Meta:
