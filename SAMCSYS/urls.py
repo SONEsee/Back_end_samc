@@ -238,7 +238,6 @@ urlpatterns = [
     # urls.py
     path('journal/credit-unauthorized/', get_credit_unauthorized, name='credit_unauthorized'),
 
-
     # Pid Bunsy nai mue 
     path('api/end-of-day-journal/', end_of_day_journal_view , name='end-of-day-journal'),
     

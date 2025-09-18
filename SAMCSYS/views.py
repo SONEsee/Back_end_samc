@@ -3693,6 +3693,64 @@ class Data_EntryViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def reset_back_value(self, request):
+        """
+        Reset BACK_VALUE and MOD_NO to 'N' for all data entry records after successful EOD
+        """
+        try:
+            with transaction.atomic():
+                # Update all MTTB_DATA_Entry records
+                updated_count = MTTB_DATA_Entry.objects.update(
+                    BACK_VALUE='N',
+                    MOD_NO='N',
+                    Checker_Id=request.user,
+                    Checker_DT_Stamp=timezone.now()
+                )
+                
+                return Response({
+                    'success': True,
+                    'message': f'ອັບເດດຂໍ້ມູນສຳເລັດແລ້ວ: {updated_count} ລາຍການ',
+                    'updated_count': updated_count
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດໃນການອັບເດດຂໍ້ມູນ: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def post_eod_cleanup(self, request):
+        """
+        Complete post-EOD cleanup: reset BACK_VALUE and MOD_NO, then prepare for logout
+        """
+        try:
+            with transaction.atomic():
+                # Update all MTTB_DATA_Entry records
+                updated_count = MTTB_DATA_Entry.objects.update(
+                    BACK_VALUE='N',
+                    MOD_NO='N',
+                    Checker_Id=request.user,
+                    Checker_DT_Stamp=timezone.now()
+                )
+                
+                # Log the EOD completion
+                print(f"EOD cleanup completed by user {request.user}: {updated_count} records updated")
+                
+                return Response({
+                    'success': True,
+                    'message': f'ການປິດບັນຊີສຳເລັດສົມບູນ. ອັບເດດຂໍ້ມູນ {updated_count} ລາຍການ',
+                    'updated_count': updated_count,
+                    'logout_required': True
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'ເກີດຂໍ້ຜິດພາດໃນການສຳເລັດການປິດບັນຊີ: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 
 from rest_framework import status
 from rest_framework.decorators import api_view
