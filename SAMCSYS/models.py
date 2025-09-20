@@ -391,7 +391,7 @@ class STTB_Dates(models.Model):
     next_working_Day = models.DateTimeField(auto_now_add=False, null=True, blank=True)
     eod_time = models.CharField(max_length=1)
     class Meta:
-        ordering=['date_id']  # Change from 'id' to 'DateID'
+        ordering=['date_id']  
         verbose_name_plural='EndOfDateInfo'
     def __str__(self):
         return str(self.date_id)

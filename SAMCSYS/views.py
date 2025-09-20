@@ -10662,99 +10662,7 @@ from django.db import transaction
 from .models import MTTB_USER_ACCESS_LOG, MTTB_Users
 from datetime import datetime
 
-# @api_view(["POST"])
-# @permission_classes([IsAuthenticated])
-# def force_logout_user(request):
-#     """
-#     Force logout a user by their user_id.
-#     Only admins should be able to use this endpoint.
-    
-#     POST /api/force-logout/
-#     Body: { "user_id": "<user_id_to_logout>" }
-#     """
-#     # Optional: Check if the requesting user has admin privileges
-#     # if not request.user.Role_ID or request.user.Role_ID.role_name != 'Admin':
-#     #     return Response(
-#     #         {"error": "Permission denied. Admin access required."},
-#     #         status=status.HTTP_403_FORBIDDEN
-#     #     )
-    
-#     target_user_id = request.data.get("user_id")
-#     if not target_user_id:
-#         return Response(
-#             {"error": "user_id is required"},
-#             status=status.HTTP_400_BAD_REQUEST
-#         )
-    
-#     # Check if the target user exists
-#     try:
-#         target_user = MTTB_Users.objects.get(user_id=target_user_id)
-#     except MTTB_Users.DoesNotExist:
-#         return Response(
-#             {"error": f"User with id {target_user_id} not found"},
-#             status=status.HTTP_404_NOT_FOUND
-#         )
-    
-#     # Prevent users from force logging out themselves
-#     if request.user.user_id == target_user_id:
-#         return Response(
-#             {"error": "Cannot force logout yourself. Use normal logout instead."},
-#             status=status.HTTP_400_BAD_REQUEST
-#         )
-    
-#     with transaction.atomic():
-#         # 1. Find all active sessions for this user
-#         active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
-#             user_id=target_user,
-#             logout_datetime__isnull=True,
-#             login_status='S'  # Only successful logins
-#         )
-        
-#         session_count = active_sessions.count()
-        
-#         # 2. Blacklist all outstanding tokens for this user
-#         blacklisted_count = 0
-#         try:
-#             # Get all outstanding tokens for this user
-#             outstanding_tokens = OutstandingToken.objects.filter(
-#                 user__user_id=target_user_id
-#             )
-            
-#             for token in outstanding_tokens:
-#                 # Check if already blacklisted
-#                 if not BlacklistedToken.objects.filter(token=token).exists():
-#                     BlacklistedToken.objects.create(token=token)
-#                     blacklisted_count += 1
-                    
-#         except Exception as e:
-#             # If blacklisting fails, still continue with logging out sessions
-#             print(f"Error blacklisting tokens: {str(e)}")
-        
-#         # 3. Update all active sessions to mark them as force logged out
-#         current_time = timezone.now()
-#         active_sessions.update(
-#             logout_datetime=current_time,
-#             logout_type='F',  # F = Force logout
-#             remarks=f'Force logged out by {request.user.user_id}'
-#         )
-        
-#         # 4. Optional: Create a new log entry for the force logout action
-#         MTTB_USER_ACCESS_LOG.objects.create(
-#             user_id=request.user,
-#             session_id=None,
-#             ip_address=get_client_ip(request),
-#             user_agent=request.META.get('HTTP_USER_AGENT'),
-#             login_status='A',  # A = Admin action
-#             remarks=f'Force logged out user {target_user_id}'
-#         )
-    
-#     return Response({
-#         "message": f"Successfully force logged out user {target_user_id}",
-#         "sessions_terminated": session_count,
-#         "tokens_blacklisted": blacklisted_count
-#     }, status=status.HTTP_200_OK)
 
-# views.py - Add these views to your existing views
 
 from rest_framework.decorators import api_view, permission_classes
 from django.db.models import OuterRef, Subquery, Max
@@ -10814,100 +10722,7 @@ def session_check(request):
     return Response({"success": True}, status=status.HTTP_200_OK)
 
 
-# @api_view(["POST"])
-# @permission_classes([IsAuthenticated])
-# def force_logout_user(request):
-#     """
-#     Force logout a user by their user_id.
-#     Revokes all their active sessions and tokens.
-    
-#     POST /api/force-logout/
-#     Body: { "user_id": "<user_id_to_logout>" }
-#     """
-#     target_user_id = request.data.get("user_id")
-    
-#     # Validation
-#     if not target_user_id:
-#         return Response(
-#             {"error": "user_id is required"},
-#             status=status.HTTP_400_BAD_REQUEST
-#         )
-    
-#     # Check if the target user exists
-#     try:
-#         target_user = MTTB_Users.objects.get(user_id=target_user_id)
-#     except MTTB_Users.DoesNotExist:
-#         return Response(
-#             {"error": f"User with id {target_user_id} not found"},
-#             status=status.HTTP_404_NOT_FOUND
-#         )
-    
-#     # Prevent users from force logging out themselves
-#     if request.user.user_id == target_user_id:
-#         return Response(
-#             {"error": "Cannot force logout yourself. Use normal logout instead."},
-#             status=status.HTTP_400_BAD_REQUEST
-#         )
-    
-#     with transaction.atomic():
-#         # Find all active sessions for this user
-#         active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
-#             user_id=target_user,
-#             logout_datetime__isnull=True,
-#             login_status='S'  # Only successful logins
-#         )
-        
-#         session_count = active_sessions.count()
-#         revoked_count = 0
-        
-#         # Revoke all active sessions
-#         for session in active_sessions:
-#             if session.session_id:  # session_id contains the JTI
-#                 try:
-#                     # Create revoked session entry
-#                     MTTB_REVOKED_SESSIONS.objects.get_or_create(
-#                         jti=session.session_id,
-#                         defaults={
-#                             'user_id': target_user,
-#                             'revoked_by': request.user,
-#                             'reason': f'Force logged out by {request.user.user_name}',
-#                             'ip_address': get_client_ip(request)
-#                         }
-#                     )
-#                     revoked_count += 1
-#                 except Exception as e:
-#                     logger.error(f"Error revoking session {session.session_id}: {str(e)}")
-        
-#         # Update all active sessions to mark them as force logged out
-#         current_time = timezone.now()
-#         active_sessions.update(
-#             logout_datetime=current_time,
-#             logout_type='F',  # F = Force logout
-#             remarks=f'Force logged out by {request.user.user_name} ({request.user.user_id})'
-#         )
-        
-#         # Log the admin action
-#         MTTB_USER_ACCESS_LOG.objects.create(
-#             user_id=request.user,
-#             session_id=get_jti_from_request(request),
-#             ip_address=get_client_ip(request),
-#             user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
-#             login_status='A',  # A = Admin action
-#             remarks=f'Force logged out user {target_user.user_name} ({target_user_id})'
-#         )
-    
-#     logger.info(f"Admin {request.user.user_id} force logged out user {target_user_id}")
-    
-#     return Response({
-#         "success": True,
-#         "message": f"Successfully force logged out user {target_user_id}",
-#         "details": {
-#             "user_id": target_user_id,
-#             "user_name": target_user.user_name,
-#             "sessions_terminated": session_count,
-#             "tokens_revoked": revoked_count
-#         }
-#     }, status=status.HTTP_200_OK)
+
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -13044,13 +12859,24 @@ from decimal import Decimal
 import datetime
 from django.utils import timezone
 from decimal import Decimal
-
 def create_journal_entry_data(asset, accounting_method, depreciation_amount, current_count, total_months):
     """
     ✅ ສ້າງຂໍ້ມູນສຳລັບ Journal Entry
     """
     try:
         current_date = timezone.now()
+        
+        # ✅ ດຶງວັນທີຈາກ STTB_Dates ທີ່ມີ date_id ໃຫຍ່ສຸດແລະ eod_time = 'N'
+        try:
+            latest_date_record = STTB_Dates.objects.filter(eod_time='N').order_by('-date_id').first()
+            if latest_date_record and latest_date_record.Start_Date:
+                value_date = latest_date_record.Start_Date.date()
+            else:
+                # ຖ້າບໍ່ເຈົ້າໃຊ້ວັນທີປັດຈຸບັນແທນ
+                value_date = current_date.date()
+        except Exception as date_error:
+            print(f"❌ STTB_Dates query error: {date_error}")
+            value_date = current_date.date()
         
         # ✅ ນັບຈຳນວນ records ໃນມື້ດຽວກັນສຳລັບ module_id ດຽວກັນກ່ອນ
         today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -13067,8 +12893,6 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         
         # ✅ ສ້າງ reference_no
         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
-        
-    
         
         # ເອົາສ່ວນທີ່ເຫຼືອແບບເກົ່າ
         debit_account_number = extract_account_number(accounting_method.debit_account_id)
@@ -13138,7 +12962,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         credit_account_str = str(accounting_method.credit_account_id) if accounting_method.credit_account_id is not None else ''
         
         # ✅ ສ້າງ Addl_sub_text ໂດຍໃສ່ມູນຄ່າ final_amount
-        addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {end_date_str}"
+        addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {value_date}"
         
         print(f"🔍 DEBUG addl_sub_text: {addl_sub_text}")
         
@@ -13146,7 +12970,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
             "Reference_No": reference_no,
             "Ccy_cd": asset_currency_str,  
             "Txn_code": "ARD", 
-            "Value_date": current_date.date().isoformat(),
+            "Value_date": value_date.isoformat(),  # ✅ ໃຊ້ວັນທີຈາກ STTB_Dates
             "Addl_text": "ຫັກຄ່າຫຼູ້ຍຫຽ້ນ",
             "fin_cycle": str(current_date.year),
             "module_id": "AS",
@@ -13186,7 +13010,8 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                 'amount_used': final_amount,
                 'amount_type': 'real_depreciation',
                 'start_date': start_date_str,
-                'end_date': end_date_str
+                'end_date': end_date_str,
+                'value_date_used': value_date.isoformat()  # ✅ ເພີ່ມໃນ validation
             }
         }
         
@@ -13195,6 +13020,156 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
             'success': False,
             'error': f"Create journal data error: {str(e)}"
         }
+# def create_journal_entry_data(asset, accounting_method, depreciation_amount, current_count, total_months):
+#     """
+#     ✅ ສ້າງຂໍ້ມູນສຳລັບ Journal Entry
+#     """
+#     try:
+#         current_date = timezone.now()
+        
+        
+#         today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
+#         today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+#         # ນັບຈຳນວນ records ທີ່ມີ module_id = "AS" ໃນມື້ນີ້
+#         daily_count = DETB_JRNL_LOG_MASTER.objects.filter(
+#             module_id="AS",
+#             Maker_DT_Stamp__range=[today_start, today_end]
+#         ).count()
+        
+#         # ເພີ່ມ 1 ສຳລັບ record ໃໝ່ນີ້
+#         sequence_number = daily_count + 1
+        
+#         # ✅ ສ້າງ reference_no
+#         reference_no = f"AS-ARD-{current_date.strftime('%Y%m%d')}-{sequence_number:04d}"
+        
+    
+        
+#         # ເອົາສ່ວນທີ່ເຫຼືອແບບເກົ່າ
+#         debit_account_number = extract_account_number(accounting_method.debit_account_id)
+#         credit_account_number = extract_account_number(accounting_method.credit_account_id)
+        
+#         debit_glid = find_gl_account(debit_account_number)
+#         credit_glid = find_gl_account(credit_account_number)
+        
+#         # ✅ ຄິດໄລ່ Amount ຕາມເງື່ອນໄຂ
+#         try:
+#             asset_data = FA_Asset_Lists.objects.get(asset_list_id=asset.asset_list_id)
+#             c_dpac = int(asset_data.C_dpac or 0)
+#             asset_useful_life = int(asset_data.asset_useful_life or 0)
+            
+#             # ຄຳນວນເດືອນທັງໝົດ
+#             total_depreciation_months = asset_useful_life * 12
+            
+#             # ✅ ດຶງມູນຄ່າທີ່ຫັກຄ່າເສື່ອມຈິງຈາກ FA_Asset_List_Depreciation
+#             try:
+#                 depreciation_record = FA_Asset_List_Depreciation.objects.filter(
+#                     asset_list_id=asset.asset_list_id,
+#                     dpca_date=asset_data.asset_latest_date_dpca
+#                 ).order_by('-dpca_date').first()
+                
+#                 if depreciation_record and depreciation_record.dpca_value:
+#                     final_amount = float(depreciation_record.dpca_value)
+#                     print(f"🔍 DEBUG real depreciation amount: {final_amount}")
+#                 else:
+#                     final_amount = float(depreciation_amount)
+#                     print(f"🔍 DEBUG no real depreciation amount found, using default: {final_amount}")
+#             except Exception as dep_error:
+#                 print(f"❌ Depreciation record error: {dep_error}")
+#                 final_amount = float(depreciation_amount)
+            
+#             # ✅ ກຳນົດ start_date ແລະ end_date ໂດຍອີງຕາມ C_dpac
+#             end_date = current_date  # ໃຊ້ວັນທີປັດຈຸບັນເປັນ end_date
+#             if c_dpac == 0:
+#                 # ຖ້າ C_dpac == 0, ໃຊ້ dpca_start_date ເປັນ start_date
+#                 start_date = asset_data.dpca_start_date or current_date
+#             else:
+#                 # ຖ້າ C_dpac != 0, ໃຊ້ asset_latest_date_dpca ເປັນ start_date
+#                 start_date = asset_data.asset_latest_date_dpca or current_date
+            
+#             # ຮູບແບບເດືອນ/ປີ
+#             start_date_str = start_date.strftime('%m/%Y')
+#             end_date_str = end_date.strftime('%m/%Y')
+            
+#         except FA_Asset_Lists.DoesNotExist:
+#             final_amount = float(depreciation_amount)
+#             c_dpac = 0
+#             total_depreciation_months = 0
+#             start_date_str = current_date.strftime('%m/%Y')
+#             end_date_str = current_date.strftime('%m/%Y')
+#         except Exception as calc_error:
+#             print(f"❌ Calc error: {calc_error}")
+#             final_amount = float(depreciation_amount)
+#             c_dpac = 0
+#             total_depreciation_months = 0
+#             start_date_str = current_date.strftime('%m/%Y')
+#             end_date_str = current_date.strftime('%m/%Y')
+        
+#         # ✅ ແປງທຸກຄ່າເປັນ string ກ່ອນໃຊ້
+#         asset_spec_str = str(asset.asset_spec) if asset.asset_spec is not None else 'N/A'
+#         asset_list_id_str = str(asset.asset_list_id) if asset.asset_list_id is not None else ''
+#         asset_currency_str = str(asset.asset_currency) if asset.asset_currency is not None else ''
+#         debit_account_str = str(accounting_method.debit_account_id) if accounting_method.debit_account_id is not None else ''
+#         credit_account_str = str(accounting_method.credit_account_id) if accounting_method.credit_account_id is not None else ''
+        
+#         # ✅ ສ້າງ Addl_sub_text ໂດຍໃສ່ມູນຄ່າ final_amount
+#         addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {end_date_str}"
+        
+#         print(f"🔍 DEBUG addl_sub_text: {addl_sub_text}")
+        
+#         journal_data = {
+#             "Reference_No": reference_no,
+#             "Ccy_cd": asset_currency_str,  
+#             "Txn_code": "ARD", 
+#             "Value_date": current_date.date().isoformat(),
+#             "Addl_text": "ຫັກຄ່າຫຼູ້ຍຫຽ້ນ",
+#             "fin_cycle": str(current_date.year),
+#             "module_id": "AS",
+#             "Period_code": current_date.strftime('%Y%m'),
+#             "entries": [
+#                 {
+#                     "Account": debit_glid,
+#                     "Account_no": debit_account_str,
+#                     "Amount": final_amount,
+#                     "Dr_cr": "D",
+#                     "Addl_sub_text": addl_sub_text,
+#                     "Ac_relatives": asset_list_id_str,
+#                 },
+#                 {
+#                     "Account": credit_glid,
+#                     "Account_no": credit_account_str,
+#                     "Amount": final_amount,
+#                     "Dr_cr": "C",
+#                     "Addl_sub_text": addl_sub_text,
+#                     "Ac_relatives": asset_list_id_str,
+#                 }
+#             ]
+#         }
+        
+#         return {
+#             'success': True,
+#             'journal_data': journal_data,
+#             'validation': {
+#                 'debit_account_number': debit_account_number,
+#                 'credit_account_number': credit_account_number,
+#                 'debit_glid': debit_glid,
+#                 'credit_glid': credit_glid,
+#                 'debit_found': debit_glid is not None,
+#                 'credit_found': credit_glid is not None,
+#                 'c_dpac': c_dpac if 'c_dpac' in locals() else 0,
+#                 'total_depreciation_months': total_depreciation_months if 'total_depreciation_months' in locals() else 0,
+#                 'amount_used': final_amount,
+#                 'amount_type': 'real_depreciation',
+#                 'start_date': start_date_str,
+#                 'end_date': end_date_str
+#             }
+#         }
+        
+#     except Exception as e:
+#         return {
+#             'success': False,
+#             'error': f"Create journal data error: {str(e)}"
+#         }
 
 def find_related_journal_entries(asset_list_id):
     """
@@ -14265,20 +14240,20 @@ def process_bulk_depreciation_catch_up_with_journal(mapping_id, user_id=None, cu
         if not result.get('success'):
             return result
         
-        # ຖ້າຕ້ອງການສ້າງ Journal Entry
+        
         if create_journal and result.get('success'):
             depreciation_data = result['bulk_depreciation_processed']
             total_depreciation = depreciation_data['total_depreciation']
             
             if total_depreciation > 0:
-                # ດຶງຂໍ້ມູນ asset ສຳລັບ Journal
+             
                 accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
                 if accounting_method.asset_list_id:
                     asset = accounting_method.asset_list_id
                 else:
                     asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
                 
-                # ສ້າງ Journal Entry
+              
                 journal_result = create_journal_entry_data(
                     asset=asset,
                     depreciation_amount=total_depreciation,
@@ -14288,7 +14263,7 @@ def process_bulk_depreciation_catch_up_with_journal(mapping_id, user_id=None, cu
                     is_bulk_entry=True
                 )
                 
-                # ເພີ່ມຂໍ້ມູນ Journal ເຂົ້າໃນ result
+                
                 result['journal_entry'] = journal_result
         
         return result
@@ -14297,185 +14272,6 @@ def process_bulk_depreciation_catch_up_with_journal(mapping_id, user_id=None, cu
         return {"error": f"Catch-up with journal error: {str(e)}"}
 
 
-# def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
-#     """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດເດືອນປະຈຸບັນ"""
-#     try:
-#         # ກວດສອບສະຖານະກ່ອນ
-#         calc_result = calculate_depreciation_schedule(mapping_id)
-#         if 'error' in calc_result:
-#             return calc_result
-        
-#         # ດຶງຂໍ້ມູນ asset
-#         accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
-#         if accounting_method.asset_list_id:
-#             asset = accounting_method.asset_list_id
-#         else:
-#             asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
-        
-#         # ✅ ຂໍ້ມູນພື້ນຖານ
-#         start_date = asset.dpca_start_date
-#         useful_life = int(asset.asset_useful_life)
-#         total_months = useful_life * 12
-#         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
-        
-#         # ກຳນົດ current_date
-#         if current_date:
-#             target_date = datetime.strptime(current_date, '%Y-%m-%d').date()
-#         else:
-#             target_date = datetime.now().date()
-        
-#         # ✅ ຄິດໄລຍະເວລາທີ່ຕ້ອງຫັກ
-#         # ເລືອກວັນທີ່ທີ່ນ້ອຍກວ່າ: ວັນສິ້ນສຸດອາຍຸການໃຊ້ ຫຼື ວັນທີ່ປະຈຸບັນ
-#         actual_end_date = min(end_date, target_date)
-        
-#         # ຄິດຈຳນວນເດືອນທີ່ຕ້ອງຫັກ
-#         months_to_process = []
-#         current_month_start = start_date
-#         month_counter = 1
-        
-#         while current_month_start <= actual_end_date:
-#             # ວັນເລີ່ມຕົ້ນແລະສິ້ນສຸດຂອງເດືອນ
-#             if month_counter == 1:
-#                 # ງວດທຳອິດ: ເລີ່ມຈາກວັນທີ່ start_date
-#                 month_actual_start = start_date
-#                 month_end = datetime(start_date.year, start_date.month, 
-#                                    get_last_day_of_month(start_date.year, start_date.month)).date()
-#             else:
-#                 # ງວດອື່ນໆ: ເລີ່ມວັນທີ່ 1
-#                 month_actual_start = datetime(current_month_start.year, current_month_start.month, 1).date()
-#                 month_end = datetime(current_month_start.year, current_month_start.month,
-#                                    get_last_day_of_month(current_month_start.year, current_month_start.month)).date()
-            
-#             # ປັບ month_end ຖ້າເກີນ actual_end_date
-#             if month_end > actual_end_date:
-#                 month_end = actual_end_date
-            
-#             months_to_process.append({
-#                 'month_number': month_counter,
-#                 'start_date': month_actual_start,
-#                 'end_date': month_end,
-#                 'year_month': f"{current_month_start.year}-{current_month_start.month:02d}"
-#             })
-            
-#             # ເລື່ອນໄປເດືອນຕໍ່ໄປ
-#             current_month_start = current_month_start + relativedelta(months=1)
-#             month_counter += 1
-            
-#             # ຢຸດຖ້າເກີນອາຍຸການໃຊ້
-#             if month_counter > total_months:
-#                 break
-        
-#         # ✅ ຄິດຄ່າເສື່ອມ
-#         asset_value = Decimal(str(asset.asset_value or 0))
-#         salvage_value = Decimal(str(asset.asset_salvage_value or 0))
-#         depreciable_amount = asset_value - salvage_value
-#         old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
-        
-#         # ຄ່າເສື່ອມຕໍ່ປີ ແລະ ຕໍ່ເດືອນ
-#         annual_depreciation = depreciable_amount / Decimal(str(useful_life))
-#         monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        
-#         # ຄິດຄ່າເສື່ອມແຕ່ລະເດືອນ
-#         monthly_details = []
-#         total_depreciation = Decimal('0')
-#         is_asset_completed = actual_end_date >= end_date
-        
-#         for i, month_data in enumerate(months_to_process):
-#             month_num = month_data['month_number']
-#             month_start = month_data['start_date']
-#             month_end = month_data['end_date']
-            
-#             # ຄິດຈຳນວນວັນ
-#             days_in_period = (month_end - month_start + timedelta(days=1)).days
-#             total_days_in_month = get_last_day_of_month(month_start.year, month_start.month)
-            
-#             # ກຳນົດປະເພດງວດ
-#             is_first_month = (month_num == 1)
-#             is_last_month_of_asset = (month_num == total_months) and is_asset_completed
-#             is_current_final_month = (i == len(months_to_process) - 1) and not is_asset_completed
-            
-#             # ✅ ຄິດຄ່າເສື່ອມຕາມປະເພດງວດ
-#             if is_first_month:
-#                 # 🎯 ງວດທຳອິດ: pro-rated
-#                 month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
-#                                     Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-#                 period_type = "ງວດທຳອິດ"
-#                 calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
-                
-#             elif is_last_month_of_asset:
-#                 # 🎯 ງວດສຸດທ້າຍຂອງຊັບສິນ: ປັບໃຫ້ຄົບ depreciable_amount
-#                 remaining_to_depreciate = depreciable_amount - (old_accumulated + total_depreciation)
-#                 month_depreciation = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-#                 period_type = "ງວດສຸດທ້າຍ (ຄົບອາຍຸ)"
-#                 calculation_note = f"ປັບໃຫ້ຄົບ {depreciable_amount:,.0f} ກີບ (ເຫຼືອ {remaining_to_depreciate:,.2f})"
-                
-#             else:
-#                 # 🎯 ງວດປົກກະຕິ: ຫັກຕາມວັນຈິງ
-#                 if days_in_period == total_days_in_month:
-#                     # ເຕັມເດືອນ
-#                     month_depreciation = monthly_depreciation
-#                     period_type = "ງວດປົກກະຕິ (ເຕັມເດືອນ)"
-#                     calculation_note = f"ເຕັມເດືອນ = {monthly_depreciation:,.2f}"
-#                 else:
-#                     # ບໍ່ເຕັມເດືອນ (pro-rated)
-#                     month_depreciation = (monthly_depreciation * Decimal(str(days_in_period)) / 
-#                                         Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-#                     period_type = "ງວດປົກກະຕິ (ບາງສ່ວນ)"
-#                     calculation_note = f"({monthly_depreciation:,.2f} × {days_in_period}) ÷ {total_days_in_month} = {month_depreciation:,.2f}"
-            
-#             total_depreciation += month_depreciation
-            
-#             monthly_details.append({
-#                 'month_number': month_num,
-#                 'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
-#                 'month_year': f"{get_month_name_la(month_start.month)} {month_start.year}",
-#                 'days_count': days_in_period,
-#                 'total_days_in_month': total_days_in_month,
-#                 'period_type': period_type,
-#                 'monthly_depreciation': float(month_depreciation),
-#                 'calculation_note': calculation_note
-#             })
-        
-#         # ✅ ຄິດຜົນລວມ
-#         new_accumulated = old_accumulated + total_depreciation
-#         new_remaining = asset_value - new_accumulated
-        
-#         # ກວດສອບບໍ່ໃຫ້ເກີນ depreciable_amount
-#         if new_accumulated > depreciable_amount:
-#             excess = new_accumulated - depreciable_amount
-#             total_depreciation = total_depreciation - excess
-#             new_accumulated = depreciable_amount
-#             new_remaining = salvage_value
-        
-#         # ✅ ກຳນົດສະຖານະໃໝ່
-#         months_processed = len(months_to_process)
-#         is_fully_depreciated = new_accumulated >= depreciable_amount
-        
-#         return {
-#             'success': True,
-#             'bulk_depreciation_processed': {
-#                 'processing_period': f"{start_date.strftime('%d/%m/%Y')} - {actual_end_date.strftime('%d/%m/%Y')}",
-#                 'months_processed': months_processed,
-#                 'total_depreciation': float(total_depreciation),
-#                 'old_accumulated': float(old_accumulated),
-#                 'new_accumulated': float(new_accumulated),
-#                 'remaining_value': float(new_remaining),
-#                 'is_asset_completed': is_asset_completed,
-#                 'is_fully_depreciated': is_fully_depreciated,
-#                 'monthly_breakdown': monthly_details,
-#                 'summary_note': f"ຫັກຄ່າເສື່ອມ {months_processed} ເດືອນ, ລວມ {total_depreciation:,.2f} ກີບ"
-#             },
-#             'updated_status': {
-#                 'C_dpac': months_processed,
-#                 'total_months': total_months,
-#                 'remaining_months': max(0, total_months - months_processed),
-#                 'is_completed': is_fully_depreciated or months_processed >= total_months,
-#                 'completion_status': "ຫັກຄົບແລ້ວ" if is_fully_depreciated else f"ຫັກແລ້ວ {months_processed}/{total_months} ເດືອນ"
-#             }
-#         }
-        
-#     except Exception as e:
-#         return {"error": f"Bulk depreciation error: {str(e)}"}
 
 def process_bulk_depreciation_catch_up(mapping_id, user_id=None, current_date=None):
     """ຫັກຄ່າເສື່ອມລາຄາແບບລວມ - ຈາກເລີ່ມຕົ້ນຮອດ latest EOD date"""
@@ -16861,7 +16657,6 @@ def bulk_confirm_depreciation_with_journal_update(aldm_ids, status, reason=None,
         
     except Exception as e:
         return {"error": f"Enhanced bulk confirm with journal error: {str(e)}"}
-
 def create_depreciation_history(asset, depreciation_data, user_id=None, in_month_record_id=None):
     """
     ✅ FIXED: ບໍ່ໃຊ້ Auth_Status ໃນ InMonth Records
@@ -16875,10 +16670,68 @@ def create_depreciation_history(asset, depreciation_data, user_id=None, in_month
         if not validated_user_id:
             print("Warning: ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ - ຈະບັນທຶກໂດຍບໍ່ມີ user")
         
-        current_time = timezone.now()
+        # ✅ ດຶງວັນທີຈາກ STTB_Dates ທີ່ມີ date_id ໃຫຍ່ສຸດແລະ eod_time = 'N'
+        try:
+            latest_date_record = STTB_Dates.objects.filter(eod_time='N').order_by('-date_id').first()
+            if latest_date_record and latest_date_record.Start_Date:
+                current_time = latest_date_record.Start_Date
+                sttb_date = latest_date_record.Start_Date.date()
+            else:
+                # ຖ້າບໍ່ເຈົ້າໃຊ້ວັນທີປັດຈຸບັນແທນ
+                current_time = timezone.now()
+                sttb_date = current_time.date()
+        except Exception as date_error:
+            print(f"❌ STTB_Dates query error: {date_error}")
+            current_time = timezone.now()
+            sttb_date = current_time.date()
+        
+        # ✅ ດຶງຂໍ້ມູນ asset ແລະຄິດໄລ່ຈຳນວນເດືອນ
+        try:
+            asset_data = FA_Asset_Lists.objects.get(asset_list_id=asset.asset_list_id)
+            dpca_start_date = asset_data.dpca_start_date
+            
+            # ລາຍຊື່ເດືອນພາສາລາວ
+            lao_months = [
+                '', 'ມັງກອນ', 'ກຸມພາ', 'ມີນາ', 'ເມສາ', 'ພຶດສະພາ', 'ມິຖຸນາ',
+                'ກໍລະກົດ', 'ສິງຫາ', 'ກັນຍາ', 'ຕຸລາ', 'ພະຈິກ', 'ທັນວາ'
+            ]
+            
+            if dpca_start_date:
+                # ຄິດໄລ່ຈຳນວນເດືອນຈາກ dpca_start_date ຫາ STTB_Dates
+                start_year = dpca_start_date.year
+                start_month = dpca_start_date.month
+                end_year = sttb_date.year
+                end_month = sttb_date.month
+                
+                total_months = (end_year - start_year) * 12 + (end_month - start_month) + 1
+                
+                # ດຶງຊື່ເດືອນພາສາລາວ
+                end_month_lao = lao_months[end_month] if end_month <= 12 else str(end_month)
+                
+                # ສ້າງຂໍ້ຄວາມບອກເດືອນປີ
+                month_year_info = f"ຮອດເດືອນ {end_month}/{end_year} (ລວມ {total_months} ເດືອນ)"
+                print(f"🔍 DEBUG: dpca_start_date: {dpca_start_date}, STTB_date: {sttb_date}, Total months: {total_months}")
+            else:
+                end_month_lao = lao_months[sttb_date.month] if sttb_date.month <= 12 else str(sttb_date.month)
+                month_year_info = f"ຮອດເດືອນ {sttb_date.month}/{sttb_date.year}"
+                total_months = 0
+                print("🔍 DEBUG: ບໍ່ມີ dpca_start_date")
+                
+        except FA_Asset_Lists.DoesNotExist:
+            end_month_lao = lao_months[sttb_date.month] if sttb_date.month <= 12 else str(sttb_date.month)
+            month_year_info = f"ຮອດເດືອນ {sttb_date.month}/{sttb_date.year}"
+            total_months = 0
+            print(f"❌ Asset {asset.asset_list_id} ບໍ່ເຈົ້າໃນ FA_Asset_Lists")
+        except Exception as asset_error:
+            end_month_lao = lao_months[sttb_date.month] if sttb_date.month <= 12 else str(sttb_date.month)
+            month_year_info = f"ຮອດເດືອນ {sttb_date.month}/{sttb_date.year}"
+            total_months = 0
+            print(f"❌ Asset calculation error: {asset_error}")
+        
         depreciation_date = depreciation_data['period_start']
         
-        description = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນເດືອນທີ່ {depreciation_data['month_number']} ({depreciation_data['month_year']})"
+        # ✅ ສ້າງ description ຕາມຮູບແບບທີ່ຕ້ອງການ
+        description = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນເດືອນທີ່ {total_months if 'total_months' in locals() and total_months > 0 else depreciation_data['month_number']} ({end_month_lao if 'end_month_lao' in locals() else ''} {sttb_date.year}) - {month_year_info if 'month_year_info' in locals() else ''}"
         
         main_record_data = {
             'asset_list_id': asset,
@@ -16891,7 +16744,7 @@ def create_depreciation_history(asset, depreciation_data, user_id=None, in_month
             'accumulated_dpca': Decimal(str(depreciation_data['new_accumulated'])),
             'dpca_desc': description,
             'dpca_ac_yesno': 'N',
-            'dpca_datetime': current_time,
+            'dpca_datetime': current_time,  # ✅ ໃຊ້ວັນທີຈາກ STTB_Dates
             'Record_Status': 'C',
             'Auth_Status': 'U',  # ✅ ໃຊ້ໃນ Main & Detail ເທົ່ານັ້ນ
         }
@@ -16925,7 +16778,7 @@ def create_depreciation_history(asset, depreciation_data, user_id=None, in_month
             'accumulated_dpca': Decimal(str(depreciation_data['new_accumulated'])),
             'dpca_desc': description,
             'dpca_ac_yesno': 'N',
-            'dpca_datetime': current_time,
+            'dpca_datetime': current_time,  # ✅ ໃຊ້ວັນທີຈາກ STTB_Dates
             'Record_Status': 'C',
             'Auth_Status': 'U',  # ✅ ໃຊ້ໃນ Detail
         }
@@ -16963,7 +16816,14 @@ def create_depreciation_history(asset, depreciation_data, user_id=None, in_month
             'success': True,
             'user_id_used': validated_user_id,
             'linked_in_month_id': in_month_record_id,
-            'auth_status': 'U'
+            'auth_status': 'U',
+            'datetime_used': current_time.isoformat(),  # ✅ ເພີ່ມໃນ return ເພື່ອກວດສອບ
+            'month_calculation': {
+                'dpca_start_date': dpca_start_date.isoformat() if 'dpca_start_date' in locals() and dpca_start_date else None,
+                'sttb_date': sttb_date.isoformat(),
+                'total_months': total_months if 'total_months' in locals() else 0,
+                'month_year_info': month_year_info if 'month_year_info' in locals() else None
+            }
         }
         
     except Exception as e:
@@ -16972,6 +16832,117 @@ def create_depreciation_history(asset, depreciation_data, user_id=None, in_month
             'success': False,
             'error': f"History recording error: {str(e)}"
         }
+
+# def create_depreciation_history(asset, depreciation_data, user_id=None, in_month_record_id=None):
+#     """
+#     ✅ FIXED: ບໍ່ໃຊ້ Auth_Status ໃນ InMonth Records
+#     """
+#     try:
+#         if user_id:
+#             validated_user_id = validate_user_id(user_id)
+#         else:
+#             validated_user_id = get_current_user_id()
+        
+#         if not validated_user_id:
+#             print("Warning: ບໍ່ມີ user_id ທີ່ຖືກຕ້ອງ - ຈະບັນທຶກໂດຍບໍ່ມີ user")
+        
+#         current_time = timezone.now()
+#         depreciation_date = depreciation_data['period_start']
+        
+#         description = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນເດືອນທີ່ {depreciation_data['month_number']} ({depreciation_data['month_year']})"
+        
+#         main_record_data = {
+#             'asset_list_id': asset,
+#             'dpca_year': str(depreciation_date.year),
+#             'dpca_month': f"{depreciation_date.year}-{depreciation_date.month:02d}",
+#             'dpca_date': depreciation_date,
+#             'dpca_value': Decimal(str(depreciation_data['monthly_depreciation'])),
+#             'dpca_no_of_days': depreciation_data['days_count'],
+#             'remaining_value': Decimal(str(depreciation_data['remaining_value'])),
+#             'accumulated_dpca': Decimal(str(depreciation_data['new_accumulated'])),
+#             'dpca_desc': description,
+#             'dpca_ac_yesno': 'N',
+#             'dpca_datetime': current_time,
+#             'Record_Status': 'C',
+#             'Auth_Status': 'U',  # ✅ ໃຊ້ໃນ Main & Detail ເທົ່ານັ້ນ
+#         }
+        
+#         # ✅ เชื่อมต่อ aldm_month_id
+#         if in_month_record_id:
+#             try:
+#                 in_month_record = FA_Asset_List_Depreciation_InMonth.objects.get(aldim_id=in_month_record_id)
+#                 main_record_data['aldm_month_id'] = in_month_record
+#             except FA_Asset_List_Depreciation_InMonth.DoesNotExist:
+#                 print(f"Warning: InMonth record {in_month_record_id} ບໍ່ມີຢູ່")
+        
+#         if validated_user_id:
+#             main_record_data['Maker_Id_id'] = validated_user_id
+#             main_record_data['Maker_DT_Stamp'] = current_time
+        
+#         # ✅ ສ້າງ Main Record
+#         main_record = FA_Asset_List_Depreciation_Main.objects.create(**main_record_data)
+#         print(f"✅ ສ້າງ Main Record (Unauthorized): {main_record.aldm_id}")
+        
+#         # ✅ ສ້າງ/ອັບເດດ Detail Record
+#         existing_record = FA_Asset_List_Depreciation.objects.filter(
+#             asset_list_id=asset
+#         ).order_by('-dpca_date').first()
+        
+#         detail_record_data = {
+#             'dpca_date': depreciation_date,
+#             'dpca_value': Decimal(str(depreciation_data['monthly_depreciation'])),
+#             'dpca_no_of_days': depreciation_data['days_count'],
+#             'remaining_value': Decimal(str(depreciation_data['remaining_value'])),
+#             'accumulated_dpca': Decimal(str(depreciation_data['new_accumulated'])),
+#             'dpca_desc': description,
+#             'dpca_ac_yesno': 'N',
+#             'dpca_datetime': current_time,
+#             'Record_Status': 'C',
+#             'Auth_Status': 'U',  # ✅ ໃຊ້ໃນ Detail
+#         }
+        
+#         # ✅ เชื่อมต่อ aldm_id  
+#         if in_month_record_id:
+#             try:
+#                 in_month_record = FA_Asset_List_Depreciation_InMonth.objects.get(aldim_id=in_month_record_id)
+#                 detail_record_data['aldm_id'] = in_month_record
+#             except FA_Asset_List_Depreciation_InMonth.DoesNotExist:
+#                 print(f"Warning: InMonth record {in_month_record_id} ບໍ່ມີຢູ່")
+        
+#         if validated_user_id:
+#             detail_record_data['Maker_Id_id'] = validated_user_id
+#             detail_record_data['Maker_DT_Stamp'] = current_time
+        
+#         if existing_record:
+#             for key, value in detail_record_data.items():
+#                 setattr(existing_record, key, value)
+#             existing_record.save()
+#             detail_record_id = existing_record.ald_id
+#             operation_type = "UPDATE"
+#             print(f"✅ ອັບເດດ Detail Record (Unauthorized): {detail_record_id}")
+#         else:
+#             detail_record_data['asset_list_id'] = asset
+#             detail_record = FA_Asset_List_Depreciation.objects.create(**detail_record_data)
+#             detail_record_id = detail_record.ald_id
+#             operation_type = "INSERT"
+#             print(f"✅ ສ້າງ Detail Record (Unauthorized): {detail_record_id}")
+        
+#         return {
+#             'main_record_id': main_record.aldm_id,
+#             'detail_record_id': detail_record_id,
+#             'detail_operation': operation_type,
+#             'success': True,
+#             'user_id_used': validated_user_id,
+#             'linked_in_month_id': in_month_record_id,
+#             'auth_status': 'U'
+#         }
+        
+#     except Exception as e:
+#         print(f"💥 create_depreciation_history error: {str(e)}")
+#         return {
+#             'success': False,
+#             'error': f"History recording error: {str(e)}"
+#         }
 
 def create_depreciation_in_month_record(result_data, user_id=None):
     """
@@ -33992,8 +33963,8 @@ def get_latest_eod_date(request):
     ດຶງຂໍ້ມູນ date_id ໃຫຍ່ທີ່ສຸດທີ່ມີ eod_time = 'Y'
     """
     try:
-        # ຄົ້ນຫາ record ທີ່ມີ eod_time = 'Y' ແລະ date_id ໃຫຍ່ທີ່ສຸດ
-        latest_record = STTB_Dates.objects.filter(eod_time='Y').order_by('-date_id').first()
+        
+        latest_record = STTB_Dates.objects.filter(eod_time='N').order_by('-date_id').first()
         
         if latest_record:
             data = {
@@ -34009,7 +33980,7 @@ def get_latest_eod_date(request):
         else:
             data = {
                 'success': False,
-                'message': 'ບໍ່ພົບຂໍ້ມູນທີ່ມີ eod_time = Y',
+                'message': 'ບໍ່ພົບຂໍ້ມູນທີ່ມີ eod_time = N',
                 'data': None
             }
             
