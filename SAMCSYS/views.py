@@ -218,19 +218,87 @@ def get_client_ip(request):
         return xff.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR')
 
+# @api_view(["POST"])
+# @permission_classes([AllowAny])
+# def login_view(request):
+#     uid = request.data.get("user_name")
+#     pwd = request.data.get("user_password")
+#     if not uid or not pwd:
+#         # log failure
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=None,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='F',        # F = failed
+#             remarks='Missing credentials'
+#         )
+#         return Response(
+#             {"error": "User_Name and User_Password required"},
+#             status=status.HTTP_400_BAD_REQUEST,
+#         )
+
+#     hashed = _hash(pwd)
+#     try:
+#         user = MTTB_Users.objects.get(
+#             user_name=uid, user_password=hashed
+#         )
+#     except MTTB_Users.DoesNotExist:
+#         # log failure
+#         MTTB_USER_ACCESS_LOG.objects.create(
+#             user_id=None,
+#             session_id=None,
+#             ip_address=get_client_ip(request),
+#             user_agent=request.META.get('HTTP_USER_AGENT'),
+#             login_status='F',
+#             remarks='Invalid credentials'
+#         )
+#         return Response(
+#             {"error": "Invalid credentials"},
+#             status=status.HTTP_401_UNAUTHORIZED,
+#         )
+
+#     # 1) Create tokens using CustomRefreshToken
+#     # refresh = RefreshToken.for_user(user)
+#     # access  = refresh.access_token
+#     refresh = CustomRefreshToken.for_user(user)
+#     access = refresh.access_token
+
+#     # 2) Log the successful login
+#     # Grab the JTI (unique token ID) for session tracking
+#     jti = refresh[api_settings.JTI_CLAIM]
+#     MTTB_USER_ACCESS_LOG.objects.create(
+#         user_id=user,
+#         session_id=jti,
+#         ip_address=get_client_ip(request),
+#         user_agent=request.META.get('HTTP_USER_AGENT'),
+#         login_status='S'   # S = success
+#     )
+
+#     # 3) Serialize your user data
+#     data = MTTBUserSerializer(user).data
+
+#     # 4) Return tokens + user info
+#     return Response({
+#         "message": "Login successful",
+#         "refresh": str(refresh),
+#         "access": str(access),
+#         "user": data
+#     })
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
     uid = request.data.get("user_name")
     pwd = request.data.get("user_password")
+    
     if not uid or not pwd:
-        # log failure
         MTTB_USER_ACCESS_LOG.objects.create(
             user_id=None,
             session_id=None,
             ip_address=get_client_ip(request),
             user_agent=request.META.get('HTTP_USER_AGENT'),
-            login_status='F',        # F = failed
+            login_status='F',
             remarks='Missing credentials'
         )
         return Response(
@@ -240,11 +308,8 @@ def login_view(request):
 
     hashed = _hash(pwd)
     try:
-        user = MTTB_Users.objects.get(
-            user_name=uid, user_password=hashed
-        )
+        user = MTTB_Users.objects.get(user_name=uid, user_password=hashed)
     except MTTB_Users.DoesNotExist:
-        # log failure
         MTTB_USER_ACCESS_LOG.objects.create(
             user_id=None,
             session_id=None,
@@ -258,27 +323,24 @@ def login_view(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    # 1) Create tokens using CustomRefreshToken
-    # refresh = RefreshToken.for_user(user)
-    # access  = refresh.access_token
+    # Create tokens
     refresh = CustomRefreshToken.for_user(user)
     access = refresh.access_token
 
-    # 2) Log the successful login
-    # Grab the JTI (unique token ID) for session tracking
-    jti = refresh[api_settings.JTI_CLAIM]
+    # Get JTI from REFRESH token (this is what we'll revoke)
+    refresh_jti = refresh[api_settings.JTI_CLAIM]
+    
+    # Log the successful login with REFRESH token JTI
     MTTB_USER_ACCESS_LOG.objects.create(
         user_id=user,
-        session_id=jti,
+        session_id=refresh_jti,  # Store refresh token JTI
         ip_address=get_client_ip(request),
         user_agent=request.META.get('HTTP_USER_AGENT'),
-        login_status='S'   # S = success
+        login_status='S'
     )
 
-    # 3) Serialize your user data
     data = MTTBUserSerializer(user).data
 
-    # 4) Return tokens + user info
     return Response({
         "message": "Login successful",
         "refresh": str(refresh),
@@ -10722,76 +10784,57 @@ def session_check(request):
     return Response({"success": True}, status=status.HTTP_200_OK)
 
 
-
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def force_logout_user(request, user_id=None):
-    """
-    Force logout a specific user by terminating all their active sessions.
-    """
-    # Get user_id from URL parameter or request body
     target_user_id = user_id or request.data.get("user_id")
     
     if not target_user_id:
-        return Response(
-            {"error": "user_id is required"}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
     
-    # Prevent self-logout
     if request.user.user_id == target_user_id:
-        return Response(
-            {"error": "Cannot force logout yourself. Use normal logout instead."}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({"error": "Cannot force logout yourself"}, status=status.HTTP_400_BAD_REQUEST)
     
-    # Check if target user exists
     try:
         target_user = MTTB_Users.objects.get(user_id=target_user_id)
     except MTTB_Users.DoesNotExist:
-        return Response(
-            {"error": f"User with id {target_user_id} not found"}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({"error": f"User {target_user_id} not found"}, status=status.HTTP_404_NOT_FOUND)
     
     with transaction.atomic():
-        # Find all active sessions for the target user
+        # Get all active sessions
         active_sessions = MTTB_USER_ACCESS_LOG.objects.filter(
             user_id=target_user,
             logout_datetime__isnull=True,
             login_status='S'
-        ).select_for_update()
+        )
         
         if not active_sessions.exists():
-            return Response(
-                {"success": False, "message": "No active sessions found for this user"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": "No active sessions found"}, status=status.HTTP_404_NOT_FOUND)
         
-        revoked_count = 0
-        session_ids = []
+        revoked_jtis = []
         
-        # Revoke all active sessions
         for session in active_sessions:
+            # Revoke the refresh token JTI (stored in session_id)
             if session.session_id:
-                # Add to revoked sessions table
-                MTTB_REVOKED_SESSIONS.objects.get_or_create(
+                obj, created = MTTB_REVOKED_SESSIONS.objects.get_or_create(
                     jti=session.session_id,
                     defaults={
                         'user_id': target_user,
                         'revoked_by': request.user,
-                        'reason': f'Force logout by admin',
+                        'reason': f'Force logout by {request.user.user_name}',
                         'ip_address': get_client_ip(request)
                     }
                 )
-                revoked_count += 1
-                session_ids.append(session.session_id)
+                if created:
+                    revoked_jtis.append(session.session_id)
+                    logger.info(f"Revoked refresh JTI: {session.session_id}")
         
-        # Update logout information
-        current_time = timezone.now()
+        # Mark sessions as logged out (this is the KEY part)
         active_sessions.update(
-            logout_datetime=current_time,
+            logout_datetime=timezone.now(),
             logout_type='F',
             remarks=f'Force logged out by {request.user.user_name}'
         )
@@ -10800,12 +10843,10 @@ def force_logout_user(request, user_id=None):
     
     return Response({
         "success": True,
-        "message": f"Successfully logged out user {target_user.user_name}",
+        "message": f"User {target_user.user_name} has been logged out",
         "sessions_terminated": active_sessions.count(),
-        "tokens_revoked": revoked_count
-    }, status=status.HTTP_200_OK)
-
-
+        "revoked_refresh_tokens": len(revoked_jtis)
+    })
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
