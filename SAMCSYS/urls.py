@@ -272,10 +272,8 @@ urlpatterns = [
     # Dairy Report <---- Components ------>
     path('api/main-trial-balance/all-currencies/dairy-report/', trial_balance_dairy_view, name='main-trial-balance-all-currencies-dairy-report'),
 
-
     path('api/income-statement/acc/dairy-report/', income_statement_dairy_acc_view, name='income-statement-acc-post-dairy-report'),
     path('api/income-statement/mfi/dairy-report/', income_statement_dairy_mfi_view, name='income-statement-mfi-post-dairy-report'),
-
 
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
