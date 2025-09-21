@@ -90,6 +90,8 @@ from .views import (
     AssetDepreciationReportView, 
     AssetDepreciationReportView1, 
     AssetStatisticsView,
+    DETB_JRNL_LOG_MASTER_DPS_ViewSet,
+    JRNLLogViewSetAssetDisposal,
 
     overdue_depreciation_api,
     # trial_balance_view,
@@ -180,6 +182,7 @@ router.register(r'journal-entries', JRNLLogViewSet, basename='journal-entry')
 router.register(r'journal-ard', JournalARDViewSet)
 router.register(r'journal-log-master', DETB_JRNL_LOG_MASTER_ViewSet, basename='jrnl_log_master')
 router.register(r'journal-log-ard', DETB_JRNL_LOG_MASTER_ARD_ViewSet, basename='jrnl_log_ard')
+router.register(r'journal-log-dps', DETB_JRNL_LOG_MASTER_DPS_ViewSet, basename='jrnl_log_dps')
 router.register(r'asset_types', FAAssetTypeViewSet , basename='asset_type')
 # router.register(r'access-logs', UserAccessLogViewSet, basename='user-access-log')
 router.register(r'chart_of_asset', FAChartOfAssetViewSet , basename='chart_of_asset')
@@ -208,6 +211,7 @@ router.register(r'asset_audit', FAAssetAuditViewSet, basename='FAAssetAudit')
 # router.register(r'dairy-report', DairyReportViewSet)
 router.register(r'balance-sheet', BalanceSheetViewSet, basename='balance-sheet')
 router.register(r'jrnl-logs-with-asset', JRNLLogViewSetAsset, basename='jrnl_logs_with_asset')
+router.register(r'jrnl-logs-with-dps', JRNLLogViewSetAssetDisposal, basename='jrnl_logs_with_dps')
 app_name = 'depreciation'
 
 urlpatterns = [

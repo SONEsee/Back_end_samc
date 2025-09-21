@@ -391,7 +391,7 @@ class STTB_Dates(models.Model):
     next_working_Day = models.DateTimeField(auto_now_add=False, null=True, blank=True)
     eod_time = models.CharField(max_length=1)
     class Meta:
-        ordering=['date_id']  # Change from 'id' to 'DateID'
+        ordering=['date_id']  
         verbose_name_plural='EndOfDateInfo'
     def __str__(self):
         return str(self.date_id)
@@ -1236,12 +1236,12 @@ class FA_Asset_Lists(models.Model):
     asset_salvage_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     dpca_start_date = models.DateField(null=True, blank=True)
     dpca_end_date = models.DateField(null=True, blank=True)
-    accu_dpca_value_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_value_remainBegin = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    asset_value_remainLast = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    accu_dpca_value_total = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
+    asset_accu_dpca_value = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
+    asset_value_remain = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
+    asset_value_remainMonth = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
+    asset_value_remainBegin = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
+    asset_value_remainLast = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
     acc_no = models.CharField(max_length=30, null=True, blank=True)
     type_of_pay = models.CharField(max_length=30, null=True, blank=True)
     asset_latest_date_dpca = models.DateField(null=True, blank=True)
@@ -1507,9 +1507,9 @@ class FA_Accounting_Method(models.Model):
     asset_list_id = models.ForeignKey(FA_Asset_Lists, null=True, blank=True, on_delete=models.CASCADE)  
     debit_account_id = models.CharField(max_length=50, null=True, blank=True) 
     credit_account_id = models.CharField(max_length=50, null=True, blank=True) 
-    amount_start = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
-    amount_end = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  
+    amount_start = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)  
+    amount_end = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
+    amount = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)  
     transaction_date = models.DateField(null=True, blank=True)  
     description = models.TextField(null=True, blank=True)    
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
