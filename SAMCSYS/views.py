@@ -28542,13 +28542,13 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
         Returns paginated journal data + summary data in one request
         """
         try:
-            # Get query parameters
+            
             page_size = min(int(request.query_params.get('page_size', 25)), 100)
             page = int(request.query_params.get('page', 1))
             
             print(f"DEBUG: ARD init_data called with page={page}, page_size={page_size}")
             
-            # Get base queryset with optimizations
+            
             base_queryset = self.get_queryset().select_related(
                 'Maker_Id', 'Checker_Id', 'module_id', 'Ccy_cd', 'Txn_code'
             )
@@ -29492,9 +29492,9 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 'target_journals': [],
                 'transaction_type': 'ARD'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-       
+   
 class DETB_JRNL_LOG_MASTER_DPS_ViewSet(viewsets.ModelViewSet):
-    serializer_class = DETB_JRNL_LOG_MASTER_AC_Serializer  # Use your existing serializer
+    serializer_class = DETB_JRNL_LOG_MASTER_AC_Serializer  
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['Ccy_cd', 'fin_cycle', 'Auth_Status', 'Reference_No']
@@ -30578,6 +30578,48 @@ logger = logging.getLogger(__name__)
 
 
 
+# class JournalARDViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet ສຳລັບດຶງຂໍ້ຮຽກຮ້ອງຈາກ DETB_JRNL_LOG_HIST ຕາມຄວາມຕ້ອງການສະເພາະ
+#     """
+#     parser_classes = [JSONParser]
+#     queryset = DETB_JRNL_LOG_HIST.objects.select_related(
+#         'Ccy_cd', 'Account', 'Account__gl_code', 'Txn_code',
+#         'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id', 'module_id'
+#     ).all().order_by('-Maker_DT_Stamp')
+#     serializer_class = JRNLLogHistSerializer
+#     permission_classes = [IsAuthenticated]
+#     filterset_fields = ['Reference_No', 'Ccy_cd', 'Dr_cr', 'Auth_Status', 'Txn_code']
+#     search_fields = ['Reference_No', 'Addl_text', 'Account__glsub_code', 'Account__glsub_Desc_la', 'Ac_relatives']
+#     ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No']
+
+#     def get_queryset(self):
+#         """
+#         ປັບແຕ່ງ queryset ສຳລັບດຶງຂໍ້ຮຽກຮ້ອງຕາມຄວາມຕ້ອງການສະເພາະ
+#         """
+#         queryset = super().get_queryset()
+#         start_date = self.request.query_params.get('start_date')
+#         end_date = self.request.query_params.get('end_date')
+#         if start_date:
+#             queryset = queryset.filter(Value_date__gte=start_date)
+#         if end_date:
+#             queryset = queryset.filter(Value_date__lte=end_date)
+#         account_id = self.request.query_params.get('account_id')
+#         if account_id:
+#             queryset = queryset.filter(Account_id=account_id)
+#         ccy_cd = self.request.query_params.get('Ccy_cd')
+#         if ccy_cd:
+#             queryset = queryset.filter(Ccy_cd_id=ccy_cd)
+#         Auth_Status = self.request.query_params.get('Auth_Status')
+#         if Auth_Status:
+#             queryset = queryset.filter(Auth_Status=Auth_Status)
+#         Reference_No = self.request.query_params.get('Reference_No')
+#         if Reference_No:
+#             queryset = queryset.filter(Reference_No=Reference_No)
+#             logger.info(f"Fetching JRNL_LOG_HIST with Reference_No: {Reference_No}")
+#         return queryset
+#         return queryset
+
 class JournalARDViewSet(viewsets.ModelViewSet):
     """
     ViewSet ສຳລັບດຶງຂໍ້ຮຽກຮ້ອງຈາກ DETB_JRNL_LOG_HIST ຕາມຄວາມຕ້ອງການສະເພາະ
@@ -30586,7 +30628,7 @@ class JournalARDViewSet(viewsets.ModelViewSet):
     queryset = DETB_JRNL_LOG_HIST.objects.select_related(
         'Ccy_cd', 'Account', 'Account__gl_code', 'Txn_code',
         'fin_cycle', 'Period_code', 'Maker_Id', 'Checker_Id', 'module_id'
-    ).all().order_by('-Maker_DT_Stamp')
+    ).all().order_by('JRNLLog_id_his')
     serializer_class = JRNLLogHistSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['Reference_No', 'Ccy_cd', 'Dr_cr', 'Auth_Status', 'Txn_code']
@@ -30618,9 +30660,6 @@ class JournalARDViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Reference_No=Reference_No)
             logger.info(f"Fetching JRNL_LOG_HIST with Reference_No: {Reference_No}")
         return queryset
-        return queryset
-
-
 
 
 from rest_framework.decorators import api_view, permission_classes
