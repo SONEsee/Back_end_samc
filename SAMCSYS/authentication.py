@@ -1,17 +1,14 @@
-
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
 from rest_framework_simplejwt.settings import api_settings
-from rest_framework_simplejwt.tokens import AccessToken
-from .models import MTTB_Users, MTTB_REVOKED_SESSIONS
+from .models import MTTB_Users, MTTB_REVOKED_SESSIONS, MTTB_USER_ACCESS_LOG
 import logging
 
 logger = logging.getLogger(__name__)
 
 class MTTBJWTAuthentication(JWTAuthentication):
     """
-    Custom JWT authentication that checks for revoked tokens.
-    This replaces the default JWT blacklist functionality.
+    Custom JWT authentication that checks for revoked tokens and active sessions.
     """
     
     def get_validated_token(self, raw_token):
@@ -22,13 +19,28 @@ class MTTBJWTAuthentication(JWTAuthentication):
 
         try:
             jti = validated_token[api_settings.JTI_CLAIM]
-            logger.info(f"[AUTH] Token JTI: {jti}")
+            user_id = validated_token.get('user_id')
+            logger.info(f"[AUTH] Token JTI: {jti}, User: {user_id}")
         except KeyError:
             raise AuthenticationFailed('Token has no JTI claim')
 
+        # Check 1: Is this specific token revoked?
         if MTTB_REVOKED_SESSIONS.objects.filter(jti=jti).exists():
             logger.warning(f"[AUTH] Token revoked: {jti}")
             raise AuthenticationFailed('Your session has been terminated. Please login again.')
+
+        # Check 2: Does the user have ANY active sessions?
+        # This catches access tokens when refresh token was revoked
+        if user_id:
+            has_active_session = MTTB_USER_ACCESS_LOG.objects.filter(
+                user_id__user_id=user_id,
+                logout_datetime__isnull=True,
+                login_status='S'
+            ).exists()
+            
+            if not has_active_session:
+                logger.warning(f"[AUTH] User {user_id} has no active sessions - force logged out")
+                raise AuthenticationFailed('Your session has been terminated by an administrator. Please login again.')
 
         return validated_token
     
@@ -46,7 +58,7 @@ class MTTBJWTAuthentication(JWTAuthentication):
         try:
             user = MTTB_Users.objects.get(pk=user_id)
             
-            # Additional check: ensure user is still active
+            # Check if user account is active
             if hasattr(user, 'User_Status') and user.User_Status != 'E':
                 raise AuthenticationFailed('User account is disabled')
             
