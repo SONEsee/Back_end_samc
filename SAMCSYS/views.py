@@ -24946,7 +24946,7 @@ def execute_eod_function(eod_function, user, processing_date=None, is_back_date=
         function_mapping = {
             'FN006': execute_bulk_journal,        # Bulk Journal Processing
             'FN004': lambda eod_func, usr: execute_dairy_somtop_trailbalance(eod_func, usr, processing_date),  # Dairy Reports
-            'FN009': lambda eod_func, usr: execute_somtop_trial_balancesheet(eod_func, usr, processing_date),  # Somtop Trial Balancesheet
+            'FN0009': lambda eod_func, usr: execute_somtop_trial_balancesheet(eod_func, usr, processing_date),  # Somtop Trial Balancesheet
             'EOD_INTEREST': execute_interest_calculation,
             'EOD_INTEREST': execute_interest_calculation,
             'EOD_REPORT': execute_report_generation,             
