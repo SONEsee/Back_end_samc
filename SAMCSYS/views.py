@@ -18768,38 +18768,239 @@ def debug_bulk_confirm_all(status, reason=None, user_id=None, filter_status=['U'
 #             'success': False,
 #             'error': f"Get depreciation due error: {str(e)}"
 #         }
-
+# def get_depreciation_due_this_month(target_month=None, target_year=None):
+#     """
+#     ຫາລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນທີ່ກຳນົດ
+    
+#     Args:
+#         target_month: ເດືອນທີ່ຕ້ອງການກວດສອບ (1-12) - ຖ້າບໍ່ໃສ່ຈະໃຊ້ຈາກ STTB_Dates
+#         target_year: ປີທີ່ຕ້ອງການກວດສອບ - ຖ້າບໍ່ໃສ່ຈະໃຊ້ຈາກ STTB_Dates
+#     """
+#     try:
+#         # ດຶງວັນທີ່ປັດຈຸບັນຈາກ STTB_Dates
+#         try:
+#             latest_sttb = STTB_Dates.objects.filter(
+#                 eod_time='N'
+#             ).order_by('-date_id').first()
+            
+#             if latest_sttb and latest_sttb.Start_Date:
+#                 current_date = latest_sttb.Start_Date.date()
+#             else:
+#                 # Fallback ຫາກບໍ່ມີຂໍ້ມູນໃນ STTB_Dates
+#                 current_date = datetime.now().date()
+#         except Exception as e:
+#             print(f"Warning: Cannot get STTB_Dates, using system date: {str(e)}")
+#             current_date = datetime.now().date()
+        
+#         # ກຳນົດເດືອນແລະປີທີ່ຕ້ອງການກວດສອບ
+#         if not target_month:
+#             target_month = current_date.month
+#         if not target_year:
+#             target_year = current_date.year
+            
+#         # ກຳນົດຊ່ວງວັນທີ່ຂອງເດືອນ
+#         month_start = datetime(target_year, target_month, 1).date()
+#         month_end = datetime(target_year, target_month, 
+#                            get_last_day_of_month(target_year, target_month)).date()
+        
+#         # ດຶງຂໍ້ມູນ accounting methods
+#         accounting_methods = FA_Accounting_Method.objects.all()
+#         due_items = []
+#         overdue_items = []
+#         up_to_date_items = []
+        
+#         # ເດືອນ/ປີ ສູງສຸດທີ່ອະນຸຍາດໃຫ້ສະແດງ (ຈາກ STTB_Dates)
+#         max_allowed_year = current_date.year
+#         max_allowed_month = current_date.month
+        
+#         for method in accounting_methods:
+#             try:
+#                 # ຫາ Asset
+#                 if method.asset_list_id:
+#                     asset = method.asset_list_id
+#                 elif method.ref_id:
+#                     asset = FA_Asset_Lists.objects.get(asset_list_id=method.ref_id)
+#                 else:
+#                     continue
+                
+#                 # ກວດສອບຂໍ້ມູນຈຳເປັນ
+#                 if not (asset.asset_value and asset.asset_useful_life):
+#                     continue
+                
+#                 current_count = int(asset.C_dpac or 0)
+#                 useful_life = int(asset.asset_useful_life)
+#                 total_months = useful_life * 12
+#                 start_date = asset.dpca_start_date
+                
+#                 # ຫາກຫັກຄ່າເສື່ອມຄົບແລ້ວ ຂ້າມໄປ
+#                 if current_count >= total_months:
+#                     continue
+                
+#                 # ຫາເດືອນຖັດໄປທີ່ຕ້ອງຫັກ
+#                 next_month_number = current_count + 1
+                
+#                 # ຄຳນວນ expected_depreciation ຕາມເງື່ອນໄຂ
+#                 if current_count == 0:
+#                     # ເດືອນທຳອິດ: ໃຊ້ asset_value_remainBegin
+#                     expected_depreciation = float(asset.asset_value_remainBegin or 0)
+#                 elif current_count == (total_months - 1):
+#                     # ເດືອນສຸດທ້າຍ: asset_value_remainLast + asset_value_remainMonth
+#                     remain_last = float(asset.asset_value_remainLast or 0)
+#                     remain_month = float(asset.asset_value_remainMonth or 0)
+#                     expected_depreciation = remain_last + remain_month
+#                 else:
+#                     # ເດືອນປົກກະຕິ: ໃຊ້ asset_value_remainMonth
+#                     expected_depreciation = float(asset.asset_value_remainMonth or 0)
+                
+#                 # ຄຳນວນວັນທີ່ຄົບກຳນົດ
+#                 if next_month_number == 1:
+#                     # ເດືອນທຳອິດ: ໃຊ້ວັນທີ່ເລີ່ມຕົ້ນ
+#                     due_date = start_date
+#                 else:
+#                     # ເດືອນຖັດໄປ: ວັນທີ່ 1 ຂອງເດືອນທີ່ຄິດໄລ່
+#                     due_date = (start_date + relativedelta(months=current_count)).replace(day=1)
+                
+#                 # ກວດສອບວ່າເດືອນ/ປີ ຂອງ due_date ≤ ເດືອນ/ປີ ຂອງ STTB_Dates ຫຼືບໍ່
+#                 due_year_month = (due_date.year, due_date.month)
+#                 max_year_month = (max_allowed_year, max_allowed_month)
+                
+#                 # ສະແດງສະເພາະຊັບສິນທີ່ມີກຳນົດຫັກ ≤ ເດືອນ/ປີ ຂອງ STTB_Dates
+#                 if due_year_month > max_year_month:
+#                     continue
+                
+#                 # ຄຳນວນວັນທີ່ສິ້ນສຸດຂອງເດືອນທີ່ຕ້ອງຫັກ
+#                 if next_month_number == 1:
+#                     due_end_date = datetime(start_date.year, start_date.month,
+#                                           get_last_day_of_month(start_date.year, start_date.month)).date()
+#                     days_count = (due_end_date - due_date + timedelta(days=1)).days
+#                 else:
+#                     month_calc = start_date + relativedelta(months=current_count)
+#                     due_end_date = datetime(month_calc.year, month_calc.month,
+#                                           get_last_day_of_month(month_calc.year, month_calc.month)).date()
+#                     days_count = get_last_day_of_month(due_end_date.year, due_end_date.month)
+                
+#                 # ສ້າງຂໍ້ມູນ item
+#                 item_data = {
+#                     'mapping_id': method.mapping_id,
+#                     'asset_id': asset.asset_list_id,
+#                     'asset_name': asset.asset_spec or 'N/A',
+#                     'asset_value': float(asset.asset_value),
+#                     'current_month': next_month_number,
+#                     'total_months': total_months,
+#                     'due_date': due_date.strftime('%d/%m/%Y'),
+#                     'due_end_date': due_end_date.strftime('%d/%m/%Y'),
+#                     'days_count': days_count,
+#                     'expected_depreciation': round(expected_depreciation, 2),
+#                     'last_depreciation_date': asset.asset_latest_date_dpca.strftime('%d/%m/%Y') if asset.asset_latest_date_dpca else 'ຍັງບໍ່ໄດ້ຫັກ',
+#                     'status_category': '',
+#                     'due_month_year': f"{get_month_name_la(due_date.month)} {due_date.year}",
+#                     'completion_percentage': round((current_count / total_months) * 100, 2)
+#                 }
+                
+#                 # ກຳນົດສະຖານະ (ສະແດງທຸກລາຍການທີ່ ≤ STTB_Dates)
+#                 # ທຽບເດືອນ/ປີ ເພື່ອກຳນົດວ່າຄ້າງຫັກຫຼືບໍ່
+#                 due_end_year_month = (due_end_date.year, due_end_date.month)
+#                 current_year_month = (current_date.year, current_date.month)
+#                 target_year_month = (target_year, target_month)
+                
+#                 if due_end_year_month < current_year_month:
+#                     # ຄ້າງຫັກ - ຄວນຫັກແລ້ວກ່ອນເດືອນປັດຈຸບັນ
+#                     item_data['status_category'] = 'overdue'
+#                     item_data['status_message'] = f"⚠️ ຄ້າງຫັກ! ຄວນຫັກແລ້ວໃນ {item_data['due_month_year']}"
+#                     overdue_items.append(item_data)
+#                 elif due_end_year_month == current_year_month:
+#                     # ຄົບກຳນົດໃນເດືອນປັດຈຸບັນ
+#                     item_data['status_category'] = 'due'
+#                     item_data['status_message'] = f"📅 ຕ້ອງຫັກໃນ {item_data['due_month_year']}"
+#                     due_items.append(item_data)
+#                 else:
+#                     # ຈະຄົບກຳນົດໃນອະນາຄົດ (ແຕ່ຍັງ ≤ STTB_Dates)
+#                     item_data['status_category'] = 'future'
+#                     item_data['status_message'] = f"⏭️ ຈະຫັກໃນ {item_data['due_month_year']}"
+#                     due_items.append(item_data)  # ເອົາໃສ່ due_items ເພື່ອໃຫ້ຄົບ
+                    
+#             except Exception as e:
+#                 print(f"Error processing mapping_id {method.mapping_id}: {str(e)}")
+#                 continue
+        
+#         # ຈັດລຽງລາຍການ
+#         overdue_items.sort(key=lambda x: x['due_date'])
+#         due_items.sort(key=lambda x: x['due_date'])
+        
+#         return {
+#             'success': True,
+#             'current_business_date': current_date.strftime('%d/%m/%Y'),
+#             'target_period': {
+#                 'month': target_month,
+#                 'year': target_year,
+#                 'month_name_la': get_month_name_la(target_month),
+#                 'period': f"All items ≤ {current_date.strftime('%m/%Y')}"
+#             },
+#             'summary': {
+#                 'total_due': len(due_items),
+#                 'total_overdue': len(overdue_items), 
+#                 'total_up_to_date': 0,  # ບໍ່ມີ up_to_date ເພາະສະແດງສະເພາະທີ່ຕ້ອງຫັກ
+#                 'total_checked': len(due_items) + len(overdue_items)
+#             },
+#             'overdue_items': overdue_items,  
+#             'due_items': due_items,          
+#             'up_to_date_items': [],  # ເອົາອອກເພາະບໍ່ຈຳເປັນ
+#             'all_items_needing_attention': overdue_items + due_items
+#         }
+        
+#     except Exception as e:
+#         return {
+#             'success': False,
+#             'error': f"Get monthly due error: {str(e)}"
+#         }
 def get_depreciation_due_this_month(target_month=None, target_year=None):
     """
     ຫາລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນທີ່ກຳນົດ
     
     Args:
-        target_month: ເດືອນທີ່ຕ້ອງການກວດສອບ (1-12) - ຖ້າບໍ່ໃສ່ໃຊ້ເດືອນປັດຈຸບັນ
-        target_year: ປີທີ່ຕ້ອງການກວດສອບ - ຖ້າບໍ່ໃສ່ໃຊ້ປີປັດຈຸບັນ
+        target_month: ເດືອນທີ່ຕ້ອງການກວດສອບ (1-12) - ຖ້າບໍ່ໃສ່ຈະໃຊ້ຈາກ STTB_Dates
+        target_year: ປີທີ່ຕ້ອງການກວດສອບ - ຖ້າບໍ່ໃສ່ຈະໃຊ້ຈາກ STTB_Dates
     """
     try:
-        current_date = datetime.now()
+        # ດຶງວັນທີ່ປັດຈຸບັນຈາກ STTB_Dates
+        try:
+            latest_sttb = STTB_Dates.objects.filter(
+                eod_time='N'
+            ).order_by('-date_id').first()
+            
+            if latest_sttb and latest_sttb.Start_Date:
+                current_date = latest_sttb.Start_Date.date()
+            else:
+                # Fallback ຫາກບໍ່ມີຂໍ້ມູນໃນ STTB_Dates
+                current_date = datetime.now().date()
+        except Exception as e:
+            print(f"Warning: Cannot get STTB_Dates, using system date: {str(e)}")
+            current_date = datetime.now().date()
         
-        
+        # ກຳນົດເດືອນແລະປີທີ່ຕ້ອງການກວດສອບ
         if not target_month:
             target_month = current_date.month
         if not target_year:
             target_year = current_date.year
             
-        
+        # ກຳນົດຊ່ວງວັນທີ່ຂອງເດືອນ
         month_start = datetime(target_year, target_month, 1).date()
         month_end = datetime(target_year, target_month, 
                            get_last_day_of_month(target_year, target_month)).date()
         
-        
+        # ດຶງຂໍ້ມູນ accounting methods
         accounting_methods = FA_Accounting_Method.objects.all()
         due_items = []
         overdue_items = []
         up_to_date_items = []
         
+        # ເດືອນ/ປີ ສູງສຸດທີ່ອະນຸຍາດໃຫ້ສະແດງ (ຈາກ STTB_Dates)
+        max_allowed_year = current_date.year
+        max_allowed_month = current_date.month
+        
         for method in accounting_methods:
             try:
-                
+                # ຫາ Asset
                 if method.asset_list_id:
                     asset = method.asset_list_id
                 elif method.ref_id:
@@ -18807,7 +19008,7 @@ def get_depreciation_due_this_month(target_month=None, target_year=None):
                 else:
                     continue
                 
-                
+                # ກວດສອບຂໍ້ມູນຈຳເປັນ
                 if not (asset.asset_value and asset.asset_useful_life):
                     continue
                 
@@ -18816,45 +19017,54 @@ def get_depreciation_due_this_month(target_month=None, target_year=None):
                 total_months = useful_life * 12
                 start_date = asset.dpca_start_date
                 
-               
+                # ຫາກຫັກຄ່າເສື່ອມຄົບແລ້ວ ຂ້າມໄປ
                 if current_count >= total_months:
                     continue
                 
-              
+                # ຫາເດືອນຖັດໄປທີ່ຕ້ອງຫັກ
                 next_month_number = current_count + 1
                 
+                # ຄຳນວນ expected_depreciation ຕາມເງື່ອນໄຂ
+                if current_count == 0:
+                    # ເດືອນທຳອິດ: ໃຊ້ asset_value_remainBegin
+                    expected_depreciation = float(asset.asset_value_remainBegin or 0)
+                elif current_count == (total_months - 1):
+                    # ເດືອນສຸດທ້າຍ: asset_value_remainLast + asset_value_remainMonth
+                    remain_last = float(asset.asset_value_remainLast or 0)
+                    remain_month = float(asset.asset_value_remainMonth or 0)
+                    expected_depreciation = remain_last + remain_month
+                else:
+                    # ເດືອນປົກກະຕິ: ໃຊ້ asset_value_remainMonth
+                    expected_depreciation = float(asset.asset_value_remainMonth or 0)
                 
+                # ຄຳນວນວັນທີ່ຄົບກຳນົດ
                 if next_month_number == 1:
-                    
+                    # ເດືອນທຳອິດ: ໃຊ້ວັນທີ່ເລີ່ມຕົ້ນ
                     due_date = start_date
                 else:
-                   
+                    # ເດືອນຖັດໄປ: ວັນທີ່ 1 ຂອງເດືອນທີ່ຄິດໄລ່
                     due_date = (start_date + relativedelta(months=current_count)).replace(day=1)
                 
+                # ກວດສອບວ່າເດືອນ/ປີ ຂອງ due_date ≤ ເດືອນ/ປີ ຂອງ STTB_Dates ຫຼືບໍ່
+                due_year_month = (due_date.year, due_date.month)
+                max_year_month = (max_allowed_year, max_allowed_month)
                 
+                # ສະແດງສະເພາະຊັບສິນທີ່ມີກຳນົດຫັກ ≤ ເດືອນ/ປີ ຂອງ STTB_Dates
+                if due_year_month > max_year_month:
+                    continue
+                
+                # ຄຳນວນວັນທີ່ສິ້ນສຸດຂອງເດືອນທີ່ຕ້ອງຫັກ
                 if next_month_number == 1:
                     due_end_date = datetime(start_date.year, start_date.month,
                                           get_last_day_of_month(start_date.year, start_date.month)).date()
+                    days_count = (due_end_date - due_date + timedelta(days=1)).days
                 else:
                     month_calc = start_date + relativedelta(months=current_count)
                     due_end_date = datetime(month_calc.year, month_calc.month,
                                           get_last_day_of_month(month_calc.year, month_calc.month)).date()
-                
-                
-                calc_result = calculate_depreciation_schedule(method.mapping_id)
-                if 'error' in calc_result:
-                    continue
-                
-                daily_depreciation = calc_result['calculation_info']['daily_depreciation']
-                
-                if next_month_number == 1:
-                    days_count = (due_end_date - due_date + timedelta(days=1)).days
-                else:
                     days_count = get_last_day_of_month(due_end_date.year, due_end_date.month)
                 
-                expected_depreciation = daily_depreciation * days_count
-                
-               
+                # ສ້າງຂໍ້ມູນ item
                 item_data = {
                     'mapping_id': method.mapping_id,
                     'asset_id': asset.asset_list_id,
@@ -18872,53 +19082,60 @@ def get_depreciation_due_this_month(target_month=None, target_year=None):
                     'completion_percentage': round((current_count / total_months) * 100, 2)
                 }
                 
-               
-                if due_date <= month_end and due_end_date >= month_start:
-                    
-                    if due_end_date < current_date.date():
-                        item_data['status_category'] = 'overdue'
-                        item_data['status_message'] = f"⚠️ ຄ້າງຫັກ! ຄວນຫັກແລ້ວໃນ {item_data['due_month_year']}"
-                        overdue_items.append(item_data)
-                    else:
-                        item_data['status_category'] = 'due'
-                        item_data['status_message'] = f"📅 ຕ້ອງຫັກໃນ {item_data['due_month_year']}"
-                        due_items.append(item_data)
-                elif due_date > month_end:
-                   
+                # ກຳນົດສະຖານະ (ສະແດງທຸກລາຍການທີ່ ≤ STTB_Dates)
+                # ທຽບເດືອນ/ປີ ເພື່ອກຳນົດວ່າຄ້າງຫັກຫຼືບໍ່
+                due_end_year_month = (due_end_date.year, due_end_date.month)
+                current_year_month = (current_date.year, current_date.month)
+                target_year_month = (target_year, target_month)
+                
+                if due_end_year_month < current_year_month:
+                    # ຄ້າງຫັກ - ຄວນຫັກແລ້ວກ່ອນເດືອນປັດຈຸບັນ
+                    item_data['status_category'] = 'overdue'
+                    item_data['status_message'] = f"⚠️ ຄ້າງຫັກ! ຄວນຫັກແລ້ວໃນ {item_data['due_month_year']}"
+                    overdue_items.append(item_data)
+                elif due_end_year_month == current_year_month:
+                    # ຄົບກຳນົດໃນເດືອນປັດຈຸບັນ
+                    item_data['status_category'] = 'due'
+                    item_data['status_message'] = f"📅 ຕ້ອງຫັກໃນ {item_data['due_month_year']}"
+                    due_items.append(item_data)
+                else:
+                    # ຈະຄົບກຳນົດໃນອະນາຄົດ (ແຕ່ຍັງ ≤ STTB_Dates)
                     item_data['status_category'] = 'future'
                     item_data['status_message'] = f"⏭️ ຈະຫັກໃນ {item_data['due_month_year']}"
-                    
-                else:
-                    
-                    item_data['status_category'] = 'up_to_date'
-                    item_data['status_message'] = f"✅ ອັບເດດແລ້ວ"
-                    up_to_date_items.append(item_data)
+                    due_items.append(item_data)  # ເອົາໃສ່ due_items ເພື່ອໃຫ້ຄົບ
                     
             except Exception as e:
                 print(f"Error processing mapping_id {method.mapping_id}: {str(e)}")
                 continue
         
-       
+        # ຈັດລຽງລາຍການ
         overdue_items.sort(key=lambda x: x['due_date'])
         due_items.sort(key=lambda x: x['due_date'])
         
+        # ຄຳນວນມູນຄ່າລວມ
+        total_depreciation_amount = sum(item['expected_depreciation'] for item in overdue_items + due_items)
+        total_items_count = len(overdue_items) + len(due_items)
+        
         return {
             'success': True,
+            'current_business_date': current_date.strftime('%d/%m/%Y'),
             'target_period': {
                 'month': target_month,
                 'year': target_year,
                 'month_name_la': get_month_name_la(target_month),
-                'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}"
+                'period': f"All items ≤ {current_date.strftime('%m/%Y')}"
             },
             'summary': {
                 'total_due': len(due_items),
-                'total_overdue': len(overdue_items),
-                'total_up_to_date': len(up_to_date_items),
-                'total_checked': len(due_items) + len(overdue_items) + len(up_to_date_items)
+                'total_overdue': len(overdue_items), 
+                'total_up_to_date': 0,  # ບໍ່ມີ up_to_date ເພາະສະແດງສະເພາະທີ່ຕ້ອງຫັກ
+                'total_checked': len(due_items) + len(overdue_items),
+                'total_items_need_depreciation': total_items_count,  # ຈຳນວນລາຍການທັງໝົດທີ່ຕ້ອງຫັກ
+                'total_depreciation_amount': round(total_depreciation_amount, 2)  # ມູນຄ່າລວມທັງໝົດ
             },
             'overdue_items': overdue_items,  
             'due_items': due_items,          
-            'up_to_date_items': up_to_date_items[:5],  
+            'up_to_date_items': [],  # ເອົາອອກເພາະບໍ່ຈຳເປັນ
             'all_items_needing_attention': overdue_items + due_items
         }
         
@@ -18927,6 +19144,240 @@ def get_depreciation_due_this_month(target_month=None, target_year=None):
             'success': False,
             'error': f"Get monthly due error: {str(e)}"
         }
+    
+# Django View - Fix for JsonResponse
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+
+@require_GET
+def depreciation_with_get_view(request):
+    """
+    Django View ສຳລັບ GET ລາຍການຊັບສິນທີ່ຕ້ອງຫັກຄ່າເສື່ອມ
+    """
+    try:
+        # GET parameters
+        target_month = request.GET.get('month')
+        target_year = request.GET.get('year')
+        
+        if target_month:
+            target_month = int(target_month)
+        if target_year:
+            target_year = int(target_year)
+        
+        # Call the function
+        result = get_depreciation_due_this_month(target_month, target_year)
+        
+        # Return JsonResponse ແທນ dict
+        return JsonResponse({
+            'success': True,
+            'action': 'get_monthly_due',
+            'data': result,
+            'journal_enabled': False,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }, status=500)
+
+# ຫຼື ຖ້າໃຊ້ Django REST Framework
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+@api_view(['GET'])
+def depreciation_with_get_api(request):
+    """
+    DRF API View ສຳລັບ GET ລາຍການຊັບສິນທີ່ຕ້ອງຫັກຄ່າເສື່ອມ
+    """
+    try:
+        # GET parameters
+        target_month = request.query_params.get('month')
+        target_year = request.query_params.get('year')
+        
+        if target_month:
+            target_month = int(target_month)
+        if target_year:
+            target_year = int(target_year)
+        
+        # Call the function
+        result = get_depreciation_due_this_month(target_month, target_year)
+        
+        # Return DRF Response
+        return Response({
+            'success': True,
+            'action': 'get_monthly_due', 
+            'data': result,
+            'journal_enabled': False,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }, status=500)
+# def get_depreciation_due_this_month(target_month=None, target_year=None):
+#     """
+#     ຫາລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນທີ່ກຳນົດ
+    
+#     Args:
+#         target_month: ເດືອນທີ່ຕ້ອງການກວດສອບ (1-12) - ຖ້າບໍ່ໃສ່ໃຊ້ເດືອນປັດຈຸບັນ
+#         target_year: ປີທີ່ຕ້ອງການກວດສອບ - ຖ້າບໍ່ໃສ່ໃຊ້ປີປັດຈຸບັນ
+#     """
+#     try:
+#         current_date = datetime.now()
+        
+        
+#         if not target_month:
+#             target_month = current_date.month
+#         if not target_year:
+#             target_year = current_date.year
+            
+        
+#         month_start = datetime(target_year, target_month, 1).date()
+#         month_end = datetime(target_year, target_month, 
+#                            get_last_day_of_month(target_year, target_month)).date()
+        
+        
+#         accounting_methods = FA_Accounting_Method.objects.all()
+#         due_items = []
+#         overdue_items = []
+#         up_to_date_items = []
+        
+#         for method in accounting_methods:
+#             try:
+                
+#                 if method.asset_list_id:
+#                     asset = method.asset_list_id
+#                 elif method.ref_id:
+#                     asset = FA_Asset_Lists.objects.get(asset_list_id=method.ref_id)
+#                 else:
+#                     continue
+                
+                
+#                 if not (asset.asset_value and asset.asset_useful_life):
+#                     continue
+                
+#                 current_count = int(asset.C_dpac or 0)
+#                 useful_life = int(asset.asset_useful_life)
+#                 total_months = useful_life * 12
+#                 start_date = asset.dpca_start_date
+                
+               
+#                 if current_count >= total_months:
+#                     continue
+                
+              
+#                 next_month_number = current_count + 1
+                
+                
+#                 if next_month_number == 1:
+                    
+#                     due_date = start_date
+#                 else:
+                   
+#                     due_date = (start_date + relativedelta(months=current_count)).replace(day=1)
+                
+                
+#                 if next_month_number == 1:
+#                     due_end_date = datetime(start_date.year, start_date.month,
+#                                           get_last_day_of_month(start_date.year, start_date.month)).date()
+#                 else:
+#                     month_calc = start_date + relativedelta(months=current_count)
+#                     due_end_date = datetime(month_calc.year, month_calc.month,
+#                                           get_last_day_of_month(month_calc.year, month_calc.month)).date()
+                
+                
+#                 calc_result = calculate_depreciation_schedule(method.mapping_id)
+#                 if 'error' in calc_result:
+#                     continue
+                
+#                 daily_depreciation = calc_result['calculation_info']['daily_depreciation']
+                
+#                 if next_month_number == 1:
+#                     days_count = (due_end_date - due_date + timedelta(days=1)).days
+#                 else:
+#                     days_count = get_last_day_of_month(due_end_date.year, due_end_date.month)
+                
+#                 expected_depreciation = daily_depreciation * days_count
+                
+               
+#                 item_data = {
+#                     'mapping_id': method.mapping_id,
+#                     'asset_id': asset.asset_list_id,
+#                     'asset_name': asset.asset_spec or 'N/A',
+#                     'asset_value': float(asset.asset_value),
+#                     'current_month': next_month_number,
+#                     'total_months': total_months,
+#                     'due_date': due_date.strftime('%d/%m/%Y'),
+#                     'due_end_date': due_end_date.strftime('%d/%m/%Y'),
+#                     'days_count': days_count,
+#                     'expected_depreciation': round(expected_depreciation, 2),
+#                     'last_depreciation_date': asset.asset_latest_date_dpca.strftime('%d/%m/%Y') if asset.asset_latest_date_dpca else 'ຍັງບໍ່ໄດ້ຫັກ',
+#                     'status_category': '',
+#                     'due_month_year': f"{get_month_name_la(due_date.month)} {due_date.year}",
+#                     'completion_percentage': round((current_count / total_months) * 100, 2)
+#                 }
+                
+               
+#                 if due_date <= month_end and due_end_date >= month_start:
+                    
+#                     if due_end_date < current_date.date():
+#                         item_data['status_category'] = 'overdue'
+#                         item_data['status_message'] = f"⚠️ ຄ້າງຫັກ! ຄວນຫັກແລ້ວໃນ {item_data['due_month_year']}"
+#                         overdue_items.append(item_data)
+#                     else:
+#                         item_data['status_category'] = 'due'
+#                         item_data['status_message'] = f"📅 ຕ້ອງຫັກໃນ {item_data['due_month_year']}"
+#                         due_items.append(item_data)
+#                 elif due_date > month_end:
+                   
+#                     item_data['status_category'] = 'future'
+#                     item_data['status_message'] = f"⏭️ ຈະຫັກໃນ {item_data['due_month_year']}"
+                    
+#                 else:
+                    
+#                     item_data['status_category'] = 'up_to_date'
+#                     item_data['status_message'] = f"✅ ອັບເດດແລ້ວ"
+#                     up_to_date_items.append(item_data)
+                    
+#             except Exception as e:
+#                 print(f"Error processing mapping_id {method.mapping_id}: {str(e)}")
+#                 continue
+        
+       
+#         overdue_items.sort(key=lambda x: x['due_date'])
+#         due_items.sort(key=lambda x: x['due_date'])
+        
+#         return {
+#             'success': True,
+#             'target_period': {
+#                 'month': target_month,
+#                 'year': target_year,
+#                 'month_name_la': get_month_name_la(target_month),
+#                 'period': f"{month_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}"
+#             },
+#             'summary': {
+#                 'total_due': len(due_items),
+#                 'total_overdue': len(overdue_items),
+#                 'total_up_to_date': len(up_to_date_items),
+#                 'total_checked': len(due_items) + len(overdue_items) + len(up_to_date_items)
+#             },
+#             'overdue_items': overdue_items,  
+#             'due_items': due_items,          
+#             'up_to_date_items': up_to_date_items[:5],  
+#             'all_items_needing_attention': overdue_items + due_items
+#         }
+        
+#     except Exception as e:
+#         return {
+#             'success': False,
+#             'error': f"Get monthly due error: {str(e)}"
+#         }
 
 def get_next_few_months_due(months_ahead=3):
 
