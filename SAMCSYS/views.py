@@ -6328,8 +6328,8 @@ class DETB_JRNL_LOG_MASTER_ViewSet(viewsets.ModelViewSet):
                 Value_date=target_date,
                 Auth_Status='U'
             ).exclude(
-                # Q(delete_stat='D') | Q(Auth_Status='D')
-                 Q(delete_stat__isnull=True) | ~Q(delete_stat='D') | Q(Txn_code='ARD')
+                Q(delete_stat='D') | Q(Auth_Status='D')
+                #  Q(delete_stat__isnull=True) | ~Q(delete_stat='D') | Q(Txn_code='ARD')
             ).order_by('-Maker_DT_Stamp')
 
             # Apply additional filters if provided
@@ -24933,7 +24933,7 @@ def execute_eod_function(eod_function, user, processing_date=None, is_back_date=
             'FN009': lambda eod_func, usr: execute_somtop_trial_balancesheet(eod_func, usr, processing_date),  # Somtop Trial Balancesheet
             'EOD_INTEREST': execute_interest_calculation,
             'EOD_INTEREST': execute_interest_calculation,
-            'EOD_REPORT': execute_report_generation,
+            'EOD_REPORT': execute_report_generation,             
             'EOD_BACKUP': execute_backup_process,
         }
 
