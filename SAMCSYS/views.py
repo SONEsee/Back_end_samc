@@ -18639,135 +18639,135 @@ def debug_bulk_confirm_all(status, reason=None, user_id=None, filter_status=['U'
 
 
           
-def get_depreciation_due_this_month(target_month=None, target_year=None):
-    """
-    ✅ UNCHANGED: ຫາລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນທີ່ກຳນົດ
-    """
-    try:
-        current_date = datetime.now()
+# def get_depreciation_due_this_month(target_month=None, target_year=None):
+#     """
+#     ✅ UNCHANGED: ຫາລາຍການຊັບສິນທີ່ຕ້ອງຫັກໃນເດືອນທີ່ກຳນົດ
+#     """
+#     try:
+#         current_date = datetime.now()
         
-        if not target_month:
-            target_month = current_date.month
-        if not target_year:
-            target_year = current_date.year
+#         if not target_month:
+#             target_month = current_date.month
+#         if not target_year:
+#             target_year = current_date.year
             
-        month_start = datetime(target_year, target_month, 1).date()
-        month_end = datetime(target_year, target_month, 
-                           get_last_day_of_month(target_year, target_month)).date()
+#         month_start = datetime(target_year, target_month, 1).date()
+#         month_end = datetime(target_year, target_month, 
+#                            get_last_day_of_month(target_year, target_month)).date()
         
-        accounting_methods = FA_Accounting_Method.objects.all()
-        due_items = []
-        overdue_items = []
-        up_to_date_items = []
+#         accounting_methods = FA_Accounting_Method.objects.all()
+#         due_items = []
+#         overdue_items = []
+#         up_to_date_items = []
         
-        for method in accounting_methods:
-            try:
-                if method.asset_list_id:
-                    asset = method.asset_list_id
-                elif method.ref_id:
-                    asset = FA_Asset_Lists.objects.get(asset_list_id=method.ref_id)
-                else:
-                    continue
+#         for method in accounting_methods:
+#             try:
+#                 if method.asset_list_id:
+#                     asset = method.asset_list_id
+#                 elif method.ref_id:
+#                     asset = FA_Asset_Lists.objects.get(asset_list_id=method.ref_id)
+#                 else:
+#                     continue
                 
-                if not (asset.asset_value and asset.asset_useful_life):
-                    continue
+#                 if not (asset.asset_value and asset.asset_useful_life):
+#                     continue
                 
-                current_count = int(asset.C_dpac or 0)
-                useful_life = int(asset.asset_useful_life)
-                total_months = useful_life * 12
-                start_date = asset.dpca_start_date
+#                 current_count = int(asset.C_dpac or 0)
+#                 useful_life = int(asset.asset_useful_life)
+#                 total_months = useful_life * 12
+#                 start_date = asset.dpca_start_date
                 
-                if current_count >= total_months:
-                    continue
+#                 if current_count >= total_months:
+#                     continue
                 
-                next_month_number = current_count + 1
+#                 next_month_number = current_count + 1
                 
-                if next_month_number == 1:
-                    due_date = start_date
-                else:
-                    due_date = (start_date + relativedelta(months=current_count)).replace(day=1)
+#                 if next_month_number == 1:
+#                     due_date = start_date
+#                 else:
+#                     due_date = (start_date + relativedelta(months=current_count)).replace(day=1)
                 
-                if next_month_number == 1:
-                    due_end_date = datetime(start_date.year, start_date.month,
-                                          get_last_day_of_month(start_date.year, start_date.month)).date()
-                else:
-                    month_calc = start_date + relativedelta(months=current_count)
-                    due_end_date = datetime(month_calc.year, month_calc.month,
-                                          get_last_day_of_month(month_calc.year, month_calc.month)).date()
+#                 if next_month_number == 1:
+#                     due_end_date = datetime(start_date.year, start_date.month,
+#                                           get_last_day_of_month(start_date.year, start_date.month)).date()
+#                 else:
+#                     month_calc = start_date + relativedelta(months=current_count)
+#                     due_end_date = datetime(month_calc.year, month_calc.month,
+#                                           get_last_day_of_month(month_calc.year, month_calc.month)).date()
                 
-                calc_result = calculate_depreciation_schedule(method.mapping_id)
-                if 'error' in calc_result:
-                    continue
+#                 calc_result = calculate_depreciation_schedule(method.mapping_id)
+#                 if 'error' in calc_result:
+#                     continue
                 
-                daily_depreciation = calc_result['calculation_info']['daily_depreciation']
+#                 daily_depreciation = calc_result['calculation_info']['daily_depreciation']
                 
-                if next_month_number == 1:
-                    days_count = (due_end_date - due_date + timedelta(days=1)).days
-                else:
-                    days_count = get_last_day_of_month(due_end_date.year, due_end_date.month)
+#                 if next_month_number == 1:
+#                     days_count = (due_end_date - due_date + timedelta(days=1)).days
+#                 else:
+#                     days_count = get_last_day_of_month(due_end_date.year, due_end_date.month)
                 
-                expected_depreciation = daily_depreciation * days_count
+#                 expected_depreciation = daily_depreciation * days_count
                 
-                item_data = {
-                    'mapping_id': method.mapping_id,
-                    'asset_id': asset.asset_list_id,
-                    'asset_name': asset.asset_spec or 'N/A',
-                    'asset_value': float(asset.asset_value),
-                    'current_month': next_month_number,
-                    'total_months': total_months,
-                    'due_date': due_date.strftime('%d/%m/%Y'),
-                    'due_end_date': due_end_date.strftime('%d/%m/%Y'),
-                    'days_count': days_count,
-                    'expected_depreciation': round(expected_depreciation, 2),
-                    'last_depreciation_date': asset.asset_latest_date_dpca.strftime('%d/%m/%Y') if asset.asset_latest_date_dpca else 'ຍັງບໍ່ໄດ້ຫັກ',
-                    'status_category': '',
-                    'due_month_year': f"{get_month_name_la(due_date.month)} {due_date.year}",
-                    'completion_percentage': round((current_count / total_months) * 100, 2)
-                }
+#                 item_data = {
+#                     'mapping_id': method.mapping_id,
+#                     'asset_id': asset.asset_list_id,
+#                     'asset_name': asset.asset_spec or 'N/A',
+#                     'asset_value': float(asset.asset_value),
+#                     'current_month': next_month_number,
+#                     'total_months': total_months,
+#                     'due_date': due_date.strftime('%d/%m/%Y'),
+#                     'due_end_date': due_end_date.strftime('%d/%m/%Y'),
+#                     'days_count': days_count,
+#                     'expected_depreciation': round(expected_depreciation, 2),
+#                     'last_depreciation_date': asset.asset_latest_date_dpca.strftime('%d/%m/%Y') if asset.asset_latest_date_dpca else 'ຍັງບໍ່ໄດ້ຫັກ',
+#                     'status_category': '',
+#                     'due_month_year': f"{get_month_name_la(due_date.month)} {due_date.year}",
+#                     'completion_percentage': round((current_count / total_months) * 100, 2)
+#                 }
                 
-                if due_date <= month_end and due_end_date >= month_start:
-                    if due_end_date < current_date.date():
-                        item_data['status_category'] = 'overdue'
-                        item_data['status_message'] = f"⚠️ ຄ້າງຫັກ! ຄວນຫັກແລ້ວໃນ {item_data['due_month_year']}"
-                        overdue_items.append(item_data)
-                    else:
-                        item_data['status_category'] = 'due'
-                        item_data['status_message'] = f"📅 ຕ້ອງຫັກໃນ {item_data['due_month_year']}"
-                        due_items.append(item_data)
-                elif due_date > month_end:
-                    item_data['status_category'] = 'future'
-                    item_data['status_message'] = f"⏭️ ຈະຫັກໃນ {item_data['due_month_year']}"
-                else:
-                    item_data['status_category'] = 'up_to_date'
-                    item_data['status_message'] = f"✅ ອັບເດດແລ້ວ"
-                    up_to_date_items.append(item_data)
+#                 if due_date <= month_end and due_end_date >= month_start:
+#                     if due_end_date < current_date.date():
+#                         item_data['status_category'] = 'overdue'
+#                         item_data['status_message'] = f"⚠️ ຄ້າງຫັກ! ຄວນຫັກແລ້ວໃນ {item_data['due_month_year']}"
+#                         overdue_items.append(item_data)
+#                     else:
+#                         item_data['status_category'] = 'due'
+#                         item_data['status_message'] = f"📅 ຕ້ອງຫັກໃນ {item_data['due_month_year']}"
+#                         due_items.append(item_data)
+#                 elif due_date > month_end:
+#                     item_data['status_category'] = 'future'
+#                     item_data['status_message'] = f"⏭️ ຈະຫັກໃນ {item_data['due_month_year']}"
+#                 else:
+#                     item_data['status_category'] = 'up_to_date'
+#                     item_data['status_message'] = f"✅ ອັບເດດແລ້ວ"
+#                     up_to_date_items.append(item_data)
                     
-            except Exception as e:
-                print(f"Error processing mapping_id {method.mapping_id}: {str(e)}")
-                continue
+#             except Exception as e:
+#                 print(f"Error processing mapping_id {method.mapping_id}: {str(e)}")
+#                 continue
         
-        overdue_items.sort(key=lambda x: x['due_date'])
-        due_items.sort(key=lambda x: x['due_date'])
+#         overdue_items.sort(key=lambda x: x['due_date'])
+#         due_items.sort(key=lambda x: x['due_date'])
         
-        return {
-            'success': True,
-            'month': f"{get_month_name_la(target_month)} {target_year}",
-            'total_items': len(due_items) + len(overdue_items) + len(up_to_date_items),
-            'due_items': due_items,
-            'overdue_items': overdue_items,
-            'up_to_date_items': up_to_date_items,
-            'summary': {
-                'due_count': len(due_items),
-                'overdue_count': len(overdue_items),
-                'up_to_date_count': len(up_to_date_items)
-            }
-        }
+#         return {
+#             'success': True,
+#             'month': f"{get_month_name_la(target_month)} {target_year}",
+#             'total_items': len(due_items) + len(overdue_items) + len(up_to_date_items),
+#             'due_items': due_items,
+#             'overdue_items': overdue_items,
+#             'up_to_date_items': up_to_date_items,
+#             'summary': {
+#                 'due_count': len(due_items),
+#                 'overdue_count': len(overdue_items),
+#                 'up_to_date_count': len(up_to_date_items)
+#             }
+#         }
     
-    except Exception as e:
-        return {
-            'success': False,
-            'error': f"Get depreciation due error: {str(e)}"
-        }
+#     except Exception as e:
+#         return {
+#             'success': False,
+#             'error': f"Get depreciation due error: {str(e)}"
+#         }
 
 def get_depreciation_due_this_month(target_month=None, target_year=None):
     """
@@ -18929,9 +18929,7 @@ def get_depreciation_due_this_month(target_month=None, target_year=None):
         }
 
 def get_next_few_months_due(months_ahead=3):
-    """
-    ຫາລາຍການທີ່ຕ້ອງຫັກໃນອີກ 3 ເດືອນຂ້າງໜ້າ
-    """
+
     try:
         current_date = datetime.now()
         results = []
@@ -26693,10 +26691,10 @@ def round_to_3_decimals(value):
     elif isinstance(value, str):
         value = Decimal(value)
     return value.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
-
+# ບໍ່ເພີ່ມ 1 ເດືອນ
 def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
     """
-    ✅ ຄຳນວນຍອດລວມທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ - ໃຊ້ Logic ແບບເກົ່າ + ເພີ່ມ 1 ເດືອນ ດ້ວຍ 3 decimals
+    ✅ ຄຳນວນຍອດລວມທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ - ໃຊ້ Logic ແບບເກົ່າ ທຸກຢ່າງ (ບໍ່ເພີ່ມ 1 ເດືອນ) ດ້ວຍ 3 decimals
     """
     try:
         # ✅ Validation ແບບເກົ່າ
@@ -26741,7 +26739,7 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
         else:
             target_date = timezone.now().date()
         
-        print(f"🔍 Retroactive Calculation (using old logic + 1 month):")
+        print(f"🔍 Retroactive Calculation (using old logic only - NO +1 month):")
         print(f"   - Asset: {asset.asset_list_id} ({asset.asset_spec})")
         print(f"   - Current Count: {current_count}/{total_months}")
         print(f"   - Target Date: {target_date}")
@@ -26771,15 +26769,8 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
             if month_end > actual_target_date:
                 break
         
-        # *** ການປັບປຸງໃໝ່: ເພີ່ມ 1 ເດືອນ ຍົກເວັ້ນກໍລະນີຄົບກຳນົດ ***
-        original_months_since_start = months_since_start
-        
-        # ຖ້າຍັງບໍ່ຄົບກຳນົດ (< total_months) ໃຫ້ເພີ່ມ 1 ເດືອນ
-        if months_since_start < total_months:
-            months_since_start = months_since_start + 1
-            print(f"📊 Added 1 month: {original_months_since_start} -> {months_since_start}")
-        else:
-            print(f"📊 Already at total months limit: {months_since_start} (no addition)")
+        # *** ບໍ່ເພີ່ມ 1 ເດືອນ - ໃຊ້ຄ່າເດີມ ***
+        print(f"📊 Using original calculation: {months_since_start} months (NO addition)")
         
         # ✅ ເດືອນທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ
         months_to_process = min(months_since_start, total_months) - current_count
@@ -26791,8 +26782,6 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
                     "asset_id": asset.asset_list_id,
                     "current_count": current_count,
                     "should_be": months_since_start,
-                    "original_calculation": original_months_since_start,
-                    "added_one_month": months_since_start > original_months_since_start,
                     "is_up_to_date": True
                 }
             }
@@ -26815,7 +26804,7 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
             annual_depreciation = depreciable_amount / Decimal(str(useful_life))
             monthly_depreciation = round_to_3_decimals(annual_depreciation / Decimal('12'))
             
-            # ✅ ຄຳນວນວັນທີ່ສຳລັບເດືອນນີ້ (ແບບເກົ່າ)
+            
             month_start_date = start_date + relativedelta(months=month_number - 1)
             
             if month_number == 1:
@@ -26833,18 +26822,18 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
             days_in_month = (month_end - month_actual_start + timedelta(days=1)).days
             total_days_in_month = get_last_day_of_month(month_actual_start.year, month_actual_start.month)
             
-            # ✅ ໃຊ້ Vue.js logic ເກົ່າ ດ້ວຍ 3 decimals
+          
             is_last_month = (month_number == total_months)
             
             if month_number == 1:
-                # ງວດທຳອິດ: ມູນຄ່າຕົ້ນງວດ
+                
                 setup_value = round_to_3_decimals(
                     monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))
                 )
                 monthly_depreciation_value = setup_value
                 
             elif is_last_month:
-                # ງວດສຸດທ້າຍ: ຫັກຄົບ depreciable_amount
+                
                 current_accumulated = round_to_3_decimals(asset.asset_accu_dpca_value or 0) + total_retroactive_amount
                 remaining_to_depreciate = depreciable_amount - current_accumulated
                 monthly_depreciation_value = round_to_3_decimals(remaining_to_depreciate)
@@ -26874,7 +26863,7 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
         new_remaining = accu_dpca_value_total - new_accumulated
         new_count = current_count + months_to_process
         
-        print(f"📊 DEBUG Retroactive calculation (3 decimals):")
+        print(f"📊 DEBUG Retroactive calculation (3 decimals - NO +1 month):")
         print(f"   - total_retroactive_amount: {total_retroactive_amount}")
         print(f"   - old_accumulated: {old_accumulated}")
         print(f"   - new_accumulated: {new_accumulated}")
@@ -26893,13 +26882,11 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
             },
             'retroactive_summary': {
                 'current_month': current_count,
-                'original_target_month': original_months_since_start,  # ເດືອນກ່ອນເພີ່ມ
-                'target_month': months_since_start,                    # ເດືອນຫຼັງເພີ່ມ
+                'target_month': months_since_start,
                 'months_to_process': months_to_process,
                 'total_retroactive_amount': float(total_retroactive_amount),
                 'can_process': months_to_process > 0,
-                'added_one_month': months_since_start > original_months_since_start,  # ເພີ່ມຫຼືບໍ່
-                'calculation_note': f"ການຄິດໄລ່: {original_months_since_start} -> {months_since_start} ເດືອນ"
+                'calculation_note': f"ການຄິດໄລ່: {months_since_start} ເດືອນ (ບໍ່ເພີ່ມ 1 ເດືອນ)"
             },
             'new_status': {
                 'old_accumulated': float(old_accumulated),
@@ -26916,6 +26903,231 @@ def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
     except Exception as e:
         print(f"💥 Retroactive calculation error: {str(e)}")
         return {"error": f"Retroactive calculation error: {str(e)}"}
+# ເພີ່ມ 1 ເດືອນ
+# def calculate_retroactive_depreciation_schedule(mapping_id, target_date=None):
+#     """
+#     ✅ ຄຳນວນຍອດລວມທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ - ໃຊ້ Logic ແບບເກົ່າ + ເພີ່ມ 1 ເດືອນ ດ້ວຍ 3 decimals
+#     """
+#     try:
+#         # ✅ Validation ແບບເກົ່າ
+#         try:
+#             accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+#         except FA_Accounting_Method.DoesNotExist:
+#             return {"error": f"ບໍ່ພົບ mapping_id: {mapping_id}"}
+        
+#         try:
+#             if accounting_method.asset_list_id:
+#                 asset = accounting_method.asset_list_id
+#             elif accounting_method.ref_id:
+#                 asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+#             else:
+#                 return {"error": "ບໍ່ມີຂໍ້ມູນ asset_list_id ຫຼື ref_id"}
+#         except FA_Asset_Lists.DoesNotExist:
+#             return {"error": f"ບໍ່ພົບຊັບສິນ: {accounting_method.ref_id}"}
+        
+#         if not asset.asset_value:
+#             return {"error": "ບໍ່ມີມູນຄ່າຊັບສິນ"}
+#         if not asset.asset_useful_life:
+#             return {"error": "ບໍ່ມີອາຍຸການໃຊ້ງານ"}
+#         if not asset.dpca_start_date:
+#             return {"error": "ບໍ່ມີວັນທີ່ເລີ່ມຕົ້ນ"}
+        
+#         # ✅ ໃຊ້ calculate_depreciation_schedule() ເກົ່າ
+#         base_calc = calculate_depreciation_schedule(mapping_id)
+#         if 'error' in base_calc:
+#             return base_calc
+        
+#         # ✅ ຂໍ້ມູນພື້ນຖານແບບເກົ່າ ດ້ວຍ 3 decimals
+#         current_count = int(asset.C_dpac or 0)
+#         useful_life = int(asset.asset_useful_life)
+#         total_months = useful_life * 12
+#         start_date = asset.dpca_start_date
+#         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+        
+#         # ✅ ກຳນົດວັນທີ່ເປົ້າໝາຍ
+#         if target_date:
+#             if isinstance(target_date, str):
+#                 target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+#         else:
+#             target_date = timezone.now().date()
+        
+#         print(f"🔍 Retroactive Calculation (using old logic + 1 month):")
+#         print(f"   - Asset: {asset.asset_list_id} ({asset.asset_spec})")
+#         print(f"   - Current Count: {current_count}/{total_months}")
+#         print(f"   - Target Date: {target_date}")
+        
+#         # ✅ ກວດສອບສະຖານະແບບເກົ່າ
+#         if not base_calc['depreciation_status']['can_depreciate']:
+#             return {
+#                 "error": "ຊັບສິນນີ້ຫັກຄົບແລ້ວ - ບໍ່ສາມາດຫັກຍ້ອນຫຼັງໄດ້",
+#                 "current_status": base_calc['depreciation_status']
+#             }
+        
+#         # ✅ ກຳນົດຂອບເຂດການຫັກ (ເຫຍືອແບບເກົ່າ)
+#         actual_target_date = min(target_date, end_date)
+        
+#         # ✅ ຄຳນວນເດືອນທີ່ຄວນຈະຫັກຮອດ target_date (ແບບເກົ່າ)
+#         months_since_start = 0
+#         temp_date = start_date
+        
+#         while temp_date <= actual_target_date:
+#             months_since_start += 1
+#             if months_since_start >= total_months:
+#                 break
+#             temp_date = start_date + relativedelta(months=months_since_start)
+#             # ✅ ກວດສອບວ່າເດືອນນີ້ຄວນຫັກຫຼືບໍ່
+#             month_end = datetime(temp_date.year, temp_date.month, 
+#                                get_last_day_of_month(temp_date.year, temp_date.month)).date()
+#             if month_end > actual_target_date:
+#                 break
+        
+#         # *** ການປັບປຸງໃໝ່: ເພີ່ມ 1 ເດືອນ ຍົກເວັ້ນກໍລະນີຄົບກຳນົດ ***
+#         original_months_since_start = months_since_start
+        
+#         # ຖ້າຍັງບໍ່ຄົບກຳນົດ (< total_months) ໃຫ້ເພີ່ມ 1 ເດືອນ
+#         if months_since_start < total_months:
+#             months_since_start = months_since_start + 1
+#             print(f"📊 Added 1 month: {original_months_since_start} -> {months_since_start}")
+#         else:
+#             print(f"📊 Already at total months limit: {months_since_start} (no addition)")
+        
+#         # ✅ ເດືອນທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ
+#         months_to_process = min(months_since_start, total_months) - current_count
+        
+#         if months_to_process <= 0:
+#             return {
+#                 "error": "ບໍ່ມີເດືອນທີ່ຕ້ອງຫັກຍ້ອນຫຼັງ - ຊັບສິນອັບເດດແລ້ວ",
+#                 "asset_info": {
+#                     "asset_id": asset.asset_list_id,
+#                     "current_count": current_count,
+#                     "should_be": months_since_start,
+#                     "original_calculation": original_months_since_start,
+#                     "added_one_month": months_since_start > original_months_since_start,
+#                     "is_up_to_date": True
+#                 }
+#             }
+        
+#         # ✅ ຄຳນວນຍອດລວມໂດຍໃຊ້ process_monthly_depreciation() ແບບເກົ່າ ດ້ວຍ 3 decimals
+#         total_retroactive_amount = Decimal('0.000')
+#         processed_months = []
+#         simulated_asset_count = current_count
+        
+#         for i in range(months_to_process):
+#             # ✅ Simulate monthly depreciation calculation ດ້ວຍ 3 decimals
+#             month_number = simulated_asset_count + 1
+            
+#             # ✅ ໃຊ້ Vue.js method calculation logic ແບບເກົ່າ ດ້ວຍ 3 decimals
+#             asset_value = round_to_3_decimals(asset.asset_value or 0)
+#             accu_dpca_value_total = round_to_3_decimals(asset.accu_dpca_value_total)
+#             salvage_value = round_to_3_decimals(asset.asset_salvage_value or 0)
+#             depreciable_amount = asset_value - salvage_value
+            
+#             annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+#             monthly_depreciation = round_to_3_decimals(annual_depreciation / Decimal('12'))
+            
+            
+#             month_start_date = start_date + relativedelta(months=month_number - 1)
+            
+#             if month_number == 1:
+#                 month_actual_start = start_date
+#                 month_end = datetime(month_start_date.year, month_start_date.month,
+#                                    get_last_day_of_month(month_start_date.year, month_start_date.month)).date()
+#             else:
+#                 month_actual_start = datetime(month_start_date.year, month_start_date.month, 1).date()
+#                 month_end = datetime(month_start_date.year, month_start_date.month,
+#                                    get_last_day_of_month(month_start_date.year, month_start_date.month)).date()
+            
+#             if month_end > end_date:
+#                 month_end = end_date
+            
+#             days_in_month = (month_end - month_actual_start + timedelta(days=1)).days
+#             total_days_in_month = get_last_day_of_month(month_actual_start.year, month_actual_start.month)
+            
+          
+#             is_last_month = (month_number == total_months)
+            
+#             if month_number == 1:
+                
+#                 setup_value = round_to_3_decimals(
+#                     monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))
+#                 )
+#                 monthly_depreciation_value = setup_value
+                
+#             elif is_last_month:
+                
+#                 current_accumulated = round_to_3_decimals(asset.asset_accu_dpca_value or 0) + total_retroactive_amount
+#                 remaining_to_depreciate = depreciable_amount - current_accumulated
+#                 monthly_depreciation_value = round_to_3_decimals(remaining_to_depreciate)
+                
+#             else:
+#                 # ງວດປົກກະຕິ: ຫັກຕາມວັນທີ່ແທ້ຈິງ
+#                 monthly_depreciation_value = round_to_3_decimals(
+#                     monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))
+#                 )
+            
+#             total_retroactive_amount += monthly_depreciation_value
+#             simulated_asset_count += 1
+            
+#             processed_months.append({
+#                 'month_number': month_number,
+#                 'month_year': f"{get_month_name_la(month_actual_start.month)} {month_actual_start.year}",
+#                 'period': f"{month_actual_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+#                 'days_count': days_in_month,
+#                 'depreciation_amount': float(monthly_depreciation_value),
+#                 'is_first_month': month_number == 1,
+#                 'is_last_month': is_last_month
+#             })
+        
+#         # ✅ ຄຳນວນສະຖານະໃໝ່ ດ້ວຍ 3 decimals
+#         old_accumulated = round_to_3_decimals(asset.asset_accu_dpca_value or 0)
+#         new_accumulated = old_accumulated + total_retroactive_amount
+#         new_remaining = accu_dpca_value_total - new_accumulated
+#         new_count = current_count + months_to_process
+        
+#         print(f"📊 DEBUG Retroactive calculation (3 decimals):")
+#         print(f"   - total_retroactive_amount: {total_retroactive_amount}")
+#         print(f"   - old_accumulated: {old_accumulated}")
+#         print(f"   - new_accumulated: {new_accumulated}")
+#         print(f"   - new_remaining: {new_remaining}")
+        
+#         return {
+#             'success': True,
+#             'asset_info': base_calc['asset_info'],
+#             'calculation_info': {
+#                 'start_date': start_date.strftime('%d/%m/%Y'),
+#                 'end_date': end_date.strftime('%d/%m/%Y'),
+#                 'target_date': target_date.strftime('%d/%m/%Y'),
+#                 'actual_target_date': actual_target_date.strftime('%d/%m/%Y'),
+#                 'limited_by_end_date': target_date > end_date,
+#                 'daily_depreciation': base_calc['calculation_info']['daily_depreciation']
+#             },
+#             'retroactive_summary': {
+#                 'current_month': current_count,
+#                 'original_target_month': original_months_since_start,  # ເດືອນກ່ອນເພີ່ມ
+#                 'target_month': months_since_start,                    # ເດືອນຫຼັງເພີ່ມ
+#                 'months_to_process': months_to_process,
+#                 'total_retroactive_amount': float(total_retroactive_amount),
+#                 'can_process': months_to_process > 0,
+#                 'added_one_month': months_since_start > original_months_since_start,  # ເພີ່ມຫຼືບໍ່
+#                 'calculation_note': f"ການຄິດໄລ່: {original_months_since_start} -> {months_since_start} ເດືອນ"
+#             },
+#             'new_status': {
+#                 'old_accumulated': float(old_accumulated),
+#                 'new_accumulated': float(new_accumulated),
+#                 'new_remaining': float(new_remaining),
+#                 'new_count': new_count,
+#                 'total_months': total_months,
+#                 'will_be_completed': new_count >= total_months
+#             },
+#             'processed_months': processed_months[:5],  # ສະແດງ 5 ເດືອນທຳອິດ
+#             'total_months_detail': len(processed_months)
+#         }
+        
+#     except Exception as e:
+#         print(f"💥 Retroactive calculation error: {str(e)}")
+#         return {"error": f"Retroactive calculation error: {str(e)}"}
+
+
 # def process_retroactive_depreciation_with_journal(mapping_id, user_id=None, target_date=None, create_journal=False, request=None):
 #     """
 #     ✅ ຫັກຄ່າເສື່ອມລາຄາຍ້ອນຫຼັງ - ໃຊ້ Logic ແບບ process_monthly_depreciation_with_journal()
@@ -28073,7 +28285,7 @@ def retroactive_depreciation_api(request):
             mapping_ids = [int(x) for x in mapping_ids_str.split(',') if x] if mapping_ids_str else []
             user_id = request.GET.get('user_id')
             target_date = request.GET.get('target_date')
-            create_journal = request.GET.get('create_journal', 'false').lower() == 'true'  # ✅ KEY parameter ແບບເກົ່າ
+            create_journal = request.GET.get('create_journal', 'false').lower() == 'true'  
             urgency_levels_str = request.GET.get('urgency_levels', '')
             urgency_levels = urgency_levels_str.split(',') if urgency_levels_str else []
         
