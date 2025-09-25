@@ -7949,9 +7949,17 @@ class FAAssetTypeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = FA_Asset_Type.objects.all().order_by('type_id')
+        
+        # ກັ່ນຕອງດ້ວຍ type_code
         type_code = self.request.query_params.get('type_code')
         if type_code:
             queryset = queryset.filter(type_code=type_code)
+        
+        # ກັ່ນຕອງດ້ວຍ is_tangible ("1" ຫຼື "2")
+        is_tangible = self.request.query_params.get('is_tangible')
+        if is_tangible in ['1', '2']:
+            queryset = queryset.filter(is_tangible=is_tangible)
+        
         return queryset
     
     def perform_create(self, serializer):
