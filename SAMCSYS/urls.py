@@ -285,7 +285,7 @@ urlpatterns = [
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
 
-    # Store Procedure <----- Report End ----->
+    
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
     path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
 
