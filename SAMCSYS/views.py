@@ -29,37 +29,40 @@ from .serializers import MTTBUserSerializer
 
 def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
-from rest_framework import viewsets
+import hashlib
+import logging
+from django.contrib.auth.hashers import make_password, check_password
+from django.db import transaction, IntegrityError
+from django.db.models import Q
+from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
+
+logger = logging.getLogger(__name__)
+
 class MTTBUserViewSet(viewsets.ModelViewSet):
     serializer_class = MTTBUserSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
+    lookup_field = 'user_id'
 
     def get_permissions(self):
-        # Allow open signup
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        # start from all users
         qs = MTTB_Users.objects.select_related('div_id', 'Role_ID').all()
-
         params = self.request.query_params
 
-        # filter by division if provided
         div = params.get('div_id')
         if div:
             qs = qs.filter(div_id__div_id=div)
 
-        # filter by role if provided
         role = params.get('role_id')
         if role:
             qs = qs.filter(Role_ID__role_id=role)
@@ -79,51 +82,276 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             Checker_Id=checker,
             Checker_DT_Stamp=timezone.now()
         )
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Override the default destroy method to handle SQL Server data type issues
+        and implement proper soft delete
+        """
+        try:
+            # Get the user_id from URL parameters
+            user_id = kwargs.get(self.lookup_field)
+            if not user_id:
+                return Response({
+                    'error': 'User ID is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get the user object
+            try:
+                user = self.get_queryset().get(user_id=user_id)
+            except MTTB_Users.DoesNotExist:
+                return Response({
+                    'error': 'User not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Check if user can be deleted
+            if not self._can_delete_user(user):
+                return Response({
+                    'error': 'User cannot be deleted',
+                    'detail': 'User has dependent records or is currently active'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            with transaction.atomic():
+                # Soft delete approach - safer than hard delete
+                user.User_Status = 'D'  # Mark as disabled
+                user.Record_Status = getattr(user, 'Record_Status', 'O')
+                
+                # Set Record_Status to 'D' for deleted if the field exists
+                if hasattr(user, 'Record_Status'):
+                    user.Record_Status = 'D'
+                
+                # Update checker information
+                if request.user.is_authenticated:
+                    user.Checker_Id = request.user.user_id if hasattr(request.user, 'user_id') else None
+                    user.Checker_DT_Stamp = timezone.now()
+
+                # Handle self-references safely before saving
+                self._handle_user_references_safe(user)
+                
+                user.save()
+
+                logger.info(f"User {user_id} soft deleted successfully by {request.user}")
+
+            return Response({
+                'message': 'User deleted successfully',
+                'user_id': user_id,
+                'type': 'soft_delete'
+            }, status=status.HTTP_200_OK)
+
+        except IntegrityError as e:
+            logger.error(f"Database integrity error deleting user {user_id}: {str(e)}")
+            return Response({
+                'error': 'Cannot delete user due to database constraints',
+                'detail': 'User has related records that prevent deletion'
+            }, status=status.HTTP_409_CONFLICT)
+        
+        except Exception as e:
+            logger.error(f"Unexpected error deleting user {user_id}: {str(e)}")
+            return Response({
+                'error': 'Internal server error',
+                'detail': 'Failed to delete user'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=True, methods=['post'])
-    def authorize(self, request, pk=None):
-        """Authorize a journal entry"""
-        users = self.get_object()
+    def hard_delete(self, request, user_id=None):
+        """
+        Permanent deletion - use with extreme caution
+        Only for superusers
+        """
+        if not request.user.is_superuser:
+            return Response({
+                'error': 'Permission denied',
+                'detail': 'Only superusers can perform hard delete'
+            }, status=status.HTTP_403_FORBIDDEN)
 
-        if users.Auth_Status == 'A':
-            return Response({'error': 'Entry is already authorized'}, 
-                          status=status.HTTP_406_NOT_ACCEPTABLE)
+        try:
+            user = self.get_object()
+            user_id_str = user.user_id
 
-        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
-        users.Auth_Status = 'A'
-        users.Once_Status = 'Y'
-        users.Record_Status = 'O'
-        users.Checker_Id = request.user
-        users.Checker_DT_Stamp = timezone.now()
-        users.save()
+            with transaction.atomic():
+                # Handle references before hard deletion
+                self._handle_user_references_safe(user)
+                
+                # Use raw SQL for problematic deletions if needed
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    # Set foreign key references to NULL first
+                    cursor.execute(
+                        "UPDATE SAMCSYS_mttb_users SET Maker_Id = NULL WHERE Maker_Id = %s",
+                        [user_id_str]
+                    )
+                    cursor.execute(
+                        "UPDATE SAMCSYS_mttb_users SET Checker_Id = NULL WHERE Checker_Id = %s",
+                        [user_id_str]
+                    )
+                    
+                    # Now delete the user
+                    cursor.execute(
+                        "DELETE FROM SAMCSYS_mttb_users WHERE user_id = %s",
+                        [user_id_str]
+                    )
 
-        serializer = self.get_serializer(users)
-        return Response({
-            'message': 'Entry authorized successfully',
-            'entry': serializer.data
-        })
+                logger.warning(f"User {user_id_str} hard deleted by {request.user}")
+
+            return Response({
+                'message': 'User permanently deleted',
+                'user_id': user_id_str,
+                'type': 'hard_delete'
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error in hard delete: {str(e)}")
+            return Response({
+                'error': 'Failed to permanently delete user',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _can_delete_user(self, user):
+        """
+        Check if user can be safely deleted
+        """
+        try:
+            # Check if this is the only admin user
+            if hasattr(user, 'is_superuser') and user.is_superuser:
+                admin_count = MTTB_Users.objects.filter(is_superuser=True).count()
+                if admin_count <= 1:
+                    return False
+
+            # Check if user has active sessions or critical dependencies
+            # Add your business logic here
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error checking if user can be deleted: {str(e)}")
+            return False
+
+    def _handle_user_references_safe(self, user):
+        """
+        Safely handle foreign key references before deletion
+        Use direct SQL to avoid Django's CASCADE issues
+        """
+        try:
+            from django.db import connection
+            with connection.cursor() as cursor:
+                user_id = user.user_id
+                
+                # Update all references to this user
+                cursor.execute(
+                    "UPDATE SAMCSYS_mttb_users SET Maker_Id = NULL WHERE Maker_Id = %s AND user_id != %s",
+                    [user_id, user_id]
+                )
+                cursor.execute(
+                    "UPDATE SAMCSYS_mttb_users SET Checker_Id = NULL WHERE Checker_Id = %s AND user_id != %s", 
+                    [user_id, user_id]
+                )
+                
+                # Handle other table references if they exist
+                # Add more UPDATE statements for other tables that reference users
+                
+        except Exception as e:
+            logger.error(f"Error handling user references: {str(e)}")
+            raise
 
     @action(detail=True, methods=['post'])
-    def unauthorize(self, request, pk=None):
-        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
-        users = self.get_object()
+    def restore(self, request, user_id=None):
+        """
+        Restore a soft-deleted user
+        """
+        try:
+            user = self.get_object()
+            
+            if user.User_Status != 'D':
+                return Response({
+                    'error': 'User is not deleted',
+                    'detail': 'Only deleted users can be restored'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-        if users.Auth_Status == 'U':
-            return Response({'error': 'Entry is already unauthorized'}, 
-                          status=status.HTTP_406_NOT_ACCEPTABLE)
+            user.User_Status = 'E'  # Enable
+            if hasattr(user, 'Record_Status'):
+                user.Record_Status = 'O'  # Open
+            
+            user.Checker_Id = request.user.user_id if hasattr(request.user, 'user_id') else None
+            user.Checker_DT_Stamp = timezone.now()
+            user.save()
 
-        # Set Auth_Status = 'U', Record_Status = 'C'
-        users.Auth_Status = 'U'
-        users.Record_Status = 'C'
-        users.Checker_Id = request.user
-        users.Checker_DT_Stamp = timezone.now()
-        users.save()
+            serializer = self.get_serializer(user)
+            return Response({
+                'message': 'User restored successfully',
+                'user': serializer.data
+            })
 
-        serializer = self.get_serializer(users)
-        return Response({
-            'message': 'Entry unauthorized successfully',
-            'entry': serializer.data
-        })
+        except Exception as e:
+            logger.error(f"Error restoring user: {str(e)}")
+            return Response({
+                'error': 'Failed to restore user',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'])
+    def authorize(self, request, user_id=None):
+        """Authorize a user entry"""
+        try:
+            user = self.get_object()
+
+            if user.Auth_Status == 'A':
+                return Response({
+                    'error': 'User is already authorized'
+                }, status=status.HTTP_406_NOT_ACCEPTABLE)
+
+            user.Auth_Status = 'A'
+            if hasattr(user, 'Once_Auth'):
+                user.Once_Auth = 'Y'
+            if hasattr(user, 'Record_Status'):
+                user.Record_Status = 'O'
+                
+            user.Checker_Id = request.user.user_id if hasattr(request.user, 'user_id') else None
+            user.Checker_DT_Stamp = timezone.now()
+            user.save()
+
+            serializer = self.get_serializer(user)
+            return Response({
+                'message': 'User authorized successfully',
+                'user': serializer.data
+            })
+            
+        except Exception as e:
+            logger.error(f"Error authorizing user: {str(e)}")
+            return Response({
+                'error': 'Failed to authorize user',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def unauthorize(self, request, user_id=None):
+        """Unauthorize a user entry"""
+        try:
+            user = self.get_object()
+
+            if user.Auth_Status == 'U':
+                return Response({
+                    'error': 'User is already unauthorized'
+                }, status=status.HTTP_406_NOT_ACCEPTABLE)
+
+            user.Auth_Status = 'U'
+            if hasattr(user, 'Record_Status'):
+                user.Record_Status = 'C'
+                
+            user.Checker_Id = request.user.user_id if hasattr(request.user, 'user_id') else None
+            user.Checker_DT_Stamp = timezone.now()
+            user.save()
+
+            serializer = self.get_serializer(user)
+            return Response({
+                'message': 'User unauthorized successfully',
+                'user': serializer.data
+            })
+            
+        except Exception as e:
+            logger.error(f"Error unauthorizing user: {str(e)}")
+            return Response({
+                'error': 'Failed to unauthorize user',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 # from rest_framework_simplejwt.tokens import RefreshToken
 # from .models import MTTB_USER_ACCESS_LOG
 # from rest_framework_simplejwt.settings import api_settings
