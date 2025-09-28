@@ -13487,9 +13487,223 @@ def get_current_user_id():
     except Exception as e:
         print(f"Get user error: {str(e)}")
         return None
+# def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_id=None, create_journal=True, request=None):
+#     """
+#     ✅ MAIN FUNCTION: Bulk processing ພ້ອມ Journal Entry ແລະ Transaction Rollback
+#     """
+#     try:
+#         print(f"🚀 Starting bulk processing: {len(mapping_ids)} items, create_journal: {create_journal}")
+        
+#         if check_only:
+#             # ສຳລັບ check_only ບໍ່ຕ້ອງສ້າງ Journal
+#             print("ℹ️ Check-only mode - no journal creation")
+#             return process_bulk_depreciation(mapping_ids, check_only=True, user_id=user_id)
+        
+#         results = []
+#         success_count = 0
+#         error_count = 0
+#         journal_success_count = 0
+#         journal_error_count = 0
+        
+#         validated_user_id = validate_user_id(user_id) if user_id else get_current_user_id()
+#         if not validated_user_id:
+#             print(f"⚠️ Warning: User ID {user_id} ບໍ່ມີຢູ່ - ຈະດຳເນີນການໂດຍບໍ່ມີ user")
+        
+#         # ສ້າງ InMonth Record
+#         in_month_record_id = None
+#         if not check_only:
+#             temp_result_data = {
+#                 'summary': {
+#                     'total_items': len(mapping_ids),
+#                     'success_count': 0,
+#                     'error_count': 0,
+#                     'check_only': False,
+#                     'user_id_used': validated_user_id,
+#                     'success': True
+#                 },
+#                 'details': [],
+#                 'timestamp': timezone.now().isoformat()
+#             }
+            
+#             in_month_result = create_depreciation_in_month_record(temp_result_data, validated_user_id)
+#             if in_month_result['success']:
+#                 in_month_record_id = in_month_result['in_month_record_id']
+#                 print(f"📋 Created InMonth record: {in_month_record_id}")
+        
+#         # ປະມວນຜົນແຕ່ລະລາຍການ
+#         for i, mapping_id in enumerate(mapping_ids, 1):
+#             print(f"\n🔄 Processing item {i}/{len(mapping_ids)}: mapping_id={mapping_id}")
+            
+#             try:
+#                 # ✅ ໃຊ້ transaction.atomic() ສຳລັບແຕ່ລະລາຍການ
+#                 with transaction.atomic():
+#                     # ຫັກຄ່າເສື່ອມລາຄາ
+#                     process_result = process_monthly_depreciation_with_inmonth(mapping_id, validated_user_id, in_month_record_id)
+                    
+#                     if 'error' in process_result:
+#                         print(f"❌ Depreciation failed for mapping_id {mapping_id}: {process_result['error']}")
+#                         results.append({
+#                             'mapping_id': mapping_id,
+#                             'status': 'error',
+#                             'message': process_result['error'],
+#                             'journal_entry': {'success': False, 'error': 'Depreciation failed'}
+#                         })
+#                         error_count += 1
+#                         journal_error_count += 1
+#                         continue
+                    
+#                     print(f"✅ Depreciation success for mapping_id {mapping_id}")
+                    
+#                     # ສ້າງ Journal Entry (ຖ້າຕ້ອງການ)
+#                     journal_result = {'success': False, 'error': 'Journal creation disabled'}
+                    
+#                     if create_journal and request:
+#                         try:
+#                             print(f"📝 Creating journal for mapping_id {mapping_id}")
+                            
+#                             accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+#                             if accounting_method.asset_list_id:
+#                                 asset = accounting_method.asset_list_id
+#                             else:
+#                                 asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+                            
+#                             depreciation_amount = Decimal(str(process_result['depreciation_processed']['monthly_depreciation']))
+#                             current_count = process_result['depreciation_processed']['month_number']
+#                             total_months = int(asset.asset_useful_life) * 12
+                            
+#                             journal_data_result = create_journal_entry_data(
+#                                 asset, accounting_method, depreciation_amount, current_count, total_months
+#                             )
+                            
+#                             if journal_data_result['success']:
+#                                 validation = journal_data_result['validation']
+#                                 if validation['debit_found'] and validation['credit_found']:
+#                                     journal_result = create_journal_entry_via_api(
+#                                         journal_data_result['journal_data'], request
+#                                     )
+#                                     if journal_result['success']:
+#                                         journal_success_count += 1
+#                                         print(f"🎉 Journal success for mapping_id {mapping_id}")
+#                                     else:
+#                                         journal_error_count += 1
+#                                         print(f"❌ Journal API failed for mapping_id {mapping_id}")
+#                                         # ✅ Rollback ການຫັກຄ່າເສື່ອມເພາະ Journal ຜິດພາດ
+#                                         raise Exception(f"Journal creation failed: {journal_result['error']}")
+#                                 else:
+#                                     journal_result = {
+#                                         'success': False,
+#                                         'error': 'GL Account not found',
+#                                         'details': validation
+#                                     }
+#                                     journal_error_count += 1
+#                                     print(f"❌ GL Account not found for mapping_id {mapping_id}")
+#                                     # ✅ Rollback ການຫັກຄ່າເສື່ອມເພາະ GL Account ບໍ່ພົບ
+#                                     raise Exception(f"GL Account not found: {validation}")
+#                             else:
+#                                 journal_result = journal_data_result
+#                                 journal_error_count += 1
+#                                 print(f"❌ Journal data creation failed for mapping_id {mapping_id}")
+#                                 # ✅ Rollback ການຫັກຄ່າເສື່ອມເພາະສ້າງ Journal Data ບໍ່ໄດ້
+#                                 raise Exception(f"Journal data creation failed: {journal_data_result['error']}")
+                                
+#                         except Exception as journal_error:
+#                             print(f"💥 Journal error for mapping_id {mapping_id}: {str(journal_error)}")
+#                             journal_result = {
+#                                 'success': False,
+#                                 'error': f"Journal creation error: {str(journal_error)}"
+#                             }
+#                             journal_error_count += 1
+#                             # ✅ Re-raise ເພື່ອ rollback transaction
+#                             raise journal_error
+                            
+#                     elif create_journal and not request:
+#                         journal_result = {
+#                             'success': False,
+#                             'error': 'Request object required for journal creation'
+#                         }
+#                         journal_error_count += 1
+#                         print(f"⚠️ No request object for mapping_id {mapping_id}")
+#                         # ✅ Rollback ເພາะບໍ່ມີ request object
+#                         if create_journal:  # ຖ້າຕ້ອງການ journal ແຕ່ບໍ່ມີ request ແມ່ນຜິດພາດ
+#                             raise Exception("Request object required for journal creation")
+                    
+#                     # ✅ ຖ້າຮອດຈຸດນີ້ແມ່ນທຸກຢ່າງສຳເລັດ
+#                     # ບັນທຶກຜົນລັບ
+#                     results.append({
+#                         'mapping_id': mapping_id,
+#                         'status': 'success',
+#                         'message': f"ຫັກເດືອນທີ່ {process_result['depreciation_processed']['month_number']} ສຳເລັດ",
+#                         'depreciation_processed': process_result['depreciation_processed'],
+#                         'history_records': process_result.get('history_records', {}),
+#                         'journal_entry': journal_result
+#                     })
+#                     success_count += 1
+#                     print(f"🎯 Complete success for mapping_id {mapping_id}")
+                    
+#             except Exception as e:
+#                 # ✅ Transaction rollback ເກີດຂຶ້ນອັດຕະໂນມັດ
+#                 print(f"💥 Transaction rolled back for mapping_id {mapping_id}: {str(e)}")
+#                 results.append({
+#                     'mapping_id': mapping_id,
+#                     'status': 'error',
+#                     'message': f"Processing error (rolled back): {str(e)}",
+#                     'journal_entry': {'success': False, 'error': 'Transaction rolled back'}
+#                 })
+#                 error_count += 1
+#                 journal_error_count += 1
+        
+#         # ອັບເດດ InMonth Record
+#         if not check_only and in_month_record_id:
+#             try:
+#                 in_month_record = FA_Asset_List_Depreciation_InMonth.objects.get(aldim_id=in_month_record_id)
+                
+#                 total_depreciation = Decimal('0.00')
+#                 for detail in results:
+#                     if detail['status'] == 'success' and 'depreciation_processed' in detail:
+#                         total_depreciation += Decimal(str(detail['depreciation_processed']['monthly_depreciation']))
+                
+#                 in_month_record.C_dpca = str(success_count)
+#                 in_month_record.dpca_value = total_depreciation.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#                 in_month_record.dpca_status = 'SUCCESS' if error_count == 0 else 'PARTIAL' if success_count > 0 else 'FAILED'
+#                 in_month_record.save()
+                
+#                 print(f"📋 Updated InMonth record: {in_month_record_id}")
+                
+#             except Exception as e:
+#                 print(f"⚠️ Warning: ອັບເດດ InMonth record ຜິດພາດ: {str(e)}")
+        
+#         final_result = {
+#             'summary': {
+#                 'total_items': len(mapping_ids),
+#                 'success_count': success_count,
+#                 'error_count': error_count,
+#                 'check_only': check_only,
+#                 'user_id_used': validated_user_id,
+#                 'in_month_record_id': in_month_record_id,
+#                 'journal_enabled': create_journal,
+#                 'journal_success_count': journal_success_count,
+#                 'journal_error_count': journal_error_count,
+#                 'success_rate': f"{(success_count/len(mapping_ids)*100):.1f}%" if mapping_ids else "0%",
+#                 'journal_success_rate': f"{(journal_success_count/success_count*100):.1f}%" if success_count > 0 else "0%"
+#             },
+#             'details': results,
+#             'in_month_record': {
+#                 'success': True,
+#                 'in_month_record_id': in_month_record_id,
+#                 'user_id_used': validated_user_id
+#             } if in_month_record_id else None
+#         }
+        
+#         print(f"🏁 Bulk processing complete: {success_count}/{len(mapping_ids)} success, {journal_success_count} journals created")
+#         return final_result
+        
+#     except Exception as e:
+#         print(f"💥 Bulk processing fatal error: {str(e)}")
+#         return {"error": f"Bulk processing with journal error: {str(e)}"}
 def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_id=None, create_journal=True, request=None):
     """
     ✅ MAIN FUNCTION: Bulk processing ພ້ອມ Journal Entry ແລະ Transaction Rollback
+    ✅ NEW: ເພີ່ມການກວດສອບເງື່ອນໄຂກ່ອນການຫັກ
     """
     try:
         print(f"🚀 Starting bulk processing: {len(mapping_ids)} items, create_journal: {create_journal}")
@@ -13535,6 +13749,60 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
             print(f"\n🔄 Processing item {i}/{len(mapping_ids)}: mapping_id={mapping_id}")
             
             try:
+                # ✅ NEW: ກວດສອບເງື່ອນໄຂກ່ອນປະມວນຜົນ
+                try:
+                    accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+                    if accounting_method.asset_list_id:
+                        asset = accounting_method.asset_list_id
+                    else:
+                        asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+                    
+                    # ດຶງ STTB_Dates Start_Date
+                    latest_date_record = STTB_Dates.objects.filter(eod_time='N').order_by('-date_id').first()
+                    if not latest_date_record or not latest_date_record.Start_Date:
+                        raise Exception("STTB_Dates Start_Date not found")
+                    
+                    sttb_start_date = latest_date_record.Start_Date.date()
+                    
+                    # ✅ ເງື່ອນໄຂທີ່ 1: ເຊັກ asset_latest_date_dpca
+                    if asset.asset_latest_date_dpca and asset.asset_latest_date_dpca > sttb_start_date:
+                        print(f"⏭️ Skip mapping_id {mapping_id}: asset_latest_date_dpca ({asset.asset_latest_date_dpca}) > STTB_start_date ({sttb_start_date})")
+                        results.append({
+                            'mapping_id': mapping_id,
+                            'status': 'skipped',
+                            'message': f"Asset latest date ({asset.asset_latest_date_dpca}) is newer than STTB start date ({sttb_start_date})",
+                            'journal_entry': {'success': False, 'error': 'Skipped due to date condition'}
+                        })
+                        continue
+                    
+                    # ✅ ເງື່ອນໄຂທີ່ 2: ເຊັກ C_dpac vs asset_useful_life
+                    c_dpac = int(asset.C_dpac or 0)
+                    asset_useful_life = int(asset.asset_useful_life or 0)
+                    max_depreciation_months = asset_useful_life * 12
+                    
+                    if c_dpac >= max_depreciation_months:
+                        print(f"⏭️ Skip mapping_id {mapping_id}: C_dpac ({c_dpac}) >= max_months ({max_depreciation_months})")
+                        results.append({
+                            'mapping_id': mapping_id,
+                            'status': 'skipped',
+                            'message': f"Depreciation completed: C_dpac ({c_dpac}) >= max_months ({max_depreciation_months})",
+                            'journal_entry': {'success': False, 'error': 'Depreciation already completed'}
+                        })
+                        continue
+                        
+                    print(f"✅ Validation passed for mapping_id {mapping_id}: latest_date={asset.asset_latest_date_dpca}, C_dpac={c_dpac}/{max_depreciation_months}")
+                    
+                except Exception as validation_error:
+                    print(f"❌ Validation error for mapping_id {mapping_id}: {str(validation_error)}")
+                    results.append({
+                        'mapping_id': mapping_id,
+                        'status': 'error',
+                        'message': f"Validation error: {str(validation_error)}",
+                        'journal_entry': {'success': False, 'error': 'Validation failed'}
+                    })
+                    error_count += 1
+                    continue
+                
                 # ✅ ໃຊ້ transaction.atomic() ສຳລັບແຕ່ລະລາຍການ
                 with transaction.atomic():
                     # ຫັກຄ່າເສື່ອມລາຄາ
@@ -13560,12 +13828,6 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
                     if create_journal and request:
                         try:
                             print(f"📝 Creating journal for mapping_id {mapping_id}")
-                            
-                            accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
-                            if accounting_method.asset_list_id:
-                                asset = accounting_method.asset_list_id
-                            else:
-                                asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
                             
                             depreciation_amount = Decimal(str(process_result['depreciation_processed']['monthly_depreciation']))
                             current_count = process_result['depreciation_processed']['month_number']
@@ -13623,7 +13885,7 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
                         }
                         journal_error_count += 1
                         print(f"⚠️ No request object for mapping_id {mapping_id}")
-                        # ✅ Rollback ເພາะບໍ່ມີ request object
+                        # ✅ Rollback ເພາະບໍ່ມີ request object
                         if create_journal:  # ຖ້າຕ້ອງການ journal ແຕ່ບໍ່ມີ request ແມ່ນຜິດພາດ
                             raise Exception("Request object required for journal creation")
                     
@@ -13700,7 +13962,6 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
     except Exception as e:
         print(f"💥 Bulk processing fatal error: {str(e)}")
         return {"error": f"Bulk processing with journal error: {str(e)}"}
-
 @csrf_exempt
 def calculate_depreciation_api_with_journal(request):
     """
