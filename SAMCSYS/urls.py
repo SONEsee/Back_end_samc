@@ -139,12 +139,9 @@ from .views import (
     journal_report_get_view,
     bulk_insert_monthly_cashflow,
     get_credit_unauthorized,
-<<<<<<< HEAD
     journal_before_report_view,
     journal_before_report_get_view,
-=======
    
->>>>>>> 1ad3364840875cbf7c180357bafb5a9c728e0b0b
 
     
 

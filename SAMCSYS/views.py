@@ -5454,7 +5454,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
                         
                         # Prepare additional sub text
-                        addl_sub_text = f"{entry.Addl_sub_text[:30] if entry.Addl_sub_text else ''}"
+                        addl_sub_text = f"{entry.Addl_sub_text[:255] if entry.Addl_sub_text else ''}"
                         
                         # ACTB_DAIRY_LOG data (with ForeignKey references)
                         actb_log_data = {
