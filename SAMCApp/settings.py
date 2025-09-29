@@ -171,13 +171,13 @@ DATABASES = {
     # }
    'default': {
         'ENGINE': 'mssql',                
-        'NAME': 'SAMCDB_Dev',          
+        'NAME': 'SAMCDB',          
         'USER': 'sa',            
         'PASSWORD': 'mess!Q@083@@',
         'HOST': '192.168.10.35',  
         'PORT': '1433',                       
         'OPTIONS': {
-            'driver': 'ODBC Driver 17 for SQL Server',
+            'driver': 'ODBC Driver 18 for SQL Server',
             'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
         },
     }

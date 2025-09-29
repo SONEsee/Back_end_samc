@@ -139,8 +139,12 @@ from .views import (
     journal_report_get_view,
     bulk_insert_monthly_cashflow,
     get_credit_unauthorized,
+<<<<<<< HEAD
     journal_before_report_view,
     journal_before_report_get_view,
+=======
+   
+>>>>>>> 1ad3364840875cbf7c180357bafb5a9c728e0b0b
 
     
 
@@ -253,6 +257,7 @@ urlpatterns = [
     path('api/eod/setup-default-functions/', setup_default_eod_functions, name='eod-setup'),
     path('api/eod/validate-prerequisites/', validate_eod_prerequisites_view, name='eod-validate'),
     path('api/depreciation-with-journal/', calculate_depreciation_api_with_journal, name='depreciation_with_journal'),
+  
     # path('api/trial-balance/', trial_balance_view, name='trial_balance_view'),
     # path('api/trial-balance-allccy/', trial_balance_view_allccy, name='trial_balance_view_allccy'),
     # path('api/dairy-report/bulk-insert/', bulk_insert_dairy_report, name='bulk-insert-dairy-report'),
@@ -285,7 +290,7 @@ urlpatterns = [
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
 
-    # Store Procedure <----- Report End ----->
+    
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
     path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
 
