@@ -139,6 +139,8 @@ from .views import (
     journal_report_get_view,
     bulk_insert_monthly_cashflow,
     get_credit_unauthorized,
+    journal_before_report_view,
+    journal_before_report_get_view,
 
     
 
@@ -287,6 +289,9 @@ urlpatterns = [
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
     path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
 
+    # Store Procedure <---- Before Report End ------>
+    path('api/journal-report-actb/', journal_before_report_view, name='journal_report_post'),
+    path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
 
     # Store Procedure <---- Sub Trail Balance ------>
     path('api/trial-balance/consolidated/', 
