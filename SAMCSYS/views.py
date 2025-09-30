@@ -4894,6 +4894,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
         
+          
     @action(detail=False, methods=['post'], url_path='fix-rejected')
     def fix_rejected(self, request):
         """Fix rejected journal entries for a Reference_sub_No"""
