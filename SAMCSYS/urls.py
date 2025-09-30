@@ -141,6 +141,8 @@ from .views import (
     get_credit_unauthorized,
     journal_before_report_view,
     journal_before_report_get_view,
+    account_statement_search_view,
+    account_search_validation_view,
    
 
     
@@ -286,7 +288,15 @@ urlpatterns = [
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
-
+       # Account Statement Search - POST endpoint
+    path('api/account/statement/search/', 
+         account_statement_search_view, 
+         name='account-statement-search'),
+    
+    # Account Number Validation - GET endpoint
+    path('api/account/validate/', 
+         account_search_validation_view, 
+         name='account-validate'),
     
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
     path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
@@ -294,6 +304,9 @@ urlpatterns = [
     # Store Procedure <---- Before Report End ------>
     path('api/journal-report-actb/', journal_before_report_view, name='journal_report_post'),
     path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
+
+    # Store Procedure <---- Search AccountNo --------->
+
 
     # Store Procedure <---- Sub Trail Balance ------>
     path('api/trial-balance/consolidated/', 

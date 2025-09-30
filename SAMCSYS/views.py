@@ -34501,6 +34501,281 @@ def trial_balance_dairy_view(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# =============================================
+# STORE PROCEDURE SEARCH ACCOUNT 
+# =============================================
+# Account Statement Search by Account Number
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def validate_date_format(date_string):
+    """
+    Validate date format (YYYY-MM-DD)
+    
+    Args:
+        date_string (str): Date string to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not date_string:
+        return False
+    try:
+        datetime.strptime(date_string, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+
+def validate_date_range(date_start, date_end):
+    """
+    Validate that start date is before or equal to end date
+    
+    Args:
+        date_start (str): Start date
+        date_end (str): End date
+    
+    Returns:
+        bool: True if valid range, False otherwise
+    """
+    if not date_start or not date_end:
+        return False
+    try:
+        start = datetime.strptime(date_start, '%Y-%m-%d')
+        end = datetime.strptime(date_end, '%Y-%m-%d')
+        return start <= end
+    except ValueError:
+        return False
+
+
+def validate_gl_code(gl_code):
+    """
+    Validate GL Code (Account Number) - must be 7 characters
+    
+    Args:
+        gl_code (str): GL code to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not gl_code:
+        return False
+    return len(str(gl_code).strip()) == 7
+
+
+def run_account_statement_proc(currency_code=None, date_start=None, 
+                               date_end=None, gl_code=None):
+    """
+    Execute the Account_Statement_By_Currency_7_ACTB stored procedure
+    
+    Args:
+        currency_code (str): Currency code (max 5 characters)
+        date_start (str): Start date in YYYY-MM-DD format
+        date_end (str): End date in YYYY-MM-DD format
+        gl_code (str): GL Code / Account Number (7 digits)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC [dbo].[Account_Statement_By_Currency_7_ACTB]
+                    @Currency_code = %s,
+                    @DateStart = %s,
+                    @DateEnd = %s,
+                    @GL_Code = %s
+            """
+            
+            cursor.execute(sql, [currency_code, date_start, date_end, gl_code])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing account statement procedure: {str(e)}")
+        raise
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def account_statement_search_view(request):
+    """
+    API endpoint for searching account statement by account number
+    
+    Expected payload:
+    {
+        "currency_code": "LAK",        // required
+        "date_start": "2024-01-01",    // required
+        "date_end": "2024-01-31",      // required
+        "gl_code": "1010101"           // required (7 digits)
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "count": number_of_records,
+        "data": {
+            "account_info": {
+                "gl_code": "1010101",
+                "currency_code": "LAK",
+                "open_balance": 0.00
+            },
+            "transactions": [account_statement_records]
+        }
+    }
+    """
+    # Extract required parameters from request
+    currency_code = request.data.get("currency_code")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+    gl_code = request.data.get("gl_code")
+    
+    # Validate required fields
+    if not currency_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸລະຫັດສະກຸນເງິນ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not gl_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate GL Code format (must be 7 digits)
+    if not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date formats
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date range
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[AccountStatement] Searching account - GL: {gl_code}, Currency: {currency_code}, Dates: {date_start} to {date_end}")
+        
+        # Execute stored procedure
+        result = run_account_statement_proc(
+            currency_code=currency_code,
+            date_start=date_start,
+            date_end=date_end,
+            gl_code=gl_code
+        )
+        
+        # Process results
+        open_balance = result[0]['OPEN_BAL'] if result else 0.00
+        
+        response_data = {
+            "account_info": {
+                "gl_code": gl_code,
+                "currency_code": currency_code,
+                "open_balance": float(open_balance) if open_balance else 0.00,
+                "date_start": date_start,
+                "date_end": date_end
+            },
+            "transactions": result
+        }
+        
+        logger.info(f"[AccountStatement] Search completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນບັນຊີສໍາເລັດແລ້ວ",
+            "count": len(result),
+            "data": response_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[AccountStatement] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ມີຂໍ້ຜິດພາດໃນລະບົບ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def account_search_validation_view(request):
+    """
+    API endpoint to validate account number exists
+    
+    Query parameters:
+        gl_code: Account number (7 digits)
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "is_valid": true|false
+    }
+    """
+    gl_code = request.query_params.get("gl_code")
+    
+    if not gl_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
+            "is_valid": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate format
+    if not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
+            "is_valid": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response({
+        "status": "success",
+        "message": "ເລກບັນຊີຖືກຕ້ອງ",
+        "is_valid": True
+    }, status=status.HTTP_200_OK)
+
+
 #  Store Procedure Journal Report 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
