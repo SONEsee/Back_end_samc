@@ -4646,14 +4646,18 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
         
     @action(detail=False, methods=['post'], url_path='fix-rejected')
     def fix_rejected(self, request):
-        """Fix rejected journal entries for a Reference_sub_No by updating DETB_JRNL_LOG and inserting new DETB_JRNL_LOG_HIST entries"""
+        """Fix rejected journal entries for a Reference_sub_No"""
         reference_sub_no = request.data.get('Reference_sub_No')
         comments = request.data.get('comments')
         fcy_amount = request.data.get('Fcy_Amount')
         addl_text = request.data.get('Addl_text')
         addl_sub_text = request.data.get('Addl_sub_text')
-        glsub_id = request.data.get('glsub_id')  # For debit entry
-        relative_glsub_id = request.data.get('relative_glsub_id')  # For credit entry
+        glsub_id = request.data.get('glsub_id')
+        relative_glsub_id = request.data.get('relative_glsub_id')
+        
+        # ✅ ADD THESE - Get the formatted account numbers from frontend
+        account_no = request.data.get('Account_no')  # e.g., "00.1131130.0000002"
+        ac_relatives = request.data.get('Ac_relatives')  # e.g., "00.1131130.0000001"
 
         # Validate required fields
         if not reference_sub_no:
@@ -4668,24 +4672,6 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'detail': 'Comments are required for fixing rejected entries'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if len(comments) > 1000:
-            return Response({
-                'error': 'Invalid comments',
-                'detail': 'Comments must not exceed 1000 characters'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Validate Fcy_Amount if provided
-        if fcy_amount is not None:
-            try:
-                fcy_amount = Decimal(str(fcy_amount))
-                if fcy_amount < 0:
-                    raise ValueError
-            except (ValueError, TypeError):
-                return Response({
-                    'error': 'Invalid Fcy_Amount',
-                    'detail': 'Fcy_Amount must be a valid non-negative decimal'
-                }, status=status.HTTP_400_BAD_REQUEST)
-
         # Validate glsub_id and relative_glsub_id if provided
         glsub = None
         relative_glsub = None
@@ -4695,6 +4681,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     'error': 'Missing account fields',
                     'detail': 'Both glsub_id and relative_glsub_id must be provided together'
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # ✅ VALIDATE that Account_no and Ac_relatives are also provided
+            if not (account_no and ac_relatives):
+                return Response({
+                    'error': 'Missing account number fields',
+                    'detail': 'Both Account_no and Ac_relatives must be provided with account IDs'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
             try:
                 glsub = MTTB_GLSub.objects.get(glsub_id=glsub_id)
                 relative_glsub = MTTB_GLSub.objects.get(glsub_id=relative_glsub_id)
@@ -4706,7 +4700,6 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
-                # Find journal entries matching the Reference_sub_No
                 journal_entries = DETB_JRNL_LOG.objects.filter(
                     Reference_sub_No=reference_sub_no,
                     Auth_Status__in=['P','U']
@@ -4715,85 +4708,86 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 if not journal_entries.exists():
                     return Response({
                         'error': 'No matching rejected journal entries found',
-                        'detail': f'No entries found for Reference_sub_No: {reference_sub_no} with Auth_Status P'
+                        'detail': f'No entries found for Reference_sub_No: {reference_sub_no}'
                     }, status=status.HTTP_404_NOT_FOUND)
 
-                # Verify exactly two entries (debit and credit pair)
                 if len(journal_entries) != 2:
                     return Response({
                         'error': 'Incomplete pair found',
                         'detail': 'Expected exactly two paired entries (debit and credit)'
                     }, status=status.HTTP_400_BAD_REQUEST)
 
-                # Verify debit/credit pairing
-                dr_cr_values = {entry.Dr_cr for entry in journal_entries}
-                if dr_cr_values != {'D', 'C'}:
-                    return Response({
-                        'error': 'Invalid debit/credit pair',
-                        'detail': 'Paired entries must include one debit (D) and one credit (C)'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-                # Get Reference_No for master entry update
                 reference_no = journal_entries.first().Reference_No
 
-                # Prepare update fields for journal entries
+                # Prepare update fields
                 update_fields = {
                     'Auth_Status': 'U',
                     'Checker_DT_Stamp': timezone.now(),
                     'Checker_Id': request.user,
                     'comments': comments
                 }
+                
                 if fcy_amount is not None:
-                    update_fields['Fcy_Amount'] = fcy_amount
-                    update_fields['Lcy_Amount'] = None  # Will be calculated per entry
+                    update_fields['Fcy_Amount'] = Decimal(str(fcy_amount))
+                    update_fields['Lcy_Amount'] = None
                     update_fields['fcy_dr'] = None
                     update_fields['fcy_cr'] = None
                     update_fields['lcy_dr'] = None
                     update_fields['lcy_cr'] = None
+                    
                 if addl_text is not None:
                     update_fields['Addl_text'] = addl_text[:255]
                 if addl_sub_text is not None:
                     update_fields['Addl_sub_text'] = addl_sub_text[:255]
+                    
                 if glsub_id is not None:
-                    update_fields['Account'] = None  # ✅ FIXED: Use 'Account' not 'Account_id'
+                    update_fields['Account'] = None
                     update_fields['Account_no'] = None
                     update_fields['Ac_relatives'] = None
 
-                # Update journal entries and create history entries
                 updated_counts = {
                     'journal_entries': 0,
                     'history_entries': 0,
                     'master_entry': 0
                 }
-                history_entries_created = []
 
-                # Process debit and credit entries
                 debit_entry = next(e for e in journal_entries if e.Dr_cr == 'D')
                 credit_entry = next(e for e in journal_entries if e.Dr_cr == 'C')
 
-                for entry, new_account, paired_account in [
-                    (debit_entry, glsub, relative_glsub),
-                    (credit_entry, relative_glsub, glsub)
+                # ✅ FIXED: Process entries with correct Account_no and Ac_relatives
+                for entry, new_account, is_debit in [
+                    (debit_entry, glsub, True),
+                    (credit_entry, relative_glsub, False)
                 ]:
                     # Calculate amounts if Fcy_Amount is provided
                     if fcy_amount is not None:
+                        fcy_amt = Decimal(str(fcy_amount))
                         exchange_rate = entry.Exch_rate
-                        lcy_amount = fcy_amount * exchange_rate
+                        lcy_amount = fcy_amt * exchange_rate
                         update_fields.update({
                             'Lcy_Amount': lcy_amount,
-                            'fcy_dr': fcy_amount if entry.Dr_cr == 'D' else Decimal('0.00'),
-                            'fcy_cr': fcy_amount if entry.Dr_cr == 'C' else Decimal('0.00'),
+                            'fcy_dr': fcy_amt if entry.Dr_cr == 'D' else Decimal('0.00'),
+                            'fcy_cr': fcy_amt if entry.Dr_cr == 'C' else Decimal('0.00'),
                             'lcy_dr': lcy_amount if entry.Dr_cr == 'D' else Decimal('0.00'),
                             'lcy_cr': lcy_amount if entry.Dr_cr == 'C' else Decimal('0.00')
                         })
 
-                    # Update account fields if provided
+                    # ✅ CRITICAL FIX: Use the formatted account numbers from frontend
                     if new_account is not None:
-                        update_fields.update({
-                            'Account': new_account,  # ✅ FIXED: Use 'Account' not 'Account_id'
-                            'Account_no': new_account.glsub_code,
-                            'Ac_relatives': paired_account.glsub_id if paired_account else entry.Ac_relatives
-                        })
+                        if is_debit:
+                            # For debit entry: Account_no is debit, Ac_relatives is credit
+                            update_fields.update({
+                                'Account': new_account,
+                                'Account_no': account_no,  # ✅ Use formatted value from frontend
+                                'Ac_relatives': ac_relatives  # ✅ Use formatted value from frontend
+                            })
+                        else:
+                            # For credit entry: Account_no is credit, Ac_relatives is debit
+                            update_fields.update({
+                                'Account': new_account,
+                                'Account_no': ac_relatives,  # ✅ Swap for credit entry
+                                'Ac_relatives': account_no   # ✅ Swap for credit entry
+                            })
 
                     # Update journal entry
                     for field, value in update_fields.items():
@@ -4802,14 +4796,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     entry.save()
                     updated_counts['journal_entries'] += 1
 
-                    # Create new history entry
+                    # Create history entry
                     history_entry = DETB_JRNL_LOG_HIST.objects.create(
                         module_id_id=entry.module_id_id,
                         Reference_No=entry.Reference_No,
                         Reference_sub_No=entry.Reference_sub_No,
                         comments=comments,
                         Ccy_cd_id=entry.Ccy_cd_id,
-                        Fcy_Amount=fcy_amount if fcy_amount is not None else entry.Fcy_Amount,
+                        Fcy_Amount=update_fields.get('Fcy_Amount', entry.Fcy_Amount),
                         Lcy_Amount=update_fields.get('Lcy_Amount', entry.Lcy_Amount),
                         fcy_dr=update_fields.get('fcy_dr', entry.fcy_dr),
                         fcy_cr=update_fields.get('fcy_cr', entry.fcy_cr),
@@ -4817,28 +4811,26 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_cr=update_fields.get('lcy_cr', entry.lcy_cr),
                         Dr_cr=entry.Dr_cr,
                         Ac_relatives=update_fields.get('Ac_relatives', entry.Ac_relatives),
-                        Account=update_fields.get('Account', entry.Account),  # ✅ FIXED: Use 'Account' not 'Account_id'
+                        Account=update_fields.get('Account', entry.Account),
                         Account_no=update_fields.get('Account_no', entry.Account_no),
                         Txn_code_id=entry.Txn_code_id,
                         Value_date=entry.Value_date,
                         Exch_rate=entry.Exch_rate,
                         fin_cycle_id=entry.fin_cycle_id,
                         Period_code_id=entry.Period_code_id,
-                        Addl_text=addl_text[:255] if addl_text is not None else entry.Addl_text,
-                        Addl_sub_text=addl_sub_text[:255] if addl_sub_text is not None else entry.Addl_sub_text,
+                        Addl_text=update_fields.get('Addl_text', entry.Addl_text),
+                        Addl_sub_text=update_fields.get('Addl_sub_text', entry.Addl_sub_text),
                         Maker_Id=entry.Maker_Id,
                         Maker_DT_Stamp=entry.Maker_DT_Stamp,
                         Checker_Id=request.user,
                         Checker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
                     )
-                    history_entries_created.append(history_entry)
                     updated_counts['history_entries'] += 1
 
                 # Update master entry
                 master_entry = DETB_JRNL_LOG_MASTER.objects.filter(Reference_No=reference_no)
                 if master_entry.exists():
-                    # Recalculate total Fcy_Amount and Lcy_Amount for the Reference_No
                     all_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
                     total_fcy = sum(e.fcy_dr for e in all_entries)
                     total_lcy = sum(e.lcy_dr for e in all_entries)
@@ -4850,72 +4842,66 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Lcy_Amount=total_lcy
                     )
 
-                # Log the fix
                 logger.info(f"Fixed rejected journal batch - Reference_sub_No: {reference_sub_no}, "
-                        f"Reference_No: {reference_no}, "
-                        f"Comments: {comments}, "
-                        f"glsub_id: {glsub_id}, "
-                        f"relative_glsub_id: {relative_glsub_id}, "
-                        f"Counts: {updated_counts}")
+                        f"Account_no: {account_no}, Ac_relatives: {ac_relatives}")
 
                 return Response({
-                    'message': 'Successfully fixed rejected journal entries and set Auth_Status to U',
+                    'message': 'Successfully fixed rejected journal entries',
                     'reference_sub_no': reference_sub_no,
                     'reference_no': reference_no,
-                    'comments': comments,
-                    'glsub_id': glsub_id,
-                    'relative_glsub_id': relative_glsub_id,
+                    'account_no': account_no,
+                    'ac_relatives': ac_relatives,
                     'updated_counts': updated_counts
                 }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Error fixing rejected journal entries for Reference_sub_No: {reference_sub_no}: {str(e)}")
+            logger.error(f"Error fixing rejected journal entries: {str(e)}")
             return Response({
                 'error': 'Failed to fix rejected journal entries',
                 'detail': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)  
-        
-    @action(detail=False, methods=['get'])
-    def balance_check(self, request):
-        """Check if journal entries are balanced by reference number"""
-        reference_no = request.query_params.get('reference_no')
-        
-        if not reference_no:
-            return Response({'error': 'reference_no parameter is required'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-        
-        entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
-        
-        if not entries.exists():
-            return Response({'error': 'No entries found for this reference number'}, 
-                          status=status.HTTP_404_NOT_FOUND)
-        
-        # Calculate totals
-        totals = entries.aggregate(
-            total_lcy_dr=Sum('lcy_dr'),
-            total_lcy_cr=Sum('lcy_cr'),
-            total_fcy_dr=Sum('fcy_dr'),
-            total_fcy_cr=Sum('fcy_cr')
-        )
-        
-        lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
-        fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
-        
-        return Response({
-            'reference_no': reference_no,
-            'entry_count': entries.count(),
-            'lcy_totals': {
-                'debit': totals['total_lcy_dr'] or 0,
-                'credit': totals['total_lcy_cr'] or 0,
-                'balanced': lcy_balanced
-            },
-            'fcy_totals': {
-                'debit': totals['total_fcy_dr'] or 0,
-                'credit': totals['total_fcy_cr'] or 0,
-                'balanced': fcy_balanced
-            },
-            'overall_balanced': lcy_balanced and fcy_balanced
-        })
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        @action(detail=False, methods=['get'])
+        def balance_check(self, request):
+            """Check if journal entries are balanced by reference number"""
+            reference_no = request.query_params.get('reference_no')
+            
+            if not reference_no:
+                return Response({'error': 'reference_no parameter is required'}, 
+                            status=status.HTTP_400_BAD_REQUEST)
+            
+            entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+            
+            if not entries.exists():
+                return Response({'error': 'No entries found for this reference number'}, 
+                            status=status.HTTP_404_NOT_FOUND)
+            
+            # Calculate totals
+            totals = entries.aggregate(
+                total_lcy_dr=Sum('lcy_dr'),
+                total_lcy_cr=Sum('lcy_cr'),
+                total_fcy_dr=Sum('fcy_dr'),
+                total_fcy_cr=Sum('fcy_cr')
+            )
+            
+            lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
+            fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
+            
+            return Response({
+                'reference_no': reference_no,
+                'entry_count': entries.count(),
+                'lcy_totals': {
+                    'debit': totals['total_lcy_dr'] or 0,
+                    'credit': totals['total_lcy_cr'] or 0,
+                    'balanced': lcy_balanced
+                },
+                'fcy_totals': {
+                    'debit': totals['total_fcy_dr'] or 0,
+                    'credit': totals['total_fcy_cr'] or 0,
+                    'balanced': fcy_balanced
+                },
+                'overall_balanced': lcy_balanced and fcy_balanced
+            })
 
     @action(detail=False, methods=["post"], url_path="approve-asset")
     def approve_asset(self, request):
