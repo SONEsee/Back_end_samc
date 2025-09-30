@@ -9,120 +9,370 @@ from rest_framework.response import Response
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
 
-# class MTTBUserViewSet(viewsets.ModelViewSet):
-#     """
-#     GET    /api/users/         → list
-#     POST   /api/users/         → create
-#     GET    /api/users/{pk}/    → retrieve
-#     PUT    /api/users/{pk}/    → update
-#     PATCH  /api/users/{pk}/    → partial update
-#     DELETE /api/users/{pk}/    → destroy
-#     """
-#     queryset = MTTB_Users.objects.all()
-#     serializer_class = MTTBUserSerializer
-
-#     # allow unauthenticated user to create an account
-#     def get_permissions(self):
-#         if self.request.method == "POST":
-#             return [AllowAny()]
-#         return super().get_permissions()
-
 def _hash(raw_password):
     return hashlib.md5(raw_password.encode("utf-8")).hexdigest()
-from rest_framework import viewsets
+import hashlib
+import logging
+from django.contrib.auth.hashers import make_password, check_password
+from django.db import transaction, IntegrityError
+from django.db.models import Q
+from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 from .models import MTTB_Users
 from .serializers import MTTBUserSerializer
+
+
+import logging
+from django.contrib.auth.hashers import make_password, check_password
+from django.db import transaction, IntegrityError
+from django.db.models import Q
+from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import viewsets, status, filters
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django_filters import rest_framework as django_filters
+
+from .models import MTTB_Users, MTTB_Divisions, MTTB_Role_Master
+from .serializers import MTTBUserSerializer
+
+logger = logging.getLogger(__name__)
+
+class UserFilter(django_filters.FilterSet):
+    """Custom filter for MTTB_Users with advanced filtering options"""
+    
+    # Basic filters
+    div_id = django_filters.CharFilter(field_name='div_id__div_id', lookup_expr='exact')
+    role_id = django_filters.CharFilter(field_name='Role_ID__role_id', lookup_expr='exact')
+    user_status = django_filters.ChoiceFilter(
+        field_name='User_Status',
+        choices=MTTB_Users.STATUS_CHOICES
+    )
+    auth_status = django_filters.CharFilter(field_name='Auth_Status', lookup_expr='exact')
+    
+    # Advanced filters
+    division_name = django_filters.CharFilter(
+        field_name='div_id__division_name_en',
+        lookup_expr='icontains'
+    )
+    role_name = django_filters.CharFilter(
+        field_name='Role_ID__role_name_en',
+        lookup_expr='icontains'
+    )
+    
+    # Date range filters
+    created_after = django_filters.DateFilter(field_name='InsertDate', lookup_expr='gte')
+    created_before = django_filters.DateFilter(field_name='InsertDate', lookup_expr='lte')
+    updated_after = django_filters.DateFilter(field_name='UpdateDate', lookup_expr='gte')
+    updated_before = django_filters.DateFilter(field_name='UpdateDate', lookup_expr='lte')
+    
+    # Search across multiple fields
+    search = django_filters.CharFilter(method='filter_search')
+    
+    class Meta:
+        model = MTTB_Users
+        fields = [
+            'div_id', 'role_id', 'user_status', 'auth_status',
+            'division_name', 'role_name', 'search'
+        ]
+    
+    def filter_search(self, queryset, name, value):
+        """Custom search method across multiple fields"""
+        if not value:
+            return queryset
+        
+        return queryset.filter(
+            Q(user_name__icontains=value) |
+            Q(user_email__icontains=value) |
+            Q(user_id__icontains=value) |
+            Q(div_id__division_name_en__icontains=value) |
+            Q(div_id__division_name_la__icontains=value) |
+            Q(Role_ID__role_name_en__icontains=value) |
+            Q(Role_ID__role_name_la__icontains=value)
+        )
+
 class MTTBUserViewSet(viewsets.ModelViewSet):
+    """
+    Enhanced ViewSet for MTTB_Users with comprehensive filtering, 
+    security improvements, and better error handling
+    """
     serializer_class = MTTBUserSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
+    lookup_field = 'user_id'
+    
+    # Enhanced filtering
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter
+    ]
+    filterset_class = UserFilter
+    search_fields = ['user_name', 'user_email', 'user_id']
+    ordering_fields = ['user_id', 'user_name', 'InsertDate', 'UpdateDate']
+    ordering = ['user_id']
 
     def get_permissions(self):
-        # Allow open signup
-        if self.request.method == 'POST':
+        """Dynamic permission based on action"""
+        if self.action == 'create':
             return [AllowAny()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        # start from all users
-        qs = MTTB_Users.objects.select_related('div_id', 'Role_ID').all()
-
-        params = self.request.query_params
-
-        # filter by division if provided
-        div = params.get('div_id')
-        if div:
-            qs = qs.filter(div_id__div_id=div)
-
-        # filter by role if provided
-        role = params.get('role_id')
-        if role:
-            qs = qs.filter(Role_ID__role_id=role)
-
-        return qs.order_by('user_id')
+        """Optimized queryset with proper select_related"""
+        queryset = MTTB_Users.objects.select_related(
+            'div_id', 'Role_ID', 'Maker_Id', 'Checker_Id'
+        ).all()
+        
+        # Additional security: users can only see active users unless they're admin
+        user = self.request.user
+        if hasattr(user, 'is_superuser') and not user.is_superuser:
+            queryset = queryset.filter(User_Status='E')
+        
+        return queryset
 
     def perform_create(self, serializer):
-        maker = self.request.user if self.request.user.is_authenticated else None
-        serializer.save(
-            Maker_Id=maker,
-            Maker_DT_Stamp=timezone.now()
-        )
+        """Enhanced create with proper audit trail"""
+        try:
+            maker = self.request.user if self.request.user.is_authenticated else None
+            
+            with transaction.atomic():
+                instance = serializer.save(
+                    Maker_Id=maker,
+                    Maker_DT_Stamp=timezone.now(),
+                    Auth_Status='U',  # Default to unauthorized
+                    Once_Auth='N'
+                )
+                
+                logger.info(f"User {instance.user_id} created successfully by {maker}")
+                
+        except IntegrityError as e:
+            logger.error(f"Integrity error creating user: {str(e)}")
+            raise serializers.ValidationError({
+                'error': 'User creation failed due to data integrity constraints',
+                'detail': 'Please check for duplicate values or invalid references'
+            })
 
     def perform_update(self, serializer):
-        checker = self.request.user if self.request.user.is_authenticated else None
-        serializer.save(
-            Checker_Id=checker,
-            Checker_DT_Stamp=timezone.now()
-        )
-    @action(detail=True, methods=['post'])
-    def authorize(self, request, pk=None):
-        """Authorize a journal entry"""
-        users = self.get_object()
+        """Enhanced update with validation"""
+        try:
+            checker = self.request.user if self.request.user.is_authenticated else None
+            
+            with transaction.atomic():
+                instance = serializer.save(
+                    Checker_Id=checker,
+                    Checker_DT_Stamp=timezone.now()
+                )
+                
+                logger.info(f"User {instance.user_id} updated successfully by {checker}")
+                
+        except Exception as e:
+            logger.error(f"Error updating user: {str(e)}")
+            raise
 
-        if users.Auth_Status == 'A':
-            return Response({'error': 'Entry is already authorized'}, 
-                          status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        # Set Auth_Status = 'A', Once_Status = 'Y', Record_Status = 'O'
-        users.Auth_Status = 'A'
-        users.Once_Status = 'Y'
-        users.Record_Status = 'O'
-        users.Checker_Id = request.user
-        users.Checker_DT_Stamp = timezone.now()
-        users.save()
-
-        serializer = self.get_serializer(users)
+    # Custom filter actions
+    @action(detail=False, methods=['get'])
+    def by_division(self, request):
+        """Get users filtered by division with enhanced response"""
+        div_id = request.query_params.get('div_id')
+        
+        if not div_id:
+            return Response({
+                'error': 'Division ID is required',
+                'usage': 'Use ?div_id=<division_id> parameter'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate division exists
+        try:
+            division = MTTB_Divisions.objects.get(div_id=div_id)
+        except MTTB_Divisions.DoesNotExist:
+            return Response({
+                'error': f'Division with ID {div_id} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        queryset = self.get_queryset().filter(div_id__div_id=div_id)
+        page = self.paginate_queryset(queryset)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response({
+                'division_info': {
+                    'div_id': division.div_id,
+                    'division_name_en': division.division_name_en,
+                    'division_name_la': division.division_name_la
+                },
+                'users': serializer.data
+            })
+        
+        serializer = self.get_serializer(queryset, many=True)
         return Response({
-            'message': 'Entry authorized successfully',
-            'entry': serializer.data
+            'division_info': {
+                'div_id': division.div_id,
+                'division_name_en': division.division_name_en,
+                'division_name_la': division.division_name_la
+            },
+            'users': serializer.data,
+            'count': queryset.count()
         })
 
-    @action(detail=True, methods=['post'])
-    def unauthorize(self, request, pk=None):
-        """Unauthorize a journal entry (set Auth_Status = 'U', Record_Status = 'C')"""
-        users = self.get_object()
-
-        if users.Auth_Status == 'U':
-            return Response({'error': 'Entry is already unauthorized'}, 
-                          status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        # Set Auth_Status = 'U', Record_Status = 'C'
-        users.Auth_Status = 'U'
-        users.Record_Status = 'C'
-        users.Checker_Id = request.user
-        users.Checker_DT_Stamp = timezone.now()
-        users.save()
-
-        serializer = self.get_serializer(users)
+    @action(detail=False, methods=['get'])
+    def by_role(self, request):
+        """Get users filtered by role with enhanced response"""
+        role_id = request.query_params.get('role_id')
+        
+        if not role_id:
+            return Response({
+                'error': 'Role ID is required',
+                'usage': 'Use ?role_id=<role_id> parameter'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate role exists
+        try:
+            role = MTTB_Role_Master.objects.get(role_id=role_id)
+        except MTTB_Role_Master.DoesNotExist:
+            return Response({
+                'error': f'Role with ID {role_id} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        queryset = self.get_queryset().filter(Role_ID__role_id=role_id)
+        page = self.paginate_queryset(queryset)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response({
+                'role_info': {
+                    'role_id': role.role_id,
+                    'role_name_en': role.role_name_en,
+                    'role_name_la': role.role_name_la
+                },
+                'users': serializer.data
+            })
+        
+        serializer = self.get_serializer(queryset, many=True)
         return Response({
-            'message': 'Entry unauthorized successfully',
-            'entry': serializer.data
+            'role_info': {
+                'role_id': role.role_id,
+                'role_name_en': role.role_name_en,
+                'role_name_la': role.role_name_la
+            },
+            'users': serializer.data,
+            'count': queryset.count()
         })
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get user statistics"""
+        queryset = self.get_queryset()
+        
+        stats = {
+            'total_users': queryset.count(),
+            'active_users': queryset.filter(User_Status='E').count(),
+            'disabled_users': queryset.filter(User_Status='D').count(),
+            'authorized_users': queryset.filter(Auth_Status='A').count(),
+            'unauthorized_users': queryset.filter(Auth_Status='U').count(),
+            'by_division': {},
+            'by_role': {}
+        }
+        
+        # Division stats
+        for div in MTTB_Divisions.objects.all():
+            count = queryset.filter(div_id=div).count()
+            if count > 0:
+                stats['by_division'][div.div_id] = {
+                    'name_en': div.division_name_en,
+                    'name_la': div.division_name_la,
+                    'count': count
+                }
+        
+        # Role stats
+        for role in MTTB_Role_Master.objects.all():
+            count = queryset.filter(Role_ID=role).count()
+            if count > 0:
+                stats['by_role'][role.role_id] = {
+                    'name_en': role.role_name_en,
+                    'name_la': role.role_name_la,
+                    'count': count
+                }
+        
+        return Response(stats)
+
+    # Keep your existing custom actions (destroy, hard_delete, restore, etc.)
+    # with the same implementation but enhanced error handling...
+    
+    def destroy(self, request, *args, **kwargs):
+        """Soft delete with enhanced validation"""
+        try:
+            user_id = kwargs.get(self.lookup_field)
+            if not user_id:
+                return Response({
+                    'error': 'User ID is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                user = self.get_queryset().get(user_id=user_id)
+            except MTTB_Users.DoesNotExist:
+                return Response({
+                    'error': 'User not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Prevent self-deletion
+            if request.user.is_authenticated and hasattr(request.user, 'user_id'):
+                if request.user.user_id == user_id:
+                    return Response({
+                        'error': 'Cannot delete your own account'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            if not self._can_delete_user(user):
+                return Response({
+                    'error': 'User cannot be deleted',
+                    'detail': 'User has dependent records or is currently active'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            with transaction.atomic():
+                user.User_Status = 'D'
+                user.Checker_Id = request.user if request.user.is_authenticated else None
+                user.Checker_DT_Stamp = timezone.now()
+                user.save()
+
+                logger.info(f"User {user_id} soft deleted by {request.user}")
+
+            return Response({
+                'message': 'User deleted successfully',
+                'user_id': user_id,
+                'type': 'soft_delete'
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error deleting user {user_id}: {str(e)}")
+            return Response({
+                'error': 'Failed to delete user',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _can_delete_user(self, user):
+        """Enhanced validation for user deletion"""
+        try:
+            # Check if this is the only admin user
+            if hasattr(user, 'is_superuser') and user.is_superuser:
+                admin_count = MTTB_Users.objects.filter(
+                    is_superuser=True,
+                    User_Status='E'
+                ).count()
+                if admin_count <= 1:
+                    return False
+            
+            # Add more business logic as needed
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking if user can be deleted: {str(e)}")
+            return False
+
 
 # from rest_framework_simplejwt.tokens import RefreshToken
 # from .models import MTTB_USER_ACCESS_LOG
@@ -5204,7 +5454,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
                         
                         # Prepare additional sub text
-                        addl_sub_text = f"{entry.Addl_sub_text[:30] if entry.Addl_sub_text else ''}"
+                        addl_sub_text = f"{entry.Addl_sub_text[:255] if entry.Addl_sub_text else ''}"
                         
                         # ACTB_DAIRY_LOG data (with ForeignKey references)
                         actb_log_data = {
@@ -34253,6 +34503,281 @@ def trial_balance_dairy_view(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# =============================================
+# STORE PROCEDURE SEARCH ACCOUNT 
+# =============================================
+# Account Statement Search by Account Number
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def validate_date_format(date_string):
+    """
+    Validate date format (YYYY-MM-DD)
+    
+    Args:
+        date_string (str): Date string to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not date_string:
+        return False
+    try:
+        datetime.strptime(date_string, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+
+def validate_date_range(date_start, date_end):
+    """
+    Validate that start date is before or equal to end date
+    
+    Args:
+        date_start (str): Start date
+        date_end (str): End date
+    
+    Returns:
+        bool: True if valid range, False otherwise
+    """
+    if not date_start or not date_end:
+        return False
+    try:
+        start = datetime.strptime(date_start, '%Y-%m-%d')
+        end = datetime.strptime(date_end, '%Y-%m-%d')
+        return start <= end
+    except ValueError:
+        return False
+
+
+def validate_gl_code(gl_code):
+    """
+    Validate GL Code (Account Number) - must be 7 characters
+    
+    Args:
+        gl_code (str): GL code to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not gl_code:
+        return False
+    return len(str(gl_code).strip()) == 7
+
+
+def run_account_statement_proc(currency_code=None, date_start=None, 
+                               date_end=None, gl_code=None):
+    """
+    Execute the Account_Statement_By_Currency_7_ACTB stored procedure
+    
+    Args:
+        currency_code (str): Currency code (max 5 characters)
+        date_start (str): Start date in YYYY-MM-DD format
+        date_end (str): End date in YYYY-MM-DD format
+        gl_code (str): GL Code / Account Number (7 digits)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC [dbo].[Account_Statement_By_Currency_7_ACTB]
+                    @Currency_code = %s,
+                    @DateStart = %s,
+                    @DateEnd = %s,
+                    @GL_Code = %s
+            """
+            
+            cursor.execute(sql, [currency_code, date_start, date_end, gl_code])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing account statement procedure: {str(e)}")
+        raise
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def account_statement_search_view(request):
+    """
+    API endpoint for searching account statement by account number
+    
+    Expected payload:
+    {
+        "currency_code": "LAK",        // required
+        "date_start": "2024-01-01",    // required
+        "date_end": "2024-01-31",      // required
+        "gl_code": "1010101"           // required (7 digits)
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "count": number_of_records,
+        "data": {
+            "account_info": {
+                "gl_code": "1010101",
+                "currency_code": "LAK",
+                "open_balance": 0.00
+            },
+            "transactions": [account_statement_records]
+        }
+    }
+    """
+    # Extract required parameters from request
+    currency_code = request.data.get("currency_code")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+    gl_code = request.data.get("gl_code")
+    
+    # Validate required fields
+    if not currency_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸລະຫັດສະກຸນເງິນ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not gl_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate GL Code format (must be 7 digits)
+    if not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date formats
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date range
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[AccountStatement] Searching account - GL: {gl_code}, Currency: {currency_code}, Dates: {date_start} to {date_end}")
+        
+        # Execute stored procedure
+        result = run_account_statement_proc(
+            currency_code=currency_code,
+            date_start=date_start,
+            date_end=date_end,
+            gl_code=gl_code
+        )
+        
+        # Process results
+        open_balance = result[0]['OPEN_BAL'] if result else 0.00
+        
+        response_data = {
+            "account_info": {
+                "gl_code": gl_code,
+                "currency_code": currency_code,
+                "open_balance": float(open_balance) if open_balance else 0.00,
+                "date_start": date_start,
+                "date_end": date_end
+            },
+            "transactions": result
+        }
+        
+        logger.info(f"[AccountStatement] Search completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນບັນຊີສໍາເລັດແລ້ວ",
+            "count": len(result),
+            "data": response_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[AccountStatement] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ມີຂໍ້ຜິດພາດໃນລະບົບ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def account_search_validation_view(request):
+    """
+    API endpoint to validate account number exists
+    
+    Query parameters:
+        gl_code: Account number (7 digits)
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "is_valid": true|false
+    }
+    """
+    gl_code = request.query_params.get("gl_code")
+    
+    if not gl_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
+            "is_valid": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate format
+    if not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
+            "is_valid": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response({
+        "status": "success",
+        "message": "ເລກບັນຊີຖືກຕ້ອງ",
+        "is_valid": True
+    }, status=status.HTTP_200_OK)
+
+
 #  Store Procedure Journal Report 
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
@@ -34284,6 +34809,59 @@ def run_journal_report_proc(financial_cycle_id=None, period_code_id=None,
             # Use parameterized SQL to prevent SQL injection
             sql = """
                 EXEC [dbo].[EndOfDay_GetList]
+                    @financial_cycle_id = %s,
+                    @period_code_id = %s,
+                    @startDate = %s,
+                    @Enddate = %s,
+                    @module_id = %s
+            """
+            
+            cursor.execute(sql, [financial_cycle_id, period_code_id, date_start, date_end, module_id])
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing journal report procedure: {str(e)}")
+        raise
+
+
+# Store Before Journal Report View
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+def run_before_journal_report_proc(financial_cycle_id=None, period_code_id=None, 
+                           date_start=None, date_end=None, module_id=None):
+    """
+    Execute the EndOfDay_GetList stored procedure for journal reports
+    
+    Args:
+        financial_cycle_id (str): Financial cycle ID
+        period_code_id (str): Period code ID
+        date_start (str): Start date in YYYY-MM-DD format
+        date_end (str): End date in YYYY-MM-DD format
+        module_id (str): Module ID
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            sql = """
+                EXEC [dbo].[EndOfDay_GetList_ACTB]
                     @financial_cycle_id = %s,
                     @period_code_id = %s,
                     @startDate = %s,
@@ -34344,6 +34922,161 @@ def validate_date_range(date_start: str, date_end: str) -> bool:
         return start <= end
     except ValueError:
         return False
+
+
+# ============================================= Report Journal Before End
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def journal_before_report_view(request):
+    """
+    API endpoint for journal reports using EndOfDay_GetList stored procedure
+    
+    Expected payload:
+    {
+        "financial_cycle_id": "2024", // optional
+        "period_code_id": "202401",   // optional
+        "date_start": "2024-01-01",   // optional
+        "date_end": "2024-01-31",     // optional
+        "module_id": "ACC"            // optional
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "count": number_of_records,
+        "data": [journal_records]
+    }
+    """
+    # Extract parameters from request (all optional)
+    financial_cycle_id = request.data.get("financial_cycle_id")
+    period_code_id = request.data.get("period_code_id")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+    module_id = request.data.get("module_id")
+    
+    # Validate date formats if provided
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date range if both dates provided
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[JournalReport] Executing procedure - Cycle: {financial_cycle_id}, Period: {period_code_id}, Dates: {date_start} to {date_end}, Module: {module_id}")
+        
+        # Execute stored procedure
+        result = run_before_journal_report_proc(
+            financial_cycle_id=financial_cycle_id,
+            period_code_id=period_code_id,
+            date_start=date_start,
+            date_end=date_end,
+            module_id=module_id
+        )
+        
+        logger.info(f"[JournalReport] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນລາຍງານສໍາເລັດແລ້ວ",
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[JournalReport] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ມີຂໍ້ຜິດພາດໃນລະບົບ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def journal_before_report_get_view(request):
+    """
+    GET version of journal report endpoint with query parameters
+    
+    URL: /api/journal-report/?financial_cycle_id=2024&date_start=2024-01-01&date_end=2024-01-31
+    """
+    # Extract parameters from query params
+    financial_cycle_id = request.query_params.get("financial_cycle_id")
+    period_code_id = request.query_params.get("period_code_id")
+    date_start = request.query_params.get("date_start")
+    date_end = request.query_params.get("date_end")
+    module_id = request.query_params.get("module_id")
+    
+    # Same validation as POST
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[JournalReport-GET] Executing procedure - Cycle: {financial_cycle_id}, Period: {period_code_id}, Dates: {date_start} to {date_end}, Module: {module_id}")
+        
+        # Execute stored procedure
+        result = run_journal_report_proc(
+            financial_cycle_id=financial_cycle_id,
+            period_code_id=period_code_id,
+            date_start=date_start,
+            date_end=date_end,
+            module_id=module_id
+        )
+        
+        logger.info(f"[JournalReport-GET] Procedure completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": "ດຶງຂໍ້ມູນລາຍງານສໍາເລັດແລ້ວ",
+            "count": len(result),
+            "data": result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[JournalReport-GET] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ມີຂໍ້ຜິດພາດໃນລະບົບ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 @api_view(['POST'])

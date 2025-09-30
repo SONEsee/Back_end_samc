@@ -1,73 +1,338 @@
-import hashlib
+import re
+from django.contrib.auth.hashers import make_password
+from django.core.validators import EmailValidator
 from rest_framework import serializers
-from .models import MTTB_Users
-from .models import MTTB_Users, MTTB_Divisions, MTTB_Role_Master,STTB_ModulesInfo,MTTB_MAIN_MENU,MTTB_SUB_MENU,MTTB_Function_Desc
+from .models import MTTB_Users, MTTB_Divisions, MTTB_Role_Master
+
 class DivisionSerializer(serializers.ModelSerializer):
+    """Serializer for Division with additional info"""
+    user_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = MTTB_Divisions
-        fields = ['div_id', 'division_name_la', 'division_name_en', 'Record_Status']
+        fields = [
+            'div_id', 'division_name_la', 'division_name_en', 
+            'Record_Status', 'user_count'
+        ]
+    
+    def get_user_count(self, obj):
+        """Get count of active users in this division"""
+        return MTTB_Users.objects.filter(
+            div_id=obj, 
+            User_Status='E'
+        ).count()
 
 class RoleMasterSerializer(serializers.ModelSerializer):
+    """Serializer for Role Master with additional info"""
+    user_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = MTTB_Role_Master
-        fields = ['role_id', 'role_name_la', 'role_name_en', 'record_Status']
+        fields = [
+            'role_id', 'role_name_la', 'role_name_en', 
+            'record_Status', 'user_count'
+        ]
+    
+    def get_user_count(self, obj):
+        """Get count of active users with this role"""
+        return MTTB_Users.objects.filter(
+            Role_ID=obj, 
+            User_Status='E'
+        ).count()
 
 class MTTBUserSerializer(serializers.ModelSerializer):
-    # Nested read-only representations
+    """
+    Enhanced User serializer with improved security and validation
+    """
+    # Nested read-only representations with enhanced info
     division = DivisionSerializer(source='div_id', read_only=True)
-    role     = RoleMasterSerializer(source='Role_ID', read_only=True)
+    role = RoleMasterSerializer(source='Role_ID', read_only=True)
 
-    # Writable PK fields
-    div_id   = serializers.PrimaryKeyRelatedField(
-        queryset=MTTB_Divisions.objects.all(), write_only=True, required=False
+    # Writable PK fields with validation
+    div_id = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Divisions.objects.filter(Record_Status='O'),
+        write_only=True, 
+        required=False,
+        error_messages={
+            'does_not_exist': 'Invalid division ID or division is not active.',
+            'invalid_choice': 'Please select a valid division.'
+        }
     )
-    Role_ID  = serializers.PrimaryKeyRelatedField(
-        queryset=MTTB_Role_Master.objects.all(), write_only=True, required=False
+    Role_ID = serializers.PrimaryKeyRelatedField(
+        queryset=MTTB_Role_Master.objects.filter(record_Status='O'),
+        write_only=True, 
+        required=False,
+        error_messages={
+            'does_not_exist': 'Invalid role ID or role is not active.',
+            'invalid_choice': 'Please select a valid role.'
+        }
+    )
+
+    # Additional computed fields
+    full_name = serializers.SerializerMethodField()
+    is_active = serializers.SerializerMethodField()
+    is_authorized = serializers.SerializerMethodField()
+    profile_picture_url = serializers.SerializerMethodField()
+    
+    # Password confirmation for creation/updates
+    password_confirm = serializers.CharField(
+        write_only=True, 
+        required=False,
+        help_text="Password confirmation (required when setting password)"
     )
 
     class Meta:
         model = MTTB_Users
         fields = [
-            'user_id',
-            'user_name',
-            'user_password',
-            'user_email',
-            'user_mobile',
-            'User_Status',
-            'pwd_changed_on',
-            'div_id',
-            'division',
-            'Role_ID',
-            'role',
-            'profile_picture',
-            'InsertDate',
-            'UpdateDate',
-            'Maker_Id',
-            'Maker_DT_Stamp',
-            'Checker_Id',
-            'Checker_DT_Stamp',
-            'Auth_Status',
-            'Once_Auth',
+            'user_id', 'user_name', 'user_password', 'password_confirm',
+            'user_email', 'user_mobile', 'User_Status', 'pwd_changed_on',
+            'div_id', 'division', 'Role_ID', 'role',
+            'profile_picture', 'profile_picture_url',
+            'InsertDate', 'UpdateDate',
+            'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
+            'Auth_Status', 'Once_Auth',
+            'full_name', 'is_active', 'is_authorized'
         ]
         extra_kwargs = {
-            'user_password': {'write_only': True},
-             'profile_picture': {'required': False, 'allow_null': True},
+            'user_password': {
+                'write_only': True,
+                'style': {'input_type': 'password'},
+                'help_text': 'Password must be at least 8 characters with letters and numbers'
+            },
+            'profile_picture': {
+                'required': False, 
+                'allow_null': True,
+                'help_text': 'Upload profile picture (JPG, PNG, max 5MB)'
+            },
+            'user_id': {
+                'help_text': 'Unique user identifier (6-20 characters)'
+            },
+            'user_name': {
+                'help_text': 'Unique username (3-50 characters)'
+            },
+            'user_email': {
+                'help_text': 'Valid email address'
+            },
+            'user_mobile': {
+                'help_text': 'Mobile number with country code'
+            }
         }
 
-    def _hash(self, raw_password):
-        return hashlib.md5(raw_password.encode('utf-8')).hexdigest()
+    def get_full_name(self, obj):
+        """Get user's full display name"""
+        return obj.get_full_name()
+
+    def get_is_active(self, obj):
+        """Check if user is active"""
+        return obj.User_Status == 'E'
+
+    def get_is_authorized(self, obj):
+        """Check if user is authorized"""
+        return obj.Auth_Status == 'A'
+
+    def get_profile_picture_url(self, obj):
+        """Get full URL for profile picture"""
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+
+    def validate_user_id(self, value):
+        """Validate user ID format and uniqueness"""
+        if not value:
+            raise serializers.ValidationError("User ID is required.")
+        
+        # Check length
+        if len(value) < 3 or len(value) > 20:
+            raise serializers.ValidationError(
+                "User ID must be between 3 and 20 characters."
+            )
+        
+        # Check format (alphanumeric and underscores only)
+        if not re.match(r'^[a-zA-Z0-9_]+$', value):
+            raise serializers.ValidationError(
+                "User ID can only contain letters, numbers, and underscores."
+            )
+        
+        return value
+
+    def validate_user_name(self, value):
+        """Validate username"""
+        if not value:
+            raise serializers.ValidationError("Username is required.")
+        
+        if len(value) < 3 or len(value) > 50:
+            raise serializers.ValidationError(
+                "Username must be between 3 and 50 characters."
+            )
+        
+        # Check for valid characters (letters, numbers, spaces, common punctuation)
+        if not re.match(r'^[a-zA-Z0-9\s\.\-_]+$', value):
+            raise serializers.ValidationError(
+                "Username contains invalid characters."
+            )
+        
+        return value.strip()
+
+    def validate_user_email(self, value):
+        """Validate email format"""
+        if value:
+            validator = EmailValidator()
+            try:
+                validator(value)
+            except serializers.ValidationError:
+                raise serializers.ValidationError("Enter a valid email address.")
+        return value
+
+    def validate_user_mobile(self, value):
+        """Validate mobile number"""
+        if value:
+            # Remove all non-digit characters for validation
+            digits_only = re.sub(r'\D', '', value)
+            
+            if len(digits_only) < 8 or len(digits_only) > 15:
+                raise serializers.ValidationError(
+                    "Mobile number must be between 8 and 15 digits."
+                )
+        
+        return value
+
+    def validate_user_password(self, value):
+        """Enhanced password validation"""
+        if not value:
+            return value
+        
+        # Length check
+        if len(value) < 8:
+            raise serializers.ValidationError(
+                "Password must be at least 8 characters long."
+            )
+        
+        if len(value) > 128:
+            raise serializers.ValidationError(
+                "Password must not exceed 128 characters."
+            )
+        
+        # Complexity checks
+        if not re.search(r'[A-Za-z]', value):
+            raise serializers.ValidationError(
+                "Password must contain at least one letter."
+            )
+        
+        if not re.search(r'\d', value):
+            raise serializers.ValidationError(
+                "Password must contain at least one number."
+            )
+        
+        # Check for common weak passwords
+        weak_passwords = [
+            'password', '12345678', 'qwerty', 'abc123', 
+            'password123', '123456789', 'admin'
+        ]
+        if value.lower() in weak_passwords:
+            raise serializers.ValidationError(
+                "Password is too common. Please choose a stronger password."
+            )
+        
+        return value
+
+    def validate_profile_picture(self, value):
+        """Validate profile picture"""
+        if value:
+            # Check file size (max 5MB)
+            if value.size > 5 * 1024 * 1024:
+                raise serializers.ValidationError(
+                    "Profile picture must be smaller than 5MB."
+                )
+            
+            # Check file type
+            allowed_types = ['image/jpeg', 'image/png', 'image/jpg']
+            if hasattr(value, 'content_type') and value.content_type not in allowed_types:
+                raise serializers.ValidationError(
+                    "Only JPEG and PNG images are allowed."
+                )
+        
+        return value
+
+    def validate(self, attrs):
+        """Cross-field validation"""
+        # Password confirmation validation
+        password = attrs.get('user_password')
+        password_confirm = attrs.get('password_confirm')
+        
+        if password and password_confirm:
+            if password != password_confirm:
+                raise serializers.ValidationError({
+                    'password_confirm': "Passwords do not match."
+                })
+        
+        # Remove password_confirm from attrs as it's not a model field
+        attrs.pop('password_confirm', None)
+        
+        # Validate that user_id and user_name are different
+        user_id = attrs.get('user_id', getattr(self.instance, 'user_id', None))
+        user_name = attrs.get('user_name', getattr(self.instance, 'user_name', None))
+        
+        if user_id and user_name and user_id.lower() == user_name.lower():
+            raise serializers.ValidationError(
+                "Username and User ID should be different for security."
+            )
+        
+        return attrs
 
     def create(self, validated_data):
-        raw_pwd = validated_data.pop('user_password')
-        validated_data['user_password'] = self._hash(raw_pwd)
+        """Create user with secure password hashing"""
+        raw_password = validated_data.pop('user_password', None)
+        
+        if raw_password:
+            # Use Django's secure password hashing instead of MD5
+            validated_data['user_password'] = make_password(raw_password)
+        
+        # Set default values
+        validated_data.setdefault('User_Status', 'E')
+        validated_data.setdefault('Auth_Status', 'U')
+        validated_data.setdefault('Once_Auth', 'N')
+        
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        # If password is being updated, hash it
-        raw = validated_data.get('user_password')
-        if raw:
-            validated_data['user_password'] = self._hash(raw)
+        """Update user with secure password handling"""
+        raw_password = validated_data.get('user_password')
+        
+        if raw_password:
+            # Use Django's secure password hashing
+            validated_data['user_password'] = make_password(raw_password)
+            # Update password change date
+            validated_data['pwd_changed_on'] = timezone.now().date()
+        
         return super().update(instance, validated_data)
+
+# Simplified serializers for dropdown/selection purposes
+class DivisionChoiceSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for division choices"""
+    class Meta:
+        model = MTTB_Divisions
+        fields = ['div_id', 'division_name_en', 'division_name_la']
+
+class RoleChoiceSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for role choices"""
+    class Meta:
+        model = MTTB_Role_Master
+        fields = ['role_id', 'role_name_en', 'role_name_la']
+
+class UserSummarySerializer(serializers.ModelSerializer):
+    """Lightweight serializer for user listings"""
+    division_name = serializers.CharField(source='div_id.division_name_en', read_only=True)
+    role_name = serializers.CharField(source='Role_ID.role_name_en', read_only=True)
+    
+    class Meta:
+        model = MTTB_Users
+        fields = [
+            'user_id', 'user_name', 'user_email', 'User_Status',
+            'division_name', 'role_name', 'Auth_Status'
+        ]
 
 from .models import MTTB_Divisions
 class MTTBDivisionSerializer(serializers.ModelSerializer):
