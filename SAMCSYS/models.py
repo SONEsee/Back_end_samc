@@ -706,15 +706,20 @@ class DETB_JRNL_LOG(models.Model):
     class Meta:
         verbose_name_plural = 'JRNL_LOG'
         # Optional: Prevent duplicate entries for same reference + account + dr_cr
-        unique_together = [
-            ['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount']
-        ]
-        # OR use constraints (Django 2.2+)
-        constraints = [
-            models.UniqueConstraint(
-                fields=['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount'],
-                name='unique_journal_entry'
-            )
+        # unique_together = [
+        #     ['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount', 'Addl_sub_text']
+        # ]
+        # # OR use constraints (Django 2.2+)
+        # constraints = [
+        #     models.UniqueConstraint(
+        #         fields=['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount','Addl_sub_text'],
+        #         name='unique_journal_entry'
+        #     )
+        # ]
+        indexes = [
+            models.Index(fields=['Reference_No'], name='idx_jrnl_ref_no'),
+            models.Index(fields=['Account', 'Value_date'], name='idx_jrnl_acct_date'),
+            models.Index(fields=['Auth_Status'], name='idx_jrnl_auth'),
         ]
 
 class ACTB_DAIRY_LOG(models.Model):
