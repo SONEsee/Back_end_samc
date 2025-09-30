@@ -13034,10 +13034,10 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                 print(f"❌ Depreciation record error: {dep_error}")
                 final_amount = float(depreciation_amount)
             
-            # ✅ ກຳນົດ start_date ແລະ end_date ໂດຍອີງຕາມ C_dpac
-            end_date = current_date  # ໃຊ້ວັນທີປັດຈຸບັນເປັນ end_date
+           
+            end_date = current_date  
             if c_dpac == 0:
-                # ຖ້າ C_dpac == 0, ໃຊ້ dpca_start_date ເປັນ start_date
+         
                 start_date = asset_data.dpca_start_date or current_date
             else:
                 start_date = asset_data.asset_latest_date_dpca or current_date
@@ -13099,15 +13099,17 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         
         # ✅ NEW: ໃຊ້ final_date_for_text ແທນ value_date ໃນ addl_sub_text
         addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {final_date_for_text}"
+        Addl_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ເດືອນທີ່ {start_date_str} ຫາ {final_date_for_text}"
         
         print(f"🔍 DEBUG addl_sub_text: {addl_sub_text}")
-        
+        print(f"Addl_text: {Addl_text}")
+       
         journal_data = {
             "Reference_No": reference_no,
             "Ccy_cd": asset_currency_str,  
             "Txn_code": "ARD", 
             "Value_date": value_date.isoformat(),  
-            "Addl_text": "ຫັກຄ່າຫຼູ້ຍຫຽ້ນ",
+            "Addl_text": Addl_text,
             "fin_cycle": str(sttb_date.year),  
             "module_id": "AS",
             "Period_code": sttb_date.strftime('%Y%m'),  
@@ -13160,6 +13162,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
             'success': False,
             'error': f"Create journal data error: {str(e)}"
         }
+
 def find_related_journal_entries(asset_list_id):
     """
     ✅ MODIFIED: ຄົ້ນຫາ Journal entries ໂດຍໃຊ້ asset_list_id ໃນ Ac_relatives
@@ -13875,7 +13878,7 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
                                 'error': f"Journal creation error: {str(journal_error)}"
                             }
                             journal_error_count += 1
-                            # ✅ Re-raise ເພື່ອ rollback transaction
+                       
                             raise journal_error
                             
                     elif create_journal and not request:
@@ -13885,12 +13888,11 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
                         }
                         journal_error_count += 1
                         print(f"⚠️ No request object for mapping_id {mapping_id}")
-                        # ✅ Rollback ເພາະບໍ່ມີ request object
-                        if create_journal:  # ຖ້າຕ້ອງການ journal ແຕ່ບໍ່ມີ request ແມ່ນຜິດພາດ
+                       
+                        if create_journal:  
                             raise Exception("Request object required for journal creation")
                     
-                    # ✅ ຖ້າຮອດຈຸດນີ້ແມ່ນທຸກຢ່າງສຳເລັດ
-                    # ບັນທຶກຜົນລັບ
+                   
                     results.append({
                         'mapping_id': mapping_id,
                         'status': 'success',
