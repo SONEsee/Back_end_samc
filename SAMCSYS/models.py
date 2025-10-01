@@ -970,6 +970,7 @@ class STTB_Somtop_Trial_Balancesheet(models.Model):
     UpdateDate = models.DateTimeField(auto_now=True, null=True, blank=True)
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_somtop_report')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
+    Eoc_status = models.CharField(max_length=3, null=True, blank=True)
 
 class Balancesheet_acc(models.Model):
     no = models.AutoField(primary_key=True)
