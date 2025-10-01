@@ -4894,16 +4894,21 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
         
+          
     @action(detail=False, methods=['post'], url_path='fix-rejected')
     def fix_rejected(self, request):
-        """Fix rejected journal entries for a Reference_sub_No by updating DETB_JRNL_LOG and inserting new DETB_JRNL_LOG_HIST entries"""
+        """Fix rejected journal entries for a Reference_sub_No"""
         reference_sub_no = request.data.get('Reference_sub_No')
         comments = request.data.get('comments')
         fcy_amount = request.data.get('Fcy_Amount')
         addl_text = request.data.get('Addl_text')
         addl_sub_text = request.data.get('Addl_sub_text')
-        glsub_id = request.data.get('glsub_id')  # For debit entry
-        relative_glsub_id = request.data.get('relative_glsub_id')  # For credit entry
+        glsub_id = request.data.get('glsub_id')
+        relative_glsub_id = request.data.get('relative_glsub_id')
+        
+        # ✅ ADD THESE - Get the formatted account numbers from frontend
+        account_no = request.data.get('Account_no')  # e.g., "00.1131130.0000002"
+        ac_relatives = request.data.get('Ac_relatives')  # e.g., "00.1131130.0000001"
 
         # Validate required fields
         if not reference_sub_no:
@@ -4918,24 +4923,6 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'detail': 'Comments are required for fixing rejected entries'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if len(comments) > 1000:
-            return Response({
-                'error': 'Invalid comments',
-                'detail': 'Comments must not exceed 1000 characters'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Validate Fcy_Amount if provided
-        if fcy_amount is not None:
-            try:
-                fcy_amount = Decimal(str(fcy_amount))
-                if fcy_amount < 0:
-                    raise ValueError
-            except (ValueError, TypeError):
-                return Response({
-                    'error': 'Invalid Fcy_Amount',
-                    'detail': 'Fcy_Amount must be a valid non-negative decimal'
-                }, status=status.HTTP_400_BAD_REQUEST)
-
         # Validate glsub_id and relative_glsub_id if provided
         glsub = None
         relative_glsub = None
@@ -4945,6 +4932,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     'error': 'Missing account fields',
                     'detail': 'Both glsub_id and relative_glsub_id must be provided together'
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # ✅ VALIDATE that Account_no and Ac_relatives are also provided
+            if not (account_no and ac_relatives):
+                return Response({
+                    'error': 'Missing account number fields',
+                    'detail': 'Both Account_no and Ac_relatives must be provided with account IDs'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
             try:
                 glsub = MTTB_GLSub.objects.get(glsub_id=glsub_id)
                 relative_glsub = MTTB_GLSub.objects.get(glsub_id=relative_glsub_id)
@@ -4956,7 +4951,6 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
-                # Find journal entries matching the Reference_sub_No
                 journal_entries = DETB_JRNL_LOG.objects.filter(
                     Reference_sub_No=reference_sub_no,
                     Auth_Status__in=['P','U']
@@ -4965,85 +4959,86 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 if not journal_entries.exists():
                     return Response({
                         'error': 'No matching rejected journal entries found',
-                        'detail': f'No entries found for Reference_sub_No: {reference_sub_no} with Auth_Status P'
+                        'detail': f'No entries found for Reference_sub_No: {reference_sub_no}'
                     }, status=status.HTTP_404_NOT_FOUND)
 
-                # Verify exactly two entries (debit and credit pair)
                 if len(journal_entries) != 2:
                     return Response({
                         'error': 'Incomplete pair found',
                         'detail': 'Expected exactly two paired entries (debit and credit)'
                     }, status=status.HTTP_400_BAD_REQUEST)
 
-                # Verify debit/credit pairing
-                dr_cr_values = {entry.Dr_cr for entry in journal_entries}
-                if dr_cr_values != {'D', 'C'}:
-                    return Response({
-                        'error': 'Invalid debit/credit pair',
-                        'detail': 'Paired entries must include one debit (D) and one credit (C)'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-                # Get Reference_No for master entry update
                 reference_no = journal_entries.first().Reference_No
 
-                # Prepare update fields for journal entries
+                # Prepare update fields
                 update_fields = {
                     'Auth_Status': 'U',
                     'Checker_DT_Stamp': timezone.now(),
                     'Checker_Id': request.user,
                     'comments': comments
                 }
+                
                 if fcy_amount is not None:
-                    update_fields['Fcy_Amount'] = fcy_amount
-                    update_fields['Lcy_Amount'] = None  # Will be calculated per entry
+                    update_fields['Fcy_Amount'] = Decimal(str(fcy_amount))
+                    update_fields['Lcy_Amount'] = None
                     update_fields['fcy_dr'] = None
                     update_fields['fcy_cr'] = None
                     update_fields['lcy_dr'] = None
                     update_fields['lcy_cr'] = None
+                    
                 if addl_text is not None:
                     update_fields['Addl_text'] = addl_text[:255]
                 if addl_sub_text is not None:
                     update_fields['Addl_sub_text'] = addl_sub_text[:255]
+                    
                 if glsub_id is not None:
-                    update_fields['Account'] = None  # ✅ FIXED: Use 'Account' not 'Account_id'
+                    update_fields['Account'] = None
                     update_fields['Account_no'] = None
                     update_fields['Ac_relatives'] = None
 
-                # Update journal entries and create history entries
                 updated_counts = {
                     'journal_entries': 0,
                     'history_entries': 0,
                     'master_entry': 0
                 }
-                history_entries_created = []
 
-                # Process debit and credit entries
                 debit_entry = next(e for e in journal_entries if e.Dr_cr == 'D')
                 credit_entry = next(e for e in journal_entries if e.Dr_cr == 'C')
 
-                for entry, new_account, paired_account in [
-                    (debit_entry, glsub, relative_glsub),
-                    (credit_entry, relative_glsub, glsub)
+                # ✅ FIXED: Process entries with correct Account_no and Ac_relatives
+                for entry, new_account, is_debit in [
+                    (debit_entry, glsub, True),
+                    (credit_entry, relative_glsub, False)
                 ]:
                     # Calculate amounts if Fcy_Amount is provided
                     if fcy_amount is not None:
+                        fcy_amt = Decimal(str(fcy_amount))
                         exchange_rate = entry.Exch_rate
-                        lcy_amount = fcy_amount * exchange_rate
+                        lcy_amount = fcy_amt * exchange_rate
                         update_fields.update({
                             'Lcy_Amount': lcy_amount,
-                            'fcy_dr': fcy_amount if entry.Dr_cr == 'D' else Decimal('0.00'),
-                            'fcy_cr': fcy_amount if entry.Dr_cr == 'C' else Decimal('0.00'),
+                            'fcy_dr': fcy_amt if entry.Dr_cr == 'D' else Decimal('0.00'),
+                            'fcy_cr': fcy_amt if entry.Dr_cr == 'C' else Decimal('0.00'),
                             'lcy_dr': lcy_amount if entry.Dr_cr == 'D' else Decimal('0.00'),
                             'lcy_cr': lcy_amount if entry.Dr_cr == 'C' else Decimal('0.00')
                         })
 
-                    # Update account fields if provided
+                    # ✅ CRITICAL FIX: Use the formatted account numbers from frontend
                     if new_account is not None:
-                        update_fields.update({
-                            'Account': new_account,  # ✅ FIXED: Use 'Account' not 'Account_id'
-                            'Account_no': new_account.glsub_code,
-                            'Ac_relatives': paired_account.glsub_id if paired_account else entry.Ac_relatives
-                        })
+                        if is_debit:
+                            # For debit entry: Account_no is debit, Ac_relatives is credit
+                            update_fields.update({
+                                'Account': new_account,
+                                'Account_no': account_no,  # ✅ Use formatted value from frontend
+                                'Ac_relatives': ac_relatives  # ✅ Use formatted value from frontend
+                            })
+                        else:
+                            # For credit entry: Account_no is credit, Ac_relatives is debit
+                            update_fields.update({
+                                'Account': new_account,
+                                'Account_no': ac_relatives,  # ✅ Swap for credit entry
+                                'Ac_relatives': account_no   # ✅ Swap for credit entry
+                            })
 
                     # Update journal entry
                     for field, value in update_fields.items():
@@ -5052,14 +5047,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     entry.save()
                     updated_counts['journal_entries'] += 1
 
-                    # Create new history entry
+                    # Create history entry
                     history_entry = DETB_JRNL_LOG_HIST.objects.create(
                         module_id_id=entry.module_id_id,
                         Reference_No=entry.Reference_No,
                         Reference_sub_No=entry.Reference_sub_No,
                         comments=comments,
                         Ccy_cd_id=entry.Ccy_cd_id,
-                        Fcy_Amount=fcy_amount if fcy_amount is not None else entry.Fcy_Amount,
+                        Fcy_Amount=update_fields.get('Fcy_Amount', entry.Fcy_Amount),
                         Lcy_Amount=update_fields.get('Lcy_Amount', entry.Lcy_Amount),
                         fcy_dr=update_fields.get('fcy_dr', entry.fcy_dr),
                         fcy_cr=update_fields.get('fcy_cr', entry.fcy_cr),
@@ -5067,28 +5062,26 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_cr=update_fields.get('lcy_cr', entry.lcy_cr),
                         Dr_cr=entry.Dr_cr,
                         Ac_relatives=update_fields.get('Ac_relatives', entry.Ac_relatives),
-                        Account=update_fields.get('Account', entry.Account),  # ✅ FIXED: Use 'Account' not 'Account_id'
+                        Account=update_fields.get('Account', entry.Account),
                         Account_no=update_fields.get('Account_no', entry.Account_no),
                         Txn_code_id=entry.Txn_code_id,
                         Value_date=entry.Value_date,
                         Exch_rate=entry.Exch_rate,
                         fin_cycle_id=entry.fin_cycle_id,
                         Period_code_id=entry.Period_code_id,
-                        Addl_text=addl_text[:255] if addl_text is not None else entry.Addl_text,
-                        Addl_sub_text=addl_sub_text[:255] if addl_sub_text is not None else entry.Addl_sub_text,
+                        Addl_text=update_fields.get('Addl_text', entry.Addl_text),
+                        Addl_sub_text=update_fields.get('Addl_sub_text', entry.Addl_sub_text),
                         Maker_Id=entry.Maker_Id,
                         Maker_DT_Stamp=entry.Maker_DT_Stamp,
                         Checker_Id=request.user,
                         Checker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
                     )
-                    history_entries_created.append(history_entry)
                     updated_counts['history_entries'] += 1
 
                 # Update master entry
                 master_entry = DETB_JRNL_LOG_MASTER.objects.filter(Reference_No=reference_no)
                 if master_entry.exists():
-                    # Recalculate total Fcy_Amount and Lcy_Amount for the Reference_No
                     all_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
                     total_fcy = sum(e.fcy_dr for e in all_entries)
                     total_lcy = sum(e.lcy_dr for e in all_entries)
@@ -5100,72 +5093,66 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Lcy_Amount=total_lcy
                     )
 
-                # Log the fix
                 logger.info(f"Fixed rejected journal batch - Reference_sub_No: {reference_sub_no}, "
-                        f"Reference_No: {reference_no}, "
-                        f"Comments: {comments}, "
-                        f"glsub_id: {glsub_id}, "
-                        f"relative_glsub_id: {relative_glsub_id}, "
-                        f"Counts: {updated_counts}")
+                        f"Account_no: {account_no}, Ac_relatives: {ac_relatives}")
 
                 return Response({
-                    'message': 'Successfully fixed rejected journal entries and set Auth_Status to U',
+                    'message': 'Successfully fixed rejected journal entries',
                     'reference_sub_no': reference_sub_no,
                     'reference_no': reference_no,
-                    'comments': comments,
-                    'glsub_id': glsub_id,
-                    'relative_glsub_id': relative_glsub_id,
+                    'account_no': account_no,
+                    'ac_relatives': ac_relatives,
                     'updated_counts': updated_counts
                 }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Error fixing rejected journal entries for Reference_sub_No: {reference_sub_no}: {str(e)}")
+            logger.error(f"Error fixing rejected journal entries: {str(e)}")
             return Response({
                 'error': 'Failed to fix rejected journal entries',
                 'detail': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)  
-        
-    @action(detail=False, methods=['get'])
-    def balance_check(self, request):
-        """Check if journal entries are balanced by reference number"""
-        reference_no = request.query_params.get('reference_no')
-        
-        if not reference_no:
-            return Response({'error': 'reference_no parameter is required'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-        
-        entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
-        
-        if not entries.exists():
-            return Response({'error': 'No entries found for this reference number'}, 
-                          status=status.HTTP_404_NOT_FOUND)
-        
-        # Calculate totals
-        totals = entries.aggregate(
-            total_lcy_dr=Sum('lcy_dr'),
-            total_lcy_cr=Sum('lcy_cr'),
-            total_fcy_dr=Sum('fcy_dr'),
-            total_fcy_cr=Sum('fcy_cr')
-        )
-        
-        lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
-        fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
-        
-        return Response({
-            'reference_no': reference_no,
-            'entry_count': entries.count(),
-            'lcy_totals': {
-                'debit': totals['total_lcy_dr'] or 0,
-                'credit': totals['total_lcy_cr'] or 0,
-                'balanced': lcy_balanced
-            },
-            'fcy_totals': {
-                'debit': totals['total_fcy_dr'] or 0,
-                'credit': totals['total_fcy_cr'] or 0,
-                'balanced': fcy_balanced
-            },
-            'overall_balanced': lcy_balanced and fcy_balanced
-        })
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        @action(detail=False, methods=['get'])
+        def balance_check(self, request):
+            """Check if journal entries are balanced by reference number"""
+            reference_no = request.query_params.get('reference_no')
+            
+            if not reference_no:
+                return Response({'error': 'reference_no parameter is required'}, 
+                            status=status.HTTP_400_BAD_REQUEST)
+            
+            entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+            
+            if not entries.exists():
+                return Response({'error': 'No entries found for this reference number'}, 
+                            status=status.HTTP_404_NOT_FOUND)
+            
+            # Calculate totals
+            totals = entries.aggregate(
+                total_lcy_dr=Sum('lcy_dr'),
+                total_lcy_cr=Sum('lcy_cr'),
+                total_fcy_dr=Sum('fcy_dr'),
+                total_fcy_cr=Sum('fcy_cr')
+            )
+            
+            lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
+            fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
+            
+            return Response({
+                'reference_no': reference_no,
+                'entry_count': entries.count(),
+                'lcy_totals': {
+                    'debit': totals['total_lcy_dr'] or 0,
+                    'credit': totals['total_lcy_cr'] or 0,
+                    'balanced': lcy_balanced
+                },
+                'fcy_totals': {
+                    'debit': totals['total_fcy_dr'] or 0,
+                    'credit': totals['total_fcy_cr'] or 0,
+                    'balanced': fcy_balanced
+                },
+                'overall_balanced': lcy_balanced and fcy_balanced
+            })
 
     @action(detail=False, methods=["post"], url_path="approve-asset")
     def approve_asset(self, request):
@@ -26425,10 +26412,10 @@ def validate_journal_approvals(processing_date):
     Validate that all journals for the processing date are approved.
     """
     try:
-        unapproved_journals = DETB_JRNL_LOG.objects.filter(
+        unapproved_journals = DETB_JRNL_LOG_MASTER.objects.filter(
             Value_date=processing_date,
             Auth_Status__in=['U', 'P']
-        ).exclude(Txn_code='ARD').count()
+        ).exclude(Txn_code='ARD', delete_stat='D').count()
 
         if unapproved_journals > 0:
             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
@@ -34504,9 +34491,9 @@ def trial_balance_dairy_view(request):
 
 
 # =============================================
-# STORE PROCEDURE SEARCH ACCOUNT 
+# STORE PROCEDURE SEARCH ACCOUNT EOC
 # =============================================
-# Account Statement Search by Account Number
+# Account Statement Search - Updated for new SP structure
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -34560,7 +34547,7 @@ def validate_date_range(date_start, date_end):
 
 def validate_gl_code(gl_code):
     """
-    Validate GL Code (Account Number) - must be 7 characters
+    Validate GL Code (Account Number) - must be 7+ characters
     
     Args:
         gl_code (str): GL code to validate
@@ -34570,28 +34557,47 @@ def validate_gl_code(gl_code):
     """
     if not gl_code:
         return False
-    return len(str(gl_code).strip()) == 7
+    gl_code_clean = str(gl_code).strip()
+    return len(gl_code_clean) >= 7 and gl_code_clean.isdigit()
+
+
+def sanitize_gl_code(gl_code):
+    """
+    Sanitize GL code input - trim whitespace and convert empty to None
+    
+    Args:
+        gl_code: GL code input (can be string, None, or empty)
+    
+    Returns:
+        str or None: Sanitized GL code or None if empty
+    """
+    if gl_code is None:
+        return None
+    
+    gl_code_str = str(gl_code).strip()
+    return gl_code_str if gl_code_str else None
 
 
 def run_account_statement_proc(currency_code=None, date_start=None, 
                                date_end=None, gl_code=None):
     """
-    Execute the Account_Statement_By_Currency_7_ACTB stored procedure
+    Execute the Account_Statement_By_Currency_7_EOC stored procedure
     
     Args:
         currency_code (str): Currency code (max 5 characters)
         date_start (str): Start date in YYYY-MM-DD format
         date_end (str): End date in YYYY-MM-DD format
-        gl_code (str): GL Code / Account Number (7 digits)
+        gl_code (str or None): GL Code / Account Number (7+ digits) - Optional
     
     Returns:
-        list: Query results as list of dictionaries
+        list: Query results as list of dictionaries with standardized field names
     """
     try:
         with connection.cursor() as cursor:
             # Use parameterized SQL to prevent SQL injection
+            # Pass NULL if gl_code is None to get all accounts
             sql = """
-                EXEC [dbo].[Account_Statement_By_Currency_7_ACTB]
+                EXEC [dbo].[Account_Statement_By_Currency_7_EOC]
                     @Currency_code = %s,
                     @DateStart = %s,
                     @DateEnd = %s,
@@ -34600,11 +34606,30 @@ def run_account_statement_proc(currency_code=None, date_start=None,
             
             cursor.execute(sql, [currency_code, date_start, date_end, gl_code])
             
-            # Get column names
+            # Get column names from stored procedure
             columns = [col[0] for col in cursor.description]
             
-            # Fetch all results and convert to list of dictionaries
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            # Fetch all results
+            rows = cursor.fetchall()
+            
+            # Convert to list of dictionaries with standardized field names
+            results = []
+            for row in rows:
+                row_dict = dict(zip(columns, row))
+                
+                # Map SP column names to frontend-expected names
+                standardized_row = {
+                    'rID': row_dict.get('rID'),
+                    'GL_Code_7': row_dict.get('GL_Code_7'),
+                    'GL_Account': row_dict.get('GL_Account'),
+                    'T_DATE': row_dict.get('Transaction_Date'),
+                    'TRN_DESC': row_dict.get('Description'),
+                    'DR': float(row_dict.get('Debit', 0)),
+                    'CR': float(row_dict.get('Credit', 0)),
+                    'BALANCE': float(row_dict.get('Balance', 0)),
+                    'OPEN_BAL': float(row_dict.get('Opening_Balance', 0))
+                }
+                results.append(standardized_row)
             
             return results
             
@@ -34615,16 +34640,16 @@ def run_account_statement_proc(currency_code=None, date_start=None,
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def account_statement_search_view(request):
+def account_statement_search_eoc_view(request):
     """
-    API endpoint for searching account statement by account number
+    API endpoint for searching account statement
     
     Expected payload:
     {
         "currency_code": "LAK",        // required
         "date_start": "2024-01-01",    // required
         "date_end": "2024-01-31",      // required
-        "gl_code": "1010101"           // required (7 digits)
+        "gl_code": "1010101"           // optional (7+ characters or null)
     }
     
     Returns:
@@ -34634,19 +34659,24 @@ def account_statement_search_view(request):
         "count": number_of_records,
         "data": {
             "account_info": {
-                "gl_code": "1010101",
+                "gl_code": "1010101" or null,
                 "currency_code": "LAK",
-                "open_balance": 0.00
+                "open_balance": 0.00,
+                "date_start": "2024-01-01",
+                "date_end": "2024-01-31"
             },
             "transactions": [account_statement_records]
         }
     }
     """
-    # Extract required parameters from request
+    # Extract parameters from request
     currency_code = request.data.get("currency_code")
     date_start = request.data.get("date_start")
     date_end = request.data.get("date_end")
     gl_code = request.data.get("gl_code")
+    
+    # Sanitize gl_code (trim whitespace, convert empty string to None)
+    gl_code = sanitize_gl_code(gl_code)
     
     # Validate required fields
     if not currency_code:
@@ -34656,18 +34686,25 @@ def account_statement_search_view(request):
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    if not gl_code:
+    if not date_start:
         return Response({
             "status": "error",
-            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
+            "message": "ກະລຸນາລະບຸວັນທີ່ເລີ່ມຕົ້ນ",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate GL Code format (must be 7 digits)
-    if not validate_gl_code(gl_code):
+    if not date_end:
         return Response({
             "status": "error",
-            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
+            "message": "ກະລຸນາລະບຸວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate GL Code format ONLY if provided (supports 7+ digits)
+    if gl_code and not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກຢ່າງໜ້ອຍ 7 ຫຼັກ",
             "data": None
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -34695,7 +34732,13 @@ def account_statement_search_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"[AccountStatement] Searching account - GL: {gl_code}, Currency: {currency_code}, Dates: {date_start} to {date_end}")
+        # Log the search request
+        account_info = gl_code if gl_code else "All Accounts"
+        logger.info(
+            f"[AccountStatement] Searching - "
+            f"GL: {account_info}, Currency: {currency_code}, "
+            f"Dates: {date_start} to {date_end}"
+        )
         
         # Execute stored procedure
         result = run_account_statement_proc(
@@ -34719,11 +34762,17 @@ def account_statement_search_view(request):
             "transactions": result
         }
         
+        # Dynamic success message based on whether gl_code was provided
+        if gl_code:
+            message = f"ດຶງຂໍ້ມູນບັນຊີ {gl_code} ສໍາເລັດແລ້ວ"
+        else:
+            message = "ດຶງຂໍ້ມູນທຸກບັນຊີສໍາເລັດແລ້ວ"
+        
         logger.info(f"[AccountStatement] Search completed successfully. Records: {len(result)}")
         
         return Response({
             "status": "success",
-            "message": "ດຶງຂໍ້ມູນບັນຊີສໍາເລັດແລ້ວ",
+            "message": message,
             "count": len(result),
             "data": response_data
         }, status=status.HTTP_200_OK)
@@ -34740,12 +34789,12 @@ def account_statement_search_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def account_search_validation_view(request):
+def account_search_validation_eoc_view(request):
     """
-    API endpoint to validate account number exists
+    API endpoint to validate account number format
     
     Query parameters:
-        gl_code: Account number (7 digits)
+        gl_code: Account number (7+ characters, optional)
     
     Returns:
     {
@@ -34756,18 +34805,362 @@ def account_search_validation_view(request):
     """
     gl_code = request.query_params.get("gl_code")
     
+    # Sanitize input
+    gl_code = sanitize_gl_code(gl_code)
+    
+    # If no gl_code provided, it's valid (optional field)
     if not gl_code:
         return Response({
-            "status": "error",
-            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
-            "is_valid": False
-        }, status=status.HTTP_400_BAD_REQUEST)
+            "status": "success",
+            "message": "ບໍ່ມີເລກບັນຊີ - ຈະຄົ້ນຫາທຸກບັນຊີ",
+            "is_valid": True
+        }, status=status.HTTP_200_OK)
     
     # Validate format
     if not validate_gl_code(gl_code):
         return Response({
             "status": "error",
-            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກຢ່າງໜ້ອຍ 7 ຫຼັກ",
+            "is_valid": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response({
+        "status": "success",
+        "message": "ເລກບັນຊີຖືກຕ້ອງ",
+        "is_valid": True
+    }, status=status.HTTP_200_OK)
+
+# =============================================
+# STORE PROCEDURE SEARCH ACCOUNT ACTB
+# =============================================
+# Account Statement Search - Updated for new SP structure
+from django.db import connection
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def validate_date_format(date_string):
+    """
+    Validate date format (YYYY-MM-DD)
+    
+    Args:
+        date_string (str): Date string to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not date_string:
+        return False
+    try:
+        datetime.strptime(date_string, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+
+def validate_date_range(date_start, date_end):
+    """
+    Validate that start date is before or equal to end date
+    
+    Args:
+        date_start (str): Start date
+        date_end (str): End date
+    
+    Returns:
+        bool: True if valid range, False otherwise
+    """
+    if not date_start or not date_end:
+        return False
+    try:
+        start = datetime.strptime(date_start, '%Y-%m-%d')
+        end = datetime.strptime(date_end, '%Y-%m-%d')
+        return start <= end
+    except ValueError:
+        return False
+
+
+def validate_gl_code(gl_code):
+    """
+    Validate GL Code (Account Number) - must be 7+ characters
+    
+    Args:
+        gl_code (str): GL code to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not gl_code:
+        return False
+    gl_code_clean = str(gl_code).strip()
+    return len(gl_code_clean) >= 7 and gl_code_clean.isdigit()
+
+
+def sanitize_gl_code(gl_code):
+    """
+    Sanitize GL code input - trim whitespace and convert empty to None
+    
+    Args:
+        gl_code: GL code input (can be string, None, or empty)
+    
+    Returns:
+        str or None: Sanitized GL code or None if empty
+    """
+    if gl_code is None:
+        return None
+    
+    gl_code_str = str(gl_code).strip()
+    return gl_code_str if gl_code_str else None
+
+
+def run_account_statement_proc(currency_code=None, date_start=None, 
+                               date_end=None, gl_code=None):
+    """
+    Execute the Account_Statement_By_Currency_7_EOC stored procedure
+    
+    Args:
+        currency_code (str): Currency code (max 5 characters)
+        date_start (str): Start date in YYYY-MM-DD format
+        date_end (str): End date in YYYY-MM-DD format
+        gl_code (str or None): GL Code / Account Number (7+ digits) - Optional
+    
+    Returns:
+        list: Query results as list of dictionaries with standardized field names
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+            # Pass NULL if gl_code is None to get all accounts
+            sql = """
+                EXEC [dbo].[Account_Statement_By_Currency_7_ACTB]
+                    @Currency_code = %s,
+                    @DateStart = %s,
+                    @DateEnd = %s,
+                    @GL_Code = %s
+            """
+            
+            cursor.execute(sql, [currency_code, date_start, date_end, gl_code])
+            
+            # Get column names from stored procedure
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results
+            rows = cursor.fetchall()
+            
+            # Convert to list of dictionaries with standardized field names
+            results = []
+            for row in rows:
+                row_dict = dict(zip(columns, row))
+                
+                # Map SP column names to frontend-expected names
+                standardized_row = {
+                    'rID': row_dict.get('rID'),
+                    'GL_Code_7': row_dict.get('GL_Code_7'),
+                    'GL_Account': row_dict.get('GL_Account'),
+                    'T_DATE': row_dict.get('Transaction_Date'),
+                    'TRN_DESC': row_dict.get('Description'),
+                    'DR': float(row_dict.get('Debit', 0)),
+                    'CR': float(row_dict.get('Credit', 0)),
+                    'BALANCE': float(row_dict.get('Balance', 0)),
+                    'OPEN_BAL': float(row_dict.get('Opening_Balance', 0))
+                }
+                results.append(standardized_row)
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error executing account statement procedure: {str(e)}")
+        raise
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def account_statement_search_actb_view(request):
+    """
+    API endpoint for searching account statement
+    
+    Expected payload:
+    {
+        "currency_code": "LAK",        // required
+        "date_start": "2024-01-01",    // required
+        "date_end": "2024-01-31",      // required
+        "gl_code": "1010101"           // optional (7+ characters or null)
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "count": number_of_records,
+        "data": {
+            "account_info": {
+                "gl_code": "1010101" or null,
+                "currency_code": "LAK",
+                "open_balance": 0.00,
+                "date_start": "2024-01-01",
+                "date_end": "2024-01-31"
+            },
+            "transactions": [account_statement_records]
+        }
+    }
+    """
+    # Extract parameters from request
+    currency_code = request.data.get("currency_code")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+    gl_code = request.data.get("gl_code")
+    
+    # Sanitize gl_code (trim whitespace, convert empty string to None)
+    gl_code = sanitize_gl_code(gl_code)
+    
+    # Validate required fields
+    if not currency_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸລະຫັດສະກຸນເງິນ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not date_start:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸວັນທີ່ເລີ່ມຕົ້ນ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not date_end:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate GL Code format ONLY if provided (supports 7+ digits)
+    if gl_code and not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກຢ່າງໜ້ອຍ 7 ຫຼັກ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date formats
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date range
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Log the search request
+        account_info = gl_code if gl_code else "All Accounts"
+        logger.info(
+            f"[AccountStatement] Searching - "
+            f"GL: {account_info}, Currency: {currency_code}, "
+            f"Dates: {date_start} to {date_end}"
+        )
+        
+        # Execute stored procedure
+        result = run_account_statement_proc(
+            currency_code=currency_code,
+            date_start=date_start,
+            date_end=date_end,
+            gl_code=gl_code
+        )
+        
+        # Process results
+        open_balance = result[0]['OPEN_BAL'] if result else 0.00
+        
+        response_data = {
+            "account_info": {
+                "gl_code": gl_code,
+                "currency_code": currency_code,
+                "open_balance": float(open_balance) if open_balance else 0.00,
+                "date_start": date_start,
+                "date_end": date_end
+            },
+            "transactions": result
+        }
+        
+        # Dynamic success message based on whether gl_code was provided
+        if gl_code:
+            message = f"ດຶງຂໍ້ມູນບັນຊີ {gl_code} ສໍາເລັດແລ້ວ"
+        else:
+            message = "ດຶງຂໍ້ມູນທຸກບັນຊີສໍາເລັດແລ້ວ"
+        
+        logger.info(f"[AccountStatement] Search completed successfully. Records: {len(result)}")
+        
+        return Response({
+            "status": "success",
+            "message": message,
+            "count": len(result),
+            "data": response_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception(f"[AccountStatement] Error executing stored procedure: {str(e)}")
+        
+        return Response({
+            "status": "error",
+            "message": "ມີຂໍ້ຜິດພາດໃນລະບົບ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ",
+            "data": None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def account_search_validation_actb_view(request):
+    """
+    API endpoint to validate account number format
+    
+    Query parameters:
+        gl_code: Account number (7+ characters, optional)
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "is_valid": true|false
+    }
+    """
+    gl_code = request.query_params.get("gl_code")
+    
+    # Sanitize input
+    gl_code = sanitize_gl_code(gl_code)
+    
+    # If no gl_code provided, it's valid (optional field)
+    if not gl_code:
+        return Response({
+            "status": "success",
+            "message": "ບໍ່ມີເລກບັນຊີ - ຈະຄົ້ນຫາທຸກບັນຊີ",
+            "is_valid": True
+        }, status=status.HTTP_200_OK)
+    
+    # Validate format
+    if not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກຢ່າງໜ້ອຍ 7 ຫຼັກ",
             "is_valid": False
         }, status=status.HTTP_400_BAD_REQUEST)
     
