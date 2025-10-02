@@ -37191,6 +37191,7 @@ def bulk_insert_monthly_cashflow(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+
 def execute_eom_cashflow_reports(eom_function, user, processing_date):
     """
     Execute EOM Cashflow reports function - wrapper for bulk_insert_monthly_cashflow
