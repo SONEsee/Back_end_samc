@@ -21071,15 +21071,7 @@ def process_overdue_depreciation(urgency_levels=None, user_id=None):
         }
 @csrf_exempt
 def overdue_depreciation_api(request):
-    """
-    API ສຳລັບຈັດການລາຍການຄ້າງຫັກຄ່າເສື່ອມລາຄາ
-    
-    Actions:
-    - get_overdue: ດຶງລາຍການຄ້າງຫັກທັງໝົດ
-    - get_by_urgency: ດຶງຕາມລະດັບຄວາມສຳຄັນ (ຕ້ອງມີ urgency_level)
-    - process_overdue: ຫັກລາຍການຄ້າງຫັກທັງໝົດ
-    - process_by_urgency: ຫັກຕາມລະດັບທີ່ເລືອກ (ຕ້ອງມີ urgency_levels)
-    """
+   
     try:
         # ກວດສອບ method
         if request.method not in ['POST', 'GET']:
@@ -21170,7 +21162,7 @@ def overdue_depreciation_api(request):
         }
         print("Overdue API Error Details:", error_details)
         return JsonResponse(error_details, status=500)
-    
+  
 
 
     
