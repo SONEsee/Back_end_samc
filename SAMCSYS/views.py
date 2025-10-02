@@ -26338,7 +26338,7 @@ def end_of_day_journal_view(request):
             if not complete_success:
                 logger.error(f"EOD completion failed: {complete_message}")
                 raise Exception(complete_message)
-                
+            
             
             # All steps successful
             mode_text = "back-date" if is_back_date else "normal"
@@ -26467,16 +26467,21 @@ def validate_backdate_eod_requirements(target_date, eod_id):
 
     except Exception as e:
         return False, f"Error in back-date EOD validation: {str(e)}"
-
 def validate_journal_approvals(processing_date):
     """
     Validate that all journals for the processing date are approved.
+    Ignores records with delete_stat='D' and Txn_code='ARD'.
     """
     try:
+        # First exclude deleted records and ARD transactions, 
+        # then check for unapproved journals
         unapproved_journals = DETB_JRNL_LOG_MASTER.objects.filter(
-            Value_date=processing_date,
+            Value_date=processing_date
+        ).exclude(
+            Q(delete_stat='D') | Q(Txn_code='ARD')
+        ).filter(
             Auth_Status__in=['U', 'P']
-        ).exclude(Txn_code='ARD', delete_stat='D').count()
+        ).count()
 
         if unapproved_journals > 0:
             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
