@@ -26345,6 +26345,7 @@ def end_of_day_journal_view(request):
             if not complete_success:
                 logger.error(f"EOD completion failed: {complete_message}")
                 raise Exception(complete_message)
+                
             
             # All steps successful
             mode_text = "back-date" if is_back_date else "normal"
@@ -36790,6 +36791,7 @@ def bulk_insert_monthly_cashflow(request):
             'status': 'error',
             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ Cashflow: {str(e)} (Error in Cashflow operation)'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 def execute_eom_cashflow_reports(eom_function, user, processing_date):
