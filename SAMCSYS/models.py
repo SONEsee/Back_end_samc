@@ -706,15 +706,20 @@ class DETB_JRNL_LOG(models.Model):
     class Meta:
         verbose_name_plural = 'JRNL_LOG'
         # Optional: Prevent duplicate entries for same reference + account + dr_cr
-        unique_together = [
-            ['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount']
-        ]
-        # OR use constraints (Django 2.2+)
-        constraints = [
-            models.UniqueConstraint(
-                fields=['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount'],
-                name='unique_journal_entry'
-            )
+        # unique_together = [
+        #     ['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount', 'Addl_sub_text']
+        # ]
+        # # OR use constraints (Django 2.2+)
+        # constraints = [
+        #     models.UniqueConstraint(
+        #         fields=['Reference_No', 'Account', 'Dr_cr', 'Fcy_Amount','Addl_sub_text'],
+        #         name='unique_journal_entry'
+        #     )
+        # ]
+        indexes = [
+            models.Index(fields=['Reference_No'], name='idx_jrnl_ref_no'),
+            models.Index(fields=['Account', 'Value_date'], name='idx_jrnl_acct_date'),
+            models.Index(fields=['Auth_Status'], name='idx_jrnl_auth'),
         ]
 
 class ACTB_DAIRY_LOG(models.Model):
@@ -744,7 +749,8 @@ class ACTB_DAIRY_LOG(models.Model):
     glid = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
     glType = models.CharField(max_length=1, null=True, blank=True)
     category = models.CharField(max_length=1, null=True, blank=True)
-    value_dt = models.DateField(null=True, blank=True)
+    # value_dt = models.DateField(null=True, blank=True)
+    value_dt = models.DateTimeField(auto_now=False, null=True, blank=True)
     financial_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
     period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
     Maker_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_DAILY_LOG')
@@ -788,7 +794,8 @@ class ACTB_DAIRY_LOG_HISTORY(models.Model):
     glid = models.ForeignKey(MTTB_GLMaster,null=True,blank=True,on_delete=models.CASCADE)
     glType = models.CharField(max_length=1, null=True, blank=True)
     category = models.CharField(max_length=1, null=True, blank=True)
-    value_dt = models.DateField(null=True, blank=True)
+    # value_dt = models.DateField(null=True, blank=True)
+    value_dt = models.DateTimeField(auto_now=False, null=True, blank=True)
     financial_cycle = models.ForeignKey(MTTB_Fin_Cycle,null=True,blank=True,on_delete=models.CASCADE)
     period_code = models.ForeignKey(MTTB_Per_Code,null=True,blank=True,on_delete=models.CASCADE)
     Maker_id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_DAILY_LOG_HISTORY')
@@ -834,6 +841,41 @@ class DETB_JRNL_LOG_HIST(models.Model):
     Auth_Status = models.CharField(max_length=1, null=True, blank=True, default='U')
     class Meta:
         verbose_name_plural = 'JRNL_LOG_HIST'
+
+
+from django.db import models
+from django.utils import timezone
+
+class DETB_JRNL_SEQUENCE(models.Model):
+    """
+    Dedicated sequence tracking table for generating unique reference numbers.
+    This prevents race conditions by using database-level locking.
+    """
+    sequence_key = models.CharField(
+        max_length=50, 
+        unique=True, 
+        db_index=True,
+        help_text="Format: MODULE-TXN-YYYYMMDD"
+    )
+    current_sequence = models.IntegerField(default=0)
+    last_updated = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'DETB_JRNL_SEQUENCE'
+        indexes = [
+            models.Index(fields=['sequence_key']),
+            models.Index(fields=['last_updated']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(current_sequence__gte=0),
+                name='sequence_non_negative'
+            )
+        ]
+    
+    def __str__(self):
+        return f"{self.sequence_key}: {self.current_sequence}"
 
 
 class MTTB_EOC_MAINTAIN(models.Model):
@@ -893,7 +935,8 @@ class STTB_EOC_DAILY_LOG(models.Model):
     glid_id = models.CharField(max_length=50, null=True, blank=True)
     glType = models.CharField(max_length=1, null=True, blank=True)
     category = models.CharField(max_length=1, null=True, blank=True)
-    value_dt = models.DateField(null=True, blank=True)
+    # value_dt = models.DateField(null=True, blank=True)
+    value_dt = models.DateTimeField(auto_now=False, null=True, blank=True)
     financial_cycle_id = models.CharField(max_length=9)
     period_code_id = models.CharField(max_length=6)
     Maker_id_id = models.CharField(max_length=12, null=True, blank=True)
@@ -962,6 +1005,7 @@ class STTB_Somtop_Trial_Balancesheet(models.Model):
     UpdateDate = models.DateTimeField(auto_now=True, null=True, blank=True)
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_somtop_report')
     MSegment = models.CharField(max_length=50, null=True, blank=True)
+    Eoc_status = models.CharField(max_length=3, null=True, blank=True)
 
 class Balancesheet_acc(models.Model):
     no = models.AutoField(primary_key=True)

@@ -139,7 +139,10 @@ from .views import (
     journal_report_get_view,
     bulk_insert_monthly_cashflow,
     get_credit_unauthorized,
+    journal_before_report_view,
+    journal_before_report_get_view,
    
+
 
     
 
@@ -259,7 +262,6 @@ urlpatterns = [
     path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
     # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
-
     # Store Procedure <---- Bulk Insert For DairyReport------>
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
     # Store Procedure <---- Bulk Insert Sub Trial Balance ------>
@@ -284,11 +286,17 @@ urlpatterns = [
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
-
-    # Store Procedure <----- Report End ----->
+    
+    
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
     path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
 
+    # Store Procedure <---- Before Report End ------>
+    path('api/journal-report-actb/', journal_before_report_view, name='journal_report_post'),
+    path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
+
+    # Store Procedure <---- Search AccountNo --------->
+    
 
     # Store Procedure <---- Sub Trail Balance ------>
     path('api/trial-balance/consolidated/', 
