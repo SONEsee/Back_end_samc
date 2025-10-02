@@ -843,6 +843,41 @@ class DETB_JRNL_LOG_HIST(models.Model):
         verbose_name_plural = 'JRNL_LOG_HIST'
 
 
+from django.db import models
+from django.utils import timezone
+
+class DETB_JRNL_SEQUENCE(models.Model):
+    """
+    Dedicated sequence tracking table for generating unique reference numbers.
+    This prevents race conditions by using database-level locking.
+    """
+    sequence_key = models.CharField(
+        max_length=50, 
+        unique=True, 
+        db_index=True,
+        help_text="Format: MODULE-TXN-YYYYMMDD"
+    )
+    current_sequence = models.IntegerField(default=0)
+    last_updated = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'DETB_JRNL_SEQUENCE'
+        indexes = [
+            models.Index(fields=['sequence_key']),
+            models.Index(fields=['last_updated']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(current_sequence__gte=0),
+                name='sequence_non_negative'
+            )
+        ]
+    
+    def __str__(self):
+        return f"{self.sequence_key}: {self.current_sequence}"
+
+
 class MTTB_EOC_MAINTAIN(models.Model):
     eoc_id = models.AutoField(primary_key=True)
     module_id = models.ForeignKey('STTB_ModulesInfo', null=True, blank=True, on_delete=models.CASCADE)

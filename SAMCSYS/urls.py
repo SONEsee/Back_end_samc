@@ -262,7 +262,6 @@ urlpatterns = [
     path('api/dairy-report/bulk-delete/', bulk_delete, name='bulk-delete-dairy-report'),
     # path('api/dairy-report/bulk-insert-allcurrency/', bulk_insert_allcurrency, name='bulk_insert_allcurrency'),
 
-
     # Store Procedure <---- Bulk Insert For DairyReport------>
     path('api/dairy-reports/bulk-insert/', bulk_insert_dairy_reports, name='bulk-insert-dairy-reports'),
     # Store Procedure <---- Bulk Insert Sub Trial Balance ------>
