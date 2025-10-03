@@ -5401,7 +5401,6 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             "updated_field": "Auth_Status" if asset.asset_status == "UC" else "Auth_Status_ARC"
         }, status=status.HTTP_200_OK)
 
-
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_all(self, request):
         """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
@@ -5481,15 +5480,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     ).order_by('JRNLLog_id')
                     
                     for idx, entry in enumerate(approved_entries):
-                        # Get GL Master info through the relationship chain:
-                        # entry.Account (MTTB_GLSub) -> entry.Account.gl_code (MTTB_GLMaster)
+                        # Get GL Master info through the relationship chain
                         gl_master = None
                         gl_type = None
                         category = None
                         
                         try:
                             if entry.Account and entry.Account.gl_code:
-                                gl_master = entry.Account.gl_code  # This is the MTTB_GLMaster instance
+                                gl_master = entry.Account.gl_code
                                 gl_type = gl_master.glType
                                 category = gl_master.category
                                 print(f"Found GLMaster: {gl_master.glid}, Type: {gl_type}, Category: {category}")
@@ -5511,17 +5509,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         
                         # ACTB_DAIRY_LOG data (with ForeignKey references)
                         actb_log_data = {
-                            'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
-                            'trn_ref_no': entry.Reference_No,  # ForeignKey to DETB_JRNL_LOG (the entry itself!)
+                            'module': entry.module_id,
+                            'trn_ref_no': entry.Reference_No,
                             'trn_ref_sub_no': entry.Reference_sub_No,
                             'event_sr_no': idx + 1,
                             'event': 'JRNL',
-                            'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
+                            'ac_no': entry.Account,
                             'ac_no_full': entry.Account_no,
                             'ac_relative': entry.Ac_relatives,
-                            'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
+                            'ac_ccy': entry.Ccy_cd,
                             'drcr_ind': entry.Dr_cr,
-                            'trn_code': entry.Txn_code,  # ForeignKey to MTTB_TRN_Code
+                            'trn_code': entry.Txn_code,
                             'fcy_amount': fcy_amount,
                             'exch_rate': exchange_rate,
                             'lcy_amount': lcy_amount,
@@ -5533,17 +5531,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                             'addl_text': entry.Addl_text or '',
                             'addl_sub_text': addl_sub_text,
                             'trn_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'glid': gl_master,  # ForeignKey to MTTB_GLMaster
-                            'glType': gl_type,  # CharField from GLMaster
-                            'category': category,  # CharField from GLMaster
+                            'glid': gl_master,
+                            'glType': gl_type,
+                            'category': category,
                             'value_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
-                            'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
-                            'Maker_id': request.user,  # ForeignKey to MTTB_Users
-                            'Maker_DT_Stamp': current_time,
-                            'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
+                            'financial_cycle': entry.fin_cycle,
+                            'period_code': entry.Period_code,
+                            'Maker_id': entry.Maker_Id,  # ✅ UPDATED: Get from original entry creator
+                            'Maker_DT_Stamp': entry.Maker_DT_Stamp,  # ✅ Use original timestamp
+                            'Checker_id': request.user,  # Approver/Checker is current user
                             'Checker_DT_Stamp': current_time,
-                            'Auth_Status': 'A',  # Authorized
+                            'Auth_Status': 'A',
                             'product': 'GL',
                             'entry_seq_no': idx + 1,
                             'delete_stat': None
@@ -5551,17 +5549,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         
                         # ACTB_DAIRY_LOG_HISTORY data (with CharField references)
                         actb_hist_data = {
-                            'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
-                            'trn_ref_no': entry.Reference_No,  # CharField (Reference_No string)
+                            'module': entry.module_id,
+                            'trn_ref_no': entry.Reference_No,
                             'trn_ref_sub_no': entry.Reference_sub_No,
                             'event_sr_no': idx + 1,
                             'event': 'JRNL',
-                            'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
+                            'ac_no': entry.Account,
                             'ac_no_full': entry.Account_no,
                             'ac_relative': entry.Ac_relatives,
-                            'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
+                            'ac_ccy': entry.Ccy_cd,
                             'drcr_ind': entry.Dr_cr,
-                            'trn_code': entry.Txn_code,  
+                            'trn_code': entry.Txn_code,
                             'fcy_amount': fcy_amount,
                             'exch_rate': exchange_rate,
                             'lcy_amount': lcy_amount,
@@ -5573,17 +5571,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                             'addl_text': entry.Addl_text or '',
                             'addl_sub_text': addl_sub_text,
                             'trn_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'glid': gl_master,  # ForeignKey to MTTB_GLMaster
-                            'glType': gl_type,  # CharField from GLMaster
-                            'category': category,  # CharField from GLMaster
+                            'glid': gl_master,
+                            'glType': gl_type,
+                            'category': category,
                             'value_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
-                            'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
-                            'Maker_id': request.user,  # ForeignKey to MTTB_Users
-                            'Maker_DT_Stamp': current_time,
-                            'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
+                            'financial_cycle': entry.fin_cycle,
+                            'period_code': entry.Period_code,
+                            'Maker_id': entry.Maker_Id,  # ✅ UPDATED: Get from original entry creator
+                            'Maker_DT_Stamp': entry.Maker_DT_Stamp,  # ✅ Use original timestamp
+                            'Checker_id': request.user,  # Approver/Checker is current user
                             'Checker_DT_Stamp': current_time,
-                            'Auth_Status': 'A',  # Authorized
+                            'Auth_Status': 'A',
                             'product': 'GL',
                             'entry_seq_no': idx + 1,
                             'delete_stat': None
@@ -5626,7 +5624,232 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             import traceback
             traceback.print_exc()
             return Response({'error': f'Error during approval: {str(e)}'}, 
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # @action(detail=False, methods=['post'], url_path='approve-all')
+    # def approve_all(self, request):
+    #     """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
+    #     reference_no = request.data.get('Reference_No')
+        
+    #     if not reference_no:
+    #         return Response({'error': 'Reference_No is required'}, 
+    #                     status=status.HTTP_400_BAD_REQUEST)
+        
+    #     # Check if any LOG entries have status 'P' or 'R'
+    #     log_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+    #     if not log_entries.exists():
+    #         return Response({'error': 'No entries found for this reference number'}, 
+    #                     status=status.HTTP_404_NOT_FOUND)
+        
+    #     # Check for problematic entries
+    #     problematic_entries = log_entries.filter(Auth_Status__in=['P', 'R'])
+    #     if problematic_entries.exists():
+    #         return Response({'error': 'Cannot approve: entries with status P or R found'}, 
+    #                     status=status.HTTP_400_BAD_REQUEST)
+        
+    #     # Check if already approved
+    #     if log_entries.filter(Auth_Status='A').exists():
+    #         return Response({'error': 'Entries are already approved'}, 
+    #                     status=status.HTTP_400_BAD_REQUEST)
+        
+    #     try:
+    #         from django.db import transaction
+    #         from django.utils import timezone
+            
+    #         with transaction.atomic():
+    #             # Update DETB_JRNL_LOG
+    #             log_updated = log_entries.update(
+    #                 Auth_Status='A',
+    #                 Checker_Id=request.user,
+    #                 Checker_DT_Stamp=timezone.now()
+    #             )
+                
+    #             # Update DETB_JRNL_LOG_MASTER
+    #             try:
+    #                 from .models import DETB_JRNL_LOG_MASTER
+    #                 master_record = DETB_JRNL_LOG_MASTER.objects.get(Reference_No=reference_no)
+    #                 master_record.Auth_Status = 'A'
+    #                 master_record.Checker_Id = request.user
+    #                 master_record.Checker_DT_Stamp = timezone.now()
+    #                 master_record.save()
+    #                 master_updated = 1
+    #             except DETB_JRNL_LOG_MASTER.DoesNotExist:
+    #                 master_updated = 0
+                
+    #             # Update DETB_JRNL_LOG_HIST (if exists)
+    #             hist_updated = 0
+    #             try:
+    #                 from .models import DETB_JRNL_LOG_HIST
+    #                 hist_updated = DETB_JRNL_LOG_HIST.objects.filter(
+    #                     Reference_No=reference_no
+    #                 ).update(
+    #                     Auth_Status='A',
+    #                     Checker_Id=request.user,
+    #                     Checker_DT_Stamp=timezone.now()
+    #                 )
+    #             except:
+    #                 pass  # HIST table might not exist
+                
+    #             # After successful approval, insert into daily log tables
+    #             daily_log_entries_created = 0
+    #             daily_log_hist_entries_created = 0
+                
+    #             try:
+    #                 from .models import ACTB_DAIRY_LOG, ACTB_DAIRY_LOG_HISTORY
+    #                 current_time = timezone.now()
+                    
+    #                 # Get the updated approved entries from DETB_JRNL_LOG
+    #                 approved_entries = DETB_JRNL_LOG.objects.filter(
+    #                     Reference_No=reference_no,
+    #                     Auth_Status='A'
+    #                 ).order_by('JRNLLog_id')
+                    
+    #                 for idx, entry in enumerate(approved_entries):
+    #                     # Get GL Master info through the relationship chain:
+    #                     # entry.Account (MTTB_GLSub) -> entry.Account.gl_code (MTTB_GLMaster)
+    #                     gl_master = None
+    #                     gl_type = None
+    #                     category = None
+                        
+    #                     try:
+    #                         if entry.Account and entry.Account.gl_code:
+    #                             gl_master = entry.Account.gl_code  # This is the MTTB_GLMaster instance
+    #                             gl_type = gl_master.glType
+    #                             category = gl_master.category
+    #                             print(f"Found GLMaster: {gl_master.glid}, Type: {gl_type}, Category: {category}")
+    #                     except Exception as gl_error:
+    #                         print(f"GLMaster lookup error: {gl_error}")
+                        
+    #                     # Calculate amounts based on Dr_cr indicator
+    #                     fcy_amount = entry.Fcy_Amount or 0
+    #                     lcy_amount = entry.Lcy_Amount or 0
+    #                     exchange_rate = entry.Exch_rate or 1
+                        
+    #                     fcy_dr = fcy_amount if entry.Dr_cr == 'D' else 0
+    #                     fcy_cr = fcy_amount if entry.Dr_cr == 'C' else 0
+    #                     lcy_dr = lcy_amount if entry.Dr_cr == 'D' else 0
+    #                     lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
+                        
+    #                     # Prepare additional sub text
+    #                     addl_sub_text = f"{entry.Addl_sub_text[:255] if entry.Addl_sub_text else ''}"
+                        
+    #                     # ACTB_DAIRY_LOG data (with ForeignKey references)
+    #                     actb_log_data = {
+    #                         'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
+    #                         'trn_ref_no': entry.Reference_No,  # ForeignKey to DETB_JRNL_LOG (the entry itself!)
+    #                         'trn_ref_sub_no': entry.Reference_sub_No,
+    #                         'event_sr_no': idx + 1,
+    #                         'event': 'JRNL',
+    #                         'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
+    #                         'ac_no_full': entry.Account_no,
+    #                         'ac_relative': entry.Ac_relatives,
+    #                         'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
+    #                         'drcr_ind': entry.Dr_cr,
+    #                         'trn_code': entry.Txn_code,  # ForeignKey to MTTB_TRN_Code
+    #                         'fcy_amount': fcy_amount,
+    #                         'exch_rate': exchange_rate,
+    #                         'lcy_amount': lcy_amount,
+    #                         'fcy_dr': fcy_dr,
+    #                         'fcy_cr': fcy_cr,
+    #                         'lcy_dr': lcy_dr,
+    #                         'lcy_cr': lcy_cr,
+    #                         'external_ref_no': '',
+    #                         'addl_text': entry.Addl_text or '',
+    #                         'addl_sub_text': addl_sub_text,
+    #                         'trn_dt': entry.Value_date.date() if entry.Value_date else None,
+    #                         'glid': gl_master,  # ForeignKey to MTTB_GLMaster
+    #                         'glType': gl_type,  # CharField from GLMaster
+    #                         'category': category,  # CharField from GLMaster
+    #                         'value_dt': entry.Value_date.date() if entry.Value_date else None,
+    #                         'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
+    #                         'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
+    #                         'Maker_id': request.user, 
+    #                         'Maker_DT_Stamp': current_time,
+    #                         'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
+    #                         'Checker_DT_Stamp': current_time,
+    #                         'Auth_Status': 'A',  # Authorized
+    #                         'product': 'GL',
+    #                         'entry_seq_no': idx + 1,
+    #                         'delete_stat': None
+    #                     }
+                        
+    #                     # ACTB_DAIRY_LOG_HISTORY data (with CharField references)
+    #                     actb_hist_data = {
+    #                         'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
+    #                         'trn_ref_no': entry.Reference_No,  # CharField (Reference_No string)
+    #                         'trn_ref_sub_no': entry.Reference_sub_No,
+    #                         'event_sr_no': idx + 1,
+    #                         'event': 'JRNL',
+    #                         'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
+    #                         'ac_no_full': entry.Account_no,
+    #                         'ac_relative': entry.Ac_relatives,
+    #                         'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
+    #                         'drcr_ind': entry.Dr_cr,
+    #                         'trn_code': entry.Txn_code,  
+    #                         'fcy_amount': fcy_amount,
+    #                         'exch_rate': exchange_rate,
+    #                         'lcy_amount': lcy_amount,
+    #                         'fcy_dr': fcy_dr,
+    #                         'fcy_cr': fcy_cr,
+    #                         'lcy_dr': lcy_dr,
+    #                         'lcy_cr': lcy_cr,
+    #                         'external_ref_no': '',
+    #                         'addl_text': entry.Addl_text or '',
+    #                         'addl_sub_text': addl_sub_text,
+    #                         'trn_dt': entry.Value_date.date() if entry.Value_date else None,
+    #                         'glid': gl_master,  # ForeignKey to MTTB_GLMaster
+    #                         'glType': gl_type,  # CharField from GLMaster
+    #                         'category': category,  # CharField from GLMaster
+    #                         'value_dt': entry.Value_date.date() if entry.Value_date else None,
+    #                         'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
+    #                         'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
+    #                         'Maker_id': request.user, 
+    #                         'Maker_DT_Stamp': current_time,
+    #                         'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
+    #                         'Checker_DT_Stamp': current_time,
+    #                         'Auth_Status': 'A',  # Authorized
+    #                         'product': 'GL',
+    #                         'entry_seq_no': idx + 1,
+    #                         'delete_stat': None
+    #                     }
+                        
+    #                     # Create ACTB_DAIRY_LOG entry
+    #                     try:
+    #                         daily_log_entry = ACTB_DAIRY_LOG.objects.create(**actb_log_data)
+    #                         daily_log_entries_created += 1
+    #                         print(f"Created ACTB_DAIRY_LOG entry {daily_log_entry.ac_entry_sr_no}")
+    #                     except Exception as log_error:
+    #                         print(f"Error creating ACTB_DAIRY_LOG: {str(log_error)}")
+    #                         import traceback
+    #                         traceback.print_exc()
+                        
+    #                     # Create ACTB_DAIRY_LOG_HISTORY entry  
+    #                     try:
+    #                         daily_log_hist_entry = ACTB_DAIRY_LOG_HISTORY.objects.create(**actb_hist_data)
+    #                         daily_log_hist_entries_created += 1
+    #                         print(f"Created ACTB_DAIRY_LOG_HISTORY entry {daily_log_hist_entry.ac_entry_sr_no}")
+    #                     except Exception as hist_error:
+    #                         print(f"Error creating ACTB_DAIRY_LOG_HISTORY: {str(hist_error)}")
+    #                         import traceback
+    #                         traceback.print_exc()
+                        
+    #             except Exception as daily_log_error:
+    #                 # Log the error but don't fail the entire approval process
+    #                 print(f"Error creating daily log entries: {str(daily_log_error)}")
+    #                 import traceback
+    #                 traceback.print_exc()
+            
+    #         return Response({
+    #             'message': f'ສໍາເລັດການອະນຸມັດ {log_updated} ລາຍການ, {master_updated} ລາຍການ, {hist_updated} ລາຍການ',
+    #             'daily_log_created': daily_log_entries_created,
+    #             'daily_log_hist_created': daily_log_hist_entries_created,
+    #             'reference_no': reference_no
+    #         })
+            
+    #     except Exception as e:
+    #         import traceback
+    #         traceback.print_exc()
+    #         return Response({'error': f'Error during approval: {str(e)}'}, 
+    #                     status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     @action(detail=False, methods=['post'], url_path='reject-all')  
     def reject_all(self, request):
         """Reject all records (MASTER, LOG, HIST) for a Reference_No"""
