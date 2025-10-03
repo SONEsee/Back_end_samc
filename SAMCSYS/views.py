@@ -26993,7 +26993,7 @@ def check_journal_submission_available(request):
                 is_back_date = current_start_date < today
                 return Response({
                     "available": True,
-                    "reason": f"Back-date journal submission allowed for {current_start_date}.",
+                    "reason": f"ອະນຸຍາດລົງບັນຊີຍ້ອນຫຼັງວັນທີ {current_start_date}.",
                     "target_date": current_start_date.isoformat(),
                     "is_back_date": is_back_date,
                     "back_value_enabled": True,
