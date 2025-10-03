@@ -5616,7 +5616,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     traceback.print_exc()
             
             return Response({
-                'message': f'Successfully approved {log_updated} LOG entries, {master_updated} MASTER record, {hist_updated} HIST records',
+                'message': f'ສໍາເລັດການອະນຸມັດ {log_updated} ລາຍການ, {master_updated} ລາຍການ, {hist_updated} ລາຍການ',
                 'daily_log_created': daily_log_entries_created,
                 'daily_log_hist_created': daily_log_hist_entries_created,
                 'reference_no': reference_no
@@ -26345,7 +26345,7 @@ def end_of_day_journal_view(request):
             if not complete_success:
                 logger.error(f"EOD completion failed: {complete_message}")
                 raise Exception(complete_message)
-                
+            
             
             # All steps successful
             mode_text = "back-date" if is_back_date else "normal"
@@ -26474,16 +26474,28 @@ def validate_backdate_eod_requirements(target_date, eod_id):
 
     except Exception as e:
         return False, f"Error in back-date EOD validation: {str(e)}"
-
 def validate_journal_approvals(processing_date):
     """
     Validate that all journals for the processing date are approved.
+    Ignores records with delete_stat='D' and Txn_code='ARD'.
     """
     try:
+<<<<<<< HEAD
         unapproved_journals = DETB_JRNL_LOG.objects.filter(
             Value_date=processing_date,
             Auth_Status__in=['U', 'P']
         ).exclude(Txn_code='ARD').count()
+=======
+        # First exclude deleted records and ARD transactions, 
+        # then check for unapproved journals
+        unapproved_journals = DETB_JRNL_LOG_MASTER.objects.filter(
+            Value_date=processing_date
+        ).exclude(
+            Q(delete_stat='D') | Q(Txn_code='ARD')
+        ).filter(
+            Auth_Status__in=['U', 'P']
+        ).count()
+>>>>>>> 8332ff738993093de1307168954f0b2e9fdcc54a
 
         if unapproved_journals > 0:
             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
@@ -26943,7 +26955,7 @@ def check_journal_submission_available(request):
         except STTB_Dates.DoesNotExist:
             return Response({
                 "available": False,
-                "reason": "No EOD records found."
+                "reason": "ບໍ່ພົບລາຍການບັນຊີ."
             }, status=status.HTTP_200_OK)
 
         # Extract dates
@@ -26960,7 +26972,7 @@ def check_journal_submission_available(request):
             # EOD completed, journal submission closed for Start_Date
             return Response({
                 "available": False,
-                "reason": f"EOD already completed for {current_start_date}. Journal submission closed.",
+                "reason": f"ສໍາເລັດການປິດບັນຊີວັນທີ {current_start_date}. ສິ້ນສຸດການລົງບັນຊີ.",
                 "current_eod": {
                     "date_id": latest_eod.date_id,
                     "processed_date": current_start_date.isoformat(),
@@ -26975,7 +26987,7 @@ def check_journal_submission_available(request):
                 if mod_no_enabled or is_working_day(today):
                     return Response({
                         "available": True,
-                        "reason": f"Journal submission available for today ({today}).",
+                        "reason": f"ສາມາດລົງບັນຊີມື້ວັນທີ ({today}) ໄດ້.",
                         "target_date": today.isoformat(),
                         "is_back_date": False,
                         "current_eod": {
@@ -26988,14 +27000,14 @@ def check_journal_submission_available(request):
                 else:
                     return Response({
                         "available": False,
-                        "reason": f"Today ({today}) is not a working day."
+                        "reason": f"ມື້ນີ້ ({today}) ບໍ່ເເມ່ນວັນເຮັດການ."
                     }, status=status.HTTP_200_OK)
             elif back_value_enabled:
                 # Back-date allowed
                 is_back_date = current_start_date < today
                 return Response({
                     "available": True,
-                    "reason": f"Back-date journal submission allowed for {current_start_date}.",
+                    "reason": f"ອະນຸຍາດລົງບັນຊີຍ້ອນຫຼັງວັນທີ {current_start_date}.",
                     "target_date": current_start_date.isoformat(),
                     "is_back_date": is_back_date,
                     "back_value_enabled": True,
@@ -27010,7 +27022,7 @@ def check_journal_submission_available(request):
                 # Neither normal nor back-date allowed
                 return Response({
                     "available": False,
-                    "reason": f"EOD for previous date ({current_start_date}) not completed, and back-date not enabled."
+                    "reason": f"ກະລຸນາປິດບັນຊີວັນທີ ({current_start_date}) ກ່ອນການບັນທຶກບັນຊີຄັ້ງຕໍ່ໄປ."
                 }, status=status.HTTP_200_OK)
 
     except Exception as e:
