@@ -9257,15 +9257,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     @action(detail=False, methods=['post'], url_path='bulk-approve-journals')
     def bulk_approve_journals(self, request):
-        '''
-        Bulk approve/reject disposal journal entries by asset_list_id
-    
-        POST /api/asset_list_diposal/bulk-approve-journals/
-        {
-            "asset_list_ids": ["FIX-001-202508-0000138", "FIX-001-202508-0000139"],
-            "action": "approve"
-        }
-        '''
+       
         return bulk_approve_journals_view(self)
 
     
@@ -9287,7 +9279,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """ສ້າງການຊຳລະສະສາງຊັບສິນໃໝ່"""
+       
         user = self.request.user
         
         print("=== DEBUG Asset Disposal Create ===")
@@ -9304,7 +9296,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         )
         
        
-        # self.update_asset_status(instance)
+      
         
       
         if account_result['success']:
@@ -9456,10 +9448,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             }
     
     def find_account_in_glsub(self, account_prefix, asset_list_code):
-        """
-        ຄົ້ນຫາບັນຊີໃນ MTTB_GLSub ດ້ວຍ 3 ໂຕໜ້າ + asset_list_code
-        ຖ້າບໍ່ພົບຈະ return None
-        """
+     
         try:
             print(f"ຄົ້ນຫາບັນຊີ: {account_prefix} + {asset_list_code}")
             
@@ -14499,20 +14488,130 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
     except Exception as e:
         print(f"💥 Bulk processing fatal error: {str(e)}")
         return {"error": f"Bulk processing with journal error: {str(e)}"}
+# @csrf_exempt
+# def calculate_depreciation_api_with_journal(request):
+   
+#     try:
+#         if request.method not in ['POST', 'GET']:
+#             return JsonResponse({'error': 'ໃຊ້ POST ຫຼື GET method'}, status=400)
+        
+#         if request.method == 'POST':
+#             if not request.body:
+#                 return JsonResponse({'error': 'ບໍ່ມີ request body'}, status=400)
+            
+#             try:
+#                 data = json.loads(request.body)
+#             except json.JSONDecodeError as e:
+#                 return JsonResponse({'error': f'JSON error: {str(e)}'}, status=400)
+            
+#             mapping_id = data.get('mapping_id')
+#             mapping_ids = data.get('mapping_ids', [])
+#             user_id = data.get('user_id')
+#             action = data.get('action', 'calculate')
+#             date = data.get('date')
+#             create_journal = data.get('create_journal', False)  
+#             target_month = data.get('target_month')  
+#             target_year = data.get('target_year')    
+#         else:  
+#             mapping_id = request.GET.get('mapping_id')
+#             mapping_ids_str = request.GET.get('mapping_ids', '')
+#             mapping_ids = [int(x) for x in mapping_ids_str.split(',') if x] if mapping_ids_str else []
+#             user_id = request.GET.get('user_id')
+#             action = request.GET.get('action', 'calculate')
+#             date = request.GET.get('date')
+#             create_journal = request.GET.get('create_journal', 'false').lower() == 'true' 
+#             target_month = request.GET.get('target_month') 
+#             target_year = request.GET.get('target_year')    
+        
+       
+#         journal_supported_actions = ['process', 'bulk_process', 'bulk_process_all']
+        
+#         if action == 'process':
+#             if not mapping_id:
+#                 return JsonResponse({'error': 'ໃສ່ mapping_id'}, status=400)
+            
+#             if create_journal:
+#                 result = process_monthly_depreciation_with_journal(
+#                     mapping_id, user_id, date, create_journal=True, request=request
+#                 )
+#             else:
+#                 result = process_monthly_depreciation(mapping_id, user_id, date)
+                
+#         elif action == 'bulk_process':
+#             if not mapping_ids:
+#                 return JsonResponse({'error': 'ໃສ່ mapping_ids'}, status=400)
+            
+#             if create_journal:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation_with_journal(
+#                         mapping_ids, check_only=False, user_id=user_id, 
+#                         create_journal=True, request=request
+#                     )
+#             else:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
+                    
+#         elif action == 'bulk_process_all':
+#             depreciable_assets = get_depreciable_assets()
+#             if 'error' in depreciable_assets:
+#                 return JsonResponse(depreciable_assets, status=400)
+            
+#             available_ids = [item['mapping_id'] for item in depreciable_assets['depreciable_items']]
+            
+#             if not available_ids:
+#                 return JsonResponse({
+#                     'success': True,
+#                     'message': 'ບໍ່ມີລາຍການທີ່ຕ້ອງຫັກ',
+#                     'data': {'summary': {'total_items': 0, 'success_count': 0, 'error_count': 0}, 'details': []}
+#                 })
+            
+#             if create_journal:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation_with_journal(
+#                         available_ids, check_only=False, user_id=user_id,
+#                         create_journal=True, request=request
+#                     )
+#             else:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation(available_ids, check_only=False, user_id=user_id)
+                    
+#         elif action == 'get_monthly_due':
+          
+#             if target_month:
+#                 target_month = int(target_month)
+#             if target_year:
+#                 target_year = int(target_year)
+            
+#             result = get_depreciation_due_this_month(target_month, target_year)
+            
+#         else:
+           
+#             return calculate_depreciation_api(request)
+        
+#         if isinstance(result, dict) and 'error' in result:
+#             return JsonResponse(result, status=400)
+        
+#         return JsonResponse({
+#             'success': True,
+#             'action': action,
+#             'data': result,
+#             'journal_enabled': create_journal if action in journal_supported_actions else False,
+#             'timestamp': timezone.now().isoformat()
+#         })
+        
+#     except Exception as e:
+#         import traceback
+#         error_details = {
+#             'error': str(e),
+#             'type': type(e).__name__,
+#             'traceback': traceback.format_exc()
+#         }
+#         print("API with Journal Error Details:", error_details)
+#         return JsonResponse(error_details, status=500)
+    
 @csrf_exempt
 def calculate_depreciation_api_with_journal(request):
-    """
-    ✅ API ຫຼັກທີ່ຮອງຮັບ Journal Entry
-    
-    ເພີ່ມ parameters ໃໝ່:
-    - create_journal: true/false (default: false)
-    
-    Actions ທີ່ຮອງຮັບ Journal:
-    - process: ຫັກລາຍການດຽວພ້ອມ Journal
-    - bulk_process: ຫັກຫຼາຍລາຍການພ້ອມ Journal
-    - bulk_process_all: ຫັກທຸກລາຍການພ້ອມ Journal
-    - get_monthly_due: ໃໝ່! ດຶງລາຍການທີ່ຕ້ອງຫັກໃນເດືອນ
-    """
+   
     try:
         if request.method not in ['POST', 'GET']:
             return JsonResponse({'error': 'ໃຊ້ POST ຫຼື GET method'}, status=400)
@@ -14574,28 +14673,22 @@ def calculate_depreciation_api_with_journal(request):
                     result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
                     
         elif action == 'bulk_process_all':
-            depreciable_assets = get_depreciable_assets()
-            if 'error' in depreciable_assets:
-                return JsonResponse(depreciable_assets, status=400)
+            # ກວດສອບວ່າມີ mapping_ids ສົ່ງມາບໍ່
+            if not mapping_ids:
+                return JsonResponse({'error': 'ໃສ່ mapping_ids ສຳລັບ bulk_process_all'}, status=400)
             
-            available_ids = [item['mapping_id'] for item in depreciable_assets['depreciable_items']]
-            
-            if not available_ids:
-                return JsonResponse({
-                    'success': True,
-                    'message': 'ບໍ່ມີລາຍການທີ່ຕ້ອງຫັກ',
-                    'data': {'summary': {'total_items': 0, 'success_count': 0, 'error_count': 0}, 'details': []}
-                })
+            # ບໍ່ຕ້ອງດຶງຈາກ get_depreciable_assets() ອີກ
+            # ໃຊ້ mapping_ids ທີ່ສົ່ງມາໂດຍກົງ
             
             if create_journal:
                 with transaction.atomic():
                     result = process_bulk_depreciation_with_journal(
-                        available_ids, check_only=False, user_id=user_id,
+                        mapping_ids, check_only=False, user_id=user_id,
                         create_journal=True, request=request
                     )
             else:
                 with transaction.atomic():
-                    result = process_bulk_depreciation(available_ids, check_only=False, user_id=user_id)
+                    result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
                     
         elif action == 'get_monthly_due':
           
@@ -14630,8 +14723,6 @@ def calculate_depreciation_api_with_journal(request):
         }
         print("API with Journal Error Details:", error_details)
         return JsonResponse(error_details, status=500)
-    
-
 
 
 def auto_reject_related_journals(asset_list_id, reason, user_id, request=None):
@@ -15210,8 +15301,8 @@ def create_journal_entry_via_api(journal_data, request):
             # ✅ ສ້າງ mock request object
             from unittest.mock import Mock
             mock_request = Mock()
-            mock_request.data = journal_data  # ໃຊ້ journal_data ໂດຍກົງ
-            mock_request.user = actual_user   # ໃຊ້ MTTB_Users instance
+            mock_request.data = journal_data  
+            mock_request.user = actual_user   
             mock_request.method = 'POST'
             
             print(f"👤 Using user: {actual_user.user_id} ({type(actual_user)})")
@@ -26703,12 +26794,6 @@ def validate_journal_approvals(processing_date):
     Ignores records with delete_stat='D' and Txn_code='ARD'.
     """
     try:
-<<<<<<< HEAD
-        unapproved_journals = DETB_JRNL_LOG.objects.filter(
-            Value_date=processing_date,
-            Auth_Status__in=['U', 'P']
-        ).exclude(Txn_code='ARD').count()
-=======
         # First exclude deleted records and ARD transactions, 
         # then check for unapproved journals
         unapproved_journals = DETB_JRNL_LOG_MASTER.objects.filter(
@@ -26718,7 +26803,6 @@ def validate_journal_approvals(processing_date):
         ).filter(
             Auth_Status__in=['U', 'P']
         ).count()
->>>>>>> aec6eb5e9bced80ef6a0ffb25e64a8e0496b26c8
 
         if unapproved_journals > 0:
             return False, f"Found {unapproved_journals} unapproved journals for {processing_date}"
@@ -30551,12 +30635,12 @@ class JRNLLogViewSetAssetDisposal(viewsets.ReadOnlyModelViewSet):
         
         return queryset
 
-
+from .filters import JournalLogARDFilter
 class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
     serializer_class = DETB_JRNL_LOG_MASTER_AC_Serializer  # Use your existing serializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['Ccy_cd', 'fin_cycle', 'Auth_Status', 'Reference_No']
+    filterset_class = JournalLogARDFilter
     search_fields = ['Reference_No', 'Addl_text']
     ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No', 'Fcy_Amount', 'Auth_Status']
 
@@ -30609,7 +30693,7 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                     if to_date:
                         queryset = queryset.filter(Value_date__date__lte=to_date)
             
-            # Other filters
+           
             module_id = request.query_params.get('module_id')
             if module_id:
                 queryset = queryset.filter(module_id=module_id)
@@ -30660,34 +30744,30 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
     def init_data(self, request):
         """
         Combined endpoint for initial data loading - ARD transactions only
-        Returns paginated journal data + summary data in one request
+        Returns ALL journal data + summary data in one request (no pagination)
         """
         try:
-            
-            page_size = min(int(request.query_params.get('page_size', 25)), 100)
-            page = int(request.query_params.get('page', 1))
-            
-            print(f"DEBUG: ARD init_data called with page={page}, page_size={page_size}")
-            
-            
+            print(f"DEBUG: ARD init_data called (no pagination)")
+        
+            # Get base queryset
             base_queryset = self.get_queryset().select_related(
                 'Maker_Id', 'Checker_Id', 'module_id', 'Ccy_cd', 'Txn_code'
             )
-            
+        
             print(f"DEBUG: ARD Base queryset count: {base_queryset.count()}")
-            
+        
             # Apply existing filters
             queryset = self.filter_queryset(base_queryset)
-            
+        
             # Apply additional custom filters
             queryset = self._apply_custom_filters(queryset, request)
-            
+        
             print(f"DEBUG: ARD Filtered queryset count: {queryset.count()}")
-            
+        
             # For summary - get counts WITHOUT Auth_Status filter for accurate totals
             summary_queryset = self.filter_queryset(base_queryset)
             summary_queryset = self._apply_custom_filters_for_summary(summary_queryset, request)
-            
+        
             # Get summary counts
             summary_data = summary_queryset.aggregate(
                 total=Count('JRNLLog_id'),
@@ -30696,47 +30776,33 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 rejected=Count('JRNLLog_id', filter=Q(Auth_Status='R')),
                 correction=Count('JRNLLog_id', filter=Q(Auth_Status='P'))
             )
-            
+        
             print(f"DEBUG: ARD Summary data: {summary_data}")
-            
-            # Get total count for pagination
-            total_count = queryset.count()
-            
-            # Paginate the results
-            start = (page - 1) * page_size
-            end = start + page_size
-            paginated_queryset = queryset[start:end]
-            
-            print(f"DEBUG: ARD Paginated queryset: {start}-{end}, count: {len(paginated_queryset)}")
-            
+        
+            # Get ALL results (no pagination)
+            all_results = queryset
+        
             # Serialize data using your existing serializer
-            serializer = self.get_serializer(paginated_queryset, many=True)
-            
-            # Build response (NO CACHING)
+            serializer = self.get_serializer(all_results, many=True)
+        
+        # Build response (no pagination info)
             response_data = {
                 'results': serializer.data,
-                'count': total_count,
-                'next': f"?page={page + 1}" if end < total_count else None,
-                'previous': f"?page={page - 1}" if page > 1 else None,
+                'count': len(serializer.data),
                 'summary': summary_data,
-                'page_info': {
-                    'current_page': page,
-                    'page_size': page_size,
-                    'total_pages': (total_count + page_size - 1) // page_size
-                },
-                'transaction_type': 'ARD'  # Indicator for frontend
+                'transaction_type': 'ARD'
             }
-            
+        
             print(f"DEBUG: ARD Response ready, results count: {len(response_data['results'])}")
-            
+        
             return Response(response_data, status=200)
-            
+        
         except Exception as e:
             print(f"ERROR in ARD init_data: {str(e)}")
             logger.error(f"Error in ARD init_data: {str(e)}")
             import traceback
             traceback.print_exc()
-            
+        
             return Response({
                 'error': 'Failed to load ARD initial data',
                 'details': str(e)
