@@ -20,7 +20,10 @@ logging.basicConfig(level=logging.DEBUG)
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 USE_SESSION_AUTH = True
-
+MIDDLEWARE = [
+    'django.middleware.gzip.GZipMiddleware',  # ເພີ່ມນີ້ທີ່ຂ້າງເທິງສຸດ
+    # ... middleware ອື່ນໆ
+]
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -177,13 +180,19 @@ DATABASES = {
         'HOST': '192.168.10.35',  
         'PORT': '1433',                       
         'OPTIONS': {
-            'driver': 'ODBC Driver 17 for SQL Server',
+            'driver': 'ODBC Driver 18 for SQL Server',
             'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
         },
     }
 }
 
-
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'overdue-cache',
+        'TIMEOUT': 300,
+    }
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

@@ -2331,13 +2331,13 @@ class GLMasterViewSet(viewsets.ModelViewSet):
     serializer_class = GLMasterSerializer
 
     def get_permissions(self):
-        # Allow unauthenticated POST, require auth otherwise
+       
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        # Base queryset (with your related joins/order)
+        
         qs = (
             MTTB_GLMaster.objects
             .select_related('Maker_Id', 'Checker_Id')
@@ -2347,7 +2347,7 @@ class GLMasterViewSet(viewsets.ModelViewSet):
 
         params = self.request.query_params
 
-        # Filter by glType if provided
+        
         gltype = params.get('glType')
         if gltype:
             qs = qs.filter(glType=gltype)
@@ -5116,21 +5116,16 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'detail': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
         
-          
     @action(detail=False, methods=['post'], url_path='fix-rejected')
     def fix_rejected(self, request):
-        """Fix rejected journal entries for a Reference_sub_No"""
+        """Fix rejected journal entries for a Reference_sub_No by updating DETB_JRNL_LOG and inserting new DETB_JRNL_LOG_HIST entries"""
         reference_sub_no = request.data.get('Reference_sub_No')
         comments = request.data.get('comments')
         fcy_amount = request.data.get('Fcy_Amount')
         addl_text = request.data.get('Addl_text')
         addl_sub_text = request.data.get('Addl_sub_text')
-        glsub_id = request.data.get('glsub_id')
-        relative_glsub_id = request.data.get('relative_glsub_id')
-        
-        # ✅ ADD THESE - Get the formatted account numbers from frontend
-        account_no = request.data.get('Account_no')  # e.g., "00.1131130.0000002"
-        ac_relatives = request.data.get('Ac_relatives')  # e.g., "00.1131130.0000001"
+        glsub_id = request.data.get('glsub_id')  # For debit entry
+        relative_glsub_id = request.data.get('relative_glsub_id')  # For credit entry
 
         # Validate required fields
         if not reference_sub_no:
@@ -5145,6 +5140,24 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 'detail': 'Comments are required for fixing rejected entries'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        if len(comments) > 1000:
+            return Response({
+                'error': 'Invalid comments',
+                'detail': 'Comments must not exceed 1000 characters'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate Fcy_Amount if provided
+        if fcy_amount is not None:
+            try:
+                fcy_amount = Decimal(str(fcy_amount))
+                if fcy_amount < 0:
+                    raise ValueError
+            except (ValueError, TypeError):
+                return Response({
+                    'error': 'Invalid Fcy_Amount',
+                    'detail': 'Fcy_Amount must be a valid non-negative decimal'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
         # Validate glsub_id and relative_glsub_id if provided
         glsub = None
         relative_glsub = None
@@ -5154,14 +5167,6 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     'error': 'Missing account fields',
                     'detail': 'Both glsub_id and relative_glsub_id must be provided together'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # ✅ VALIDATE that Account_no and Ac_relatives are also provided
-            if not (account_no and ac_relatives):
-                return Response({
-                    'error': 'Missing account number fields',
-                    'detail': 'Both Account_no and Ac_relatives must be provided with account IDs'
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
             try:
                 glsub = MTTB_GLSub.objects.get(glsub_id=glsub_id)
                 relative_glsub = MTTB_GLSub.objects.get(glsub_id=relative_glsub_id)
@@ -5173,6 +5178,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
+                # Find journal entries matching the Reference_sub_No
                 journal_entries = DETB_JRNL_LOG.objects.filter(
                     Reference_sub_No=reference_sub_no,
                     Auth_Status__in=['P','U']
@@ -5181,86 +5187,85 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                 if not journal_entries.exists():
                     return Response({
                         'error': 'No matching rejected journal entries found',
-                        'detail': f'No entries found for Reference_sub_No: {reference_sub_no}'
+                        'detail': f'No entries found for Reference_sub_No: {reference_sub_no} with Auth_Status P'
                     }, status=status.HTTP_404_NOT_FOUND)
 
+                # Verify exactly two entries (debit and credit pair)
                 if len(journal_entries) != 2:
                     return Response({
                         'error': 'Incomplete pair found',
                         'detail': 'Expected exactly two paired entries (debit and credit)'
                     }, status=status.HTTP_400_BAD_REQUEST)
 
+                # Verify debit/credit pairing
+                dr_cr_values = {entry.Dr_cr for entry in journal_entries}
+                if dr_cr_values != {'D', 'C'}:
+                    return Response({
+                        'error': 'Invalid debit/credit pair',
+                        'detail': 'Paired entries must include one debit (D) and one credit (C)'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Get Reference_No for master entry update
                 reference_no = journal_entries.first().Reference_No
 
-                # Prepare update fields
+                # Prepare update fields for journal entries
                 update_fields = {
                     'Auth_Status': 'U',
                     'Checker_DT_Stamp': timezone.now(),
                     'Checker_Id': request.user,
                     'comments': comments
                 }
-                
                 if fcy_amount is not None:
-                    update_fields['Fcy_Amount'] = Decimal(str(fcy_amount))
-                    update_fields['Lcy_Amount'] = None
+                    update_fields['Fcy_Amount'] = fcy_amount
+                    update_fields['Lcy_Amount'] = None  # Will be calculated per entry
                     update_fields['fcy_dr'] = None
                     update_fields['fcy_cr'] = None
                     update_fields['lcy_dr'] = None
                     update_fields['lcy_cr'] = None
-                    
                 if addl_text is not None:
                     update_fields['Addl_text'] = addl_text[:255]
                 if addl_sub_text is not None:
                     update_fields['Addl_sub_text'] = addl_sub_text[:255]
-                    
                 if glsub_id is not None:
-                    update_fields['Account'] = None
+                    update_fields['Account'] = None  # ✅ FIXED: Use 'Account' not 'Account_id'
                     update_fields['Account_no'] = None
                     update_fields['Ac_relatives'] = None
 
+                # Update journal entries and create history entries
                 updated_counts = {
                     'journal_entries': 0,
                     'history_entries': 0,
                     'master_entry': 0
                 }
+                history_entries_created = []
 
+                # Process debit and credit entries
                 debit_entry = next(e for e in journal_entries if e.Dr_cr == 'D')
                 credit_entry = next(e for e in journal_entries if e.Dr_cr == 'C')
 
-                # ✅ FIXED: Process entries with correct Account_no and Ac_relatives
-                for entry, new_account, is_debit in [
-                    (debit_entry, glsub, True),
-                    (credit_entry, relative_glsub, False)
+                for entry, new_account, paired_account in [
+                    (debit_entry, glsub, relative_glsub),
+                    (credit_entry, relative_glsub, glsub)
                 ]:
                     # Calculate amounts if Fcy_Amount is provided
                     if fcy_amount is not None:
-                        fcy_amt = Decimal(str(fcy_amount))
                         exchange_rate = entry.Exch_rate
-                        lcy_amount = fcy_amt * exchange_rate
+                        lcy_amount = fcy_amount * exchange_rate
                         update_fields.update({
                             'Lcy_Amount': lcy_amount,
-                            'fcy_dr': fcy_amt if entry.Dr_cr == 'D' else Decimal('0.00'),
-                            'fcy_cr': fcy_amt if entry.Dr_cr == 'C' else Decimal('0.00'),
+                            'fcy_dr': fcy_amount if entry.Dr_cr == 'D' else Decimal('0.00'),
+                            'fcy_cr': fcy_amount if entry.Dr_cr == 'C' else Decimal('0.00'),
                             'lcy_dr': lcy_amount if entry.Dr_cr == 'D' else Decimal('0.00'),
                             'lcy_cr': lcy_amount if entry.Dr_cr == 'C' else Decimal('0.00')
                         })
 
-                    # ✅ CRITICAL FIX: Use the formatted account numbers from frontend
+                    # Update account fields if provided
                     if new_account is not None:
-                        if is_debit:
-                            # For debit entry: Account_no is debit, Ac_relatives is credit
-                            update_fields.update({
-                                'Account': new_account,
-                                'Account_no': account_no,  # ✅ Use formatted value from frontend
-                                'Ac_relatives': ac_relatives  # ✅ Use formatted value from frontend
-                            })
-                        else:
-                            # For credit entry: Account_no is credit, Ac_relatives is debit
-                            update_fields.update({
-                                'Account': new_account,
-                                'Account_no': ac_relatives,  # ✅ Swap for credit entry
-                                'Ac_relatives': account_no   # ✅ Swap for credit entry
-                            })
+                        update_fields.update({
+                            'Account': new_account,  # ✅ FIXED: Use 'Account' not 'Account_id'
+                            'Account_no': new_account.glsub_code,
+                            'Ac_relatives': paired_account.glsub_id if paired_account else entry.Ac_relatives
+                        })
 
                     # Update journal entry
                     for field, value in update_fields.items():
@@ -5269,14 +5274,14 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     entry.save()
                     updated_counts['journal_entries'] += 1
 
-                    # Create history entry
+                    # Create new history entry
                     history_entry = DETB_JRNL_LOG_HIST.objects.create(
                         module_id_id=entry.module_id_id,
                         Reference_No=entry.Reference_No,
                         Reference_sub_No=entry.Reference_sub_No,
                         comments=comments,
                         Ccy_cd_id=entry.Ccy_cd_id,
-                        Fcy_Amount=update_fields.get('Fcy_Amount', entry.Fcy_Amount),
+                        Fcy_Amount=fcy_amount if fcy_amount is not None else entry.Fcy_Amount,
                         Lcy_Amount=update_fields.get('Lcy_Amount', entry.Lcy_Amount),
                         fcy_dr=update_fields.get('fcy_dr', entry.fcy_dr),
                         fcy_cr=update_fields.get('fcy_cr', entry.fcy_cr),
@@ -5284,26 +5289,28 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         lcy_cr=update_fields.get('lcy_cr', entry.lcy_cr),
                         Dr_cr=entry.Dr_cr,
                         Ac_relatives=update_fields.get('Ac_relatives', entry.Ac_relatives),
-                        Account=update_fields.get('Account', entry.Account),
+                        Account=update_fields.get('Account', entry.Account),  # ✅ FIXED: Use 'Account' not 'Account_id'
                         Account_no=update_fields.get('Account_no', entry.Account_no),
                         Txn_code_id=entry.Txn_code_id,
                         Value_date=entry.Value_date,
                         Exch_rate=entry.Exch_rate,
                         fin_cycle_id=entry.fin_cycle_id,
                         Period_code_id=entry.Period_code_id,
-                        Addl_text=update_fields.get('Addl_text', entry.Addl_text),
-                        Addl_sub_text=update_fields.get('Addl_sub_text', entry.Addl_sub_text),
+                        Addl_text=addl_text[:255] if addl_text is not None else entry.Addl_text,
+                        Addl_sub_text=addl_sub_text[:255] if addl_sub_text is not None else entry.Addl_sub_text,
                         Maker_Id=entry.Maker_Id,
                         Maker_DT_Stamp=entry.Maker_DT_Stamp,
                         Checker_Id=request.user,
                         Checker_DT_Stamp=timezone.now(),
                         Auth_Status='U'
                     )
+                    history_entries_created.append(history_entry)
                     updated_counts['history_entries'] += 1
 
                 # Update master entry
                 master_entry = DETB_JRNL_LOG_MASTER.objects.filter(Reference_No=reference_no)
                 if master_entry.exists():
+                    # Recalculate total Fcy_Amount and Lcy_Amount for the Reference_No
                     all_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
                     total_fcy = sum(e.fcy_dr for e in all_entries)
                     total_lcy = sum(e.lcy_dr for e in all_entries)
@@ -5315,66 +5322,72 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         Lcy_Amount=total_lcy
                     )
 
+                # Log the fix
                 logger.info(f"Fixed rejected journal batch - Reference_sub_No: {reference_sub_no}, "
-                        f"Account_no: {account_no}, Ac_relatives: {ac_relatives}")
+                        f"Reference_No: {reference_no}, "
+                        f"Comments: {comments}, "
+                        f"glsub_id: {glsub_id}, "
+                        f"relative_glsub_id: {relative_glsub_id}, "
+                        f"Counts: {updated_counts}")
 
                 return Response({
-                    'message': 'Successfully fixed rejected journal entries',
+                    'message': 'Successfully fixed rejected journal entries and set Auth_Status to U',
                     'reference_sub_no': reference_sub_no,
                     'reference_no': reference_no,
-                    'account_no': account_no,
-                    'ac_relatives': ac_relatives,
+                    'comments': comments,
+                    'glsub_id': glsub_id,
+                    'relative_glsub_id': relative_glsub_id,
                     'updated_counts': updated_counts
                 }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Error fixing rejected journal entries: {str(e)}")
+            logger.error(f"Error fixing rejected journal entries for Reference_sub_No: {reference_sub_no}: {str(e)}")
             return Response({
                 'error': 'Failed to fix rejected journal entries',
                 'detail': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
-        @action(detail=False, methods=['get'])
-        def balance_check(self, request):
-            """Check if journal entries are balanced by reference number"""
-            reference_no = request.query_params.get('reference_no')
-            
-            if not reference_no:
-                return Response({'error': 'reference_no parameter is required'}, 
-                            status=status.HTTP_400_BAD_REQUEST)
-            
-            entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
-            
-            if not entries.exists():
-                return Response({'error': 'No entries found for this reference number'}, 
-                            status=status.HTTP_404_NOT_FOUND)
-            
-            # Calculate totals
-            totals = entries.aggregate(
-                total_lcy_dr=Sum('lcy_dr'),
-                total_lcy_cr=Sum('lcy_cr'),
-                total_fcy_dr=Sum('fcy_dr'),
-                total_fcy_cr=Sum('fcy_cr')
-            )
-            
-            lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
-            fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
-            
-            return Response({
-                'reference_no': reference_no,
-                'entry_count': entries.count(),
-                'lcy_totals': {
-                    'debit': totals['total_lcy_dr'] or 0,
-                    'credit': totals['total_lcy_cr'] or 0,
-                    'balanced': lcy_balanced
-                },
-                'fcy_totals': {
-                    'debit': totals['total_fcy_dr'] or 0,
-                    'credit': totals['total_fcy_cr'] or 0,
-                    'balanced': fcy_balanced
-                },
-                'overall_balanced': lcy_balanced and fcy_balanced
-            })
+            }, status=status.HTTP_400_BAD_REQUEST)  
+        
+    @action(detail=False, methods=['get'])
+    def balance_check(self, request):
+        """Check if journal entries are balanced by reference number"""
+        reference_no = request.query_params.get('reference_no')
+        
+        if not reference_no:
+            return Response({'error': 'reference_no parameter is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
+        
+        if not entries.exists():
+            return Response({'error': 'No entries found for this reference number'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Calculate totals
+        totals = entries.aggregate(
+            total_lcy_dr=Sum('lcy_dr'),
+            total_lcy_cr=Sum('lcy_cr'),
+            total_fcy_dr=Sum('fcy_dr'),
+            total_fcy_cr=Sum('fcy_cr')
+        )
+        
+        lcy_balanced = abs((totals['total_lcy_dr'] or 0) - (totals['total_lcy_cr'] or 0)) < 0.01
+        fcy_balanced = abs((totals['total_fcy_dr'] or 0) - (totals['total_fcy_cr'] or 0)) < 0.01
+        
+        return Response({
+            'reference_no': reference_no,
+            'entry_count': entries.count(),
+            'lcy_totals': {
+                'debit': totals['total_lcy_dr'] or 0,
+                'credit': totals['total_lcy_cr'] or 0,
+                'balanced': lcy_balanced
+            },
+            'fcy_totals': {
+                'debit': totals['total_fcy_dr'] or 0,
+                'credit': totals['total_fcy_cr'] or 0,
+                'balanced': fcy_balanced
+            },
+            'overall_balanced': lcy_balanced and fcy_balanced
+        })
 
     @action(detail=False, methods=["post"], url_path="approve-asset")
     def approve_asset(self, request):
@@ -9413,15 +9426,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     @action(detail=False, methods=['post'], url_path='bulk-approve-journals')
     def bulk_approve_journals(self, request):
-        '''
-        Bulk approve/reject disposal journal entries by asset_list_id
-    
-        POST /api/asset_list_diposal/bulk-approve-journals/
-        {
-            "asset_list_ids": ["FIX-001-202508-0000138", "FIX-001-202508-0000139"],
-            "action": "approve"
-        }
-        '''
+       
         return bulk_approve_journals_view(self)
 
     
@@ -9443,7 +9448,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """ສ້າງການຊຳລະສະສາງຊັບສິນໃໝ່"""
+       
         user = self.request.user
         
         print("=== DEBUG Asset Disposal Create ===")
@@ -9460,7 +9465,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
         )
         
        
-        # self.update_asset_status(instance)
+      
         
       
         if account_result['success']:
@@ -9612,10 +9617,7 @@ class FAAssetListDisposalViewSet(viewsets.ModelViewSet):
             }
     
     def find_account_in_glsub(self, account_prefix, asset_list_code):
-        """
-        ຄົ້ນຫາບັນຊີໃນ MTTB_GLSub ດ້ວຍ 3 ໂຕໜ້າ + asset_list_code
-        ຖ້າບໍ່ພົບຈະ return None
-        """
+     
         try:
             print(f"ຄົ້ນຫາບັນຊີ: {account_prefix} + {asset_list_code}")
             
@@ -13725,10 +13727,10 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                 print(f"❌ Depreciation record error: {dep_error}")
                 final_amount = float(depreciation_amount)
             
-            # ✅ ກຳນົດ start_date ແລະ end_date ໂດຍອີງຕາມ C_dpac
-            end_date = current_date  # ໃຊ້ວັນທີປັດຈຸບັນເປັນ end_date
+           
+            end_date = current_date  
             if c_dpac == 0:
-                # ຖ້າ C_dpac == 0, ໃຊ້ dpca_start_date ເປັນ start_date
+         
                 start_date = asset_data.dpca_start_date or current_date
             else:
                 start_date = asset_data.asset_latest_date_dpca or current_date
@@ -13790,15 +13792,17 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         
         # ✅ NEW: ໃຊ້ final_date_for_text ແທນ value_date ໃນ addl_sub_text
         addl_sub_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ມູນຄ່າ {final_amount:,.2f} ເດືອນທີ່ {start_date_str} ຫາ {final_date_for_text}"
+        Addl_text = f"ຫັກຄ່າຫຼູ້ຍຫຽ້ນ {asset_list_id_str} {asset_spec_str} ເດືອນທີ່ {start_date_str} ຫາ {final_date_for_text}"
         
         print(f"🔍 DEBUG addl_sub_text: {addl_sub_text}")
-        
+        print(f"Addl_text: {Addl_text}")
+       
         journal_data = {
             "Reference_No": reference_no,
             "Ccy_cd": asset_currency_str,  
             "Txn_code": "ARD", 
             "Value_date": value_date.isoformat(),  
-            "Addl_text": "ຫັກຄ່າຫຼູ້ຍຫຽ້ນ",
+            "Addl_text": Addl_text,
             "fin_cycle": str(sttb_date.year),  
             "module_id": "AS",
             "Period_code": sttb_date.strftime('%Y%m'),  
@@ -13851,6 +13855,7 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
             'success': False,
             'error': f"Create journal data error: {str(e)}"
         }
+
 def find_related_journal_entries(asset_list_id):
     """
     ✅ MODIFIED: ຄົ້ນຫາ Journal entries ໂດຍໃຊ້ asset_list_id ໃນ Ac_relatives
@@ -14566,7 +14571,7 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
                                 'error': f"Journal creation error: {str(journal_error)}"
                             }
                             journal_error_count += 1
-                            # ✅ Re-raise ເພື່ອ rollback transaction
+                       
                             raise journal_error
                             
                     elif create_journal and not request:
@@ -14576,12 +14581,11 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
                         }
                         journal_error_count += 1
                         print(f"⚠️ No request object for mapping_id {mapping_id}")
-                        # ✅ Rollback ເພາະບໍ່ມີ request object
-                        if create_journal:  # ຖ້າຕ້ອງການ journal ແຕ່ບໍ່ມີ request ແມ່ນຜິດພາດ
+                       
+                        if create_journal:  
                             raise Exception("Request object required for journal creation")
                     
-                    # ✅ ຖ້າຮອດຈຸດນີ້ແມ່ນທຸກຢ່າງສຳເລັດ
-                    # ບັນທຶກຜົນລັບ
+                   
                     results.append({
                         'mapping_id': mapping_id,
                         'status': 'success',
@@ -14653,20 +14657,130 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
     except Exception as e:
         print(f"💥 Bulk processing fatal error: {str(e)}")
         return {"error": f"Bulk processing with journal error: {str(e)}"}
+# @csrf_exempt
+# def calculate_depreciation_api_with_journal(request):
+   
+#     try:
+#         if request.method not in ['POST', 'GET']:
+#             return JsonResponse({'error': 'ໃຊ້ POST ຫຼື GET method'}, status=400)
+        
+#         if request.method == 'POST':
+#             if not request.body:
+#                 return JsonResponse({'error': 'ບໍ່ມີ request body'}, status=400)
+            
+#             try:
+#                 data = json.loads(request.body)
+#             except json.JSONDecodeError as e:
+#                 return JsonResponse({'error': f'JSON error: {str(e)}'}, status=400)
+            
+#             mapping_id = data.get('mapping_id')
+#             mapping_ids = data.get('mapping_ids', [])
+#             user_id = data.get('user_id')
+#             action = data.get('action', 'calculate')
+#             date = data.get('date')
+#             create_journal = data.get('create_journal', False)  
+#             target_month = data.get('target_month')  
+#             target_year = data.get('target_year')    
+#         else:  
+#             mapping_id = request.GET.get('mapping_id')
+#             mapping_ids_str = request.GET.get('mapping_ids', '')
+#             mapping_ids = [int(x) for x in mapping_ids_str.split(',') if x] if mapping_ids_str else []
+#             user_id = request.GET.get('user_id')
+#             action = request.GET.get('action', 'calculate')
+#             date = request.GET.get('date')
+#             create_journal = request.GET.get('create_journal', 'false').lower() == 'true' 
+#             target_month = request.GET.get('target_month') 
+#             target_year = request.GET.get('target_year')    
+        
+       
+#         journal_supported_actions = ['process', 'bulk_process', 'bulk_process_all']
+        
+#         if action == 'process':
+#             if not mapping_id:
+#                 return JsonResponse({'error': 'ໃສ່ mapping_id'}, status=400)
+            
+#             if create_journal:
+#                 result = process_monthly_depreciation_with_journal(
+#                     mapping_id, user_id, date, create_journal=True, request=request
+#                 )
+#             else:
+#                 result = process_monthly_depreciation(mapping_id, user_id, date)
+                
+#         elif action == 'bulk_process':
+#             if not mapping_ids:
+#                 return JsonResponse({'error': 'ໃສ່ mapping_ids'}, status=400)
+            
+#             if create_journal:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation_with_journal(
+#                         mapping_ids, check_only=False, user_id=user_id, 
+#                         create_journal=True, request=request
+#                     )
+#             else:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
+                    
+#         elif action == 'bulk_process_all':
+#             depreciable_assets = get_depreciable_assets()
+#             if 'error' in depreciable_assets:
+#                 return JsonResponse(depreciable_assets, status=400)
+            
+#             available_ids = [item['mapping_id'] for item in depreciable_assets['depreciable_items']]
+            
+#             if not available_ids:
+#                 return JsonResponse({
+#                     'success': True,
+#                     'message': 'ບໍ່ມີລາຍການທີ່ຕ້ອງຫັກ',
+#                     'data': {'summary': {'total_items': 0, 'success_count': 0, 'error_count': 0}, 'details': []}
+#                 })
+            
+#             if create_journal:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation_with_journal(
+#                         available_ids, check_only=False, user_id=user_id,
+#                         create_journal=True, request=request
+#                     )
+#             else:
+#                 with transaction.atomic():
+#                     result = process_bulk_depreciation(available_ids, check_only=False, user_id=user_id)
+                    
+#         elif action == 'get_monthly_due':
+          
+#             if target_month:
+#                 target_month = int(target_month)
+#             if target_year:
+#                 target_year = int(target_year)
+            
+#             result = get_depreciation_due_this_month(target_month, target_year)
+            
+#         else:
+           
+#             return calculate_depreciation_api(request)
+        
+#         if isinstance(result, dict) and 'error' in result:
+#             return JsonResponse(result, status=400)
+        
+#         return JsonResponse({
+#             'success': True,
+#             'action': action,
+#             'data': result,
+#             'journal_enabled': create_journal if action in journal_supported_actions else False,
+#             'timestamp': timezone.now().isoformat()
+#         })
+        
+#     except Exception as e:
+#         import traceback
+#         error_details = {
+#             'error': str(e),
+#             'type': type(e).__name__,
+#             'traceback': traceback.format_exc()
+#         }
+#         print("API with Journal Error Details:", error_details)
+#         return JsonResponse(error_details, status=500)
+    
 @csrf_exempt
 def calculate_depreciation_api_with_journal(request):
-    """
-    ✅ API ຫຼັກທີ່ຮອງຮັບ Journal Entry
-    
-    ເພີ່ມ parameters ໃໝ່:
-    - create_journal: true/false (default: false)
-    
-    Actions ທີ່ຮອງຮັບ Journal:
-    - process: ຫັກລາຍການດຽວພ້ອມ Journal
-    - bulk_process: ຫັກຫຼາຍລາຍການພ້ອມ Journal
-    - bulk_process_all: ຫັກທຸກລາຍການພ້ອມ Journal
-    - get_monthly_due: ໃໝ່! ດຶງລາຍການທີ່ຕ້ອງຫັກໃນເດືອນ
-    """
+   
     try:
         if request.method not in ['POST', 'GET']:
             return JsonResponse({'error': 'ໃຊ້ POST ຫຼື GET method'}, status=400)
@@ -14728,28 +14842,22 @@ def calculate_depreciation_api_with_journal(request):
                     result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
                     
         elif action == 'bulk_process_all':
-            depreciable_assets = get_depreciable_assets()
-            if 'error' in depreciable_assets:
-                return JsonResponse(depreciable_assets, status=400)
+            # ກວດສອບວ່າມີ mapping_ids ສົ່ງມາບໍ່
+            if not mapping_ids:
+                return JsonResponse({'error': 'ໃສ່ mapping_ids ສຳລັບ bulk_process_all'}, status=400)
             
-            available_ids = [item['mapping_id'] for item in depreciable_assets['depreciable_items']]
-            
-            if not available_ids:
-                return JsonResponse({
-                    'success': True,
-                    'message': 'ບໍ່ມີລາຍການທີ່ຕ້ອງຫັກ',
-                    'data': {'summary': {'total_items': 0, 'success_count': 0, 'error_count': 0}, 'details': []}
-                })
+            # ບໍ່ຕ້ອງດຶງຈາກ get_depreciable_assets() ອີກ
+            # ໃຊ້ mapping_ids ທີ່ສົ່ງມາໂດຍກົງ
             
             if create_journal:
                 with transaction.atomic():
                     result = process_bulk_depreciation_with_journal(
-                        available_ids, check_only=False, user_id=user_id,
+                        mapping_ids, check_only=False, user_id=user_id,
                         create_journal=True, request=request
                     )
             else:
                 with transaction.atomic():
-                    result = process_bulk_depreciation(available_ids, check_only=False, user_id=user_id)
+                    result = process_bulk_depreciation(mapping_ids, check_only=False, user_id=user_id)
                     
         elif action == 'get_monthly_due':
           
@@ -14784,8 +14892,6 @@ def calculate_depreciation_api_with_journal(request):
         }
         print("API with Journal Error Details:", error_details)
         return JsonResponse(error_details, status=500)
-    
-
 
 
 def auto_reject_related_journals(asset_list_id, reason, user_id, request=None):
@@ -15364,8 +15470,8 @@ def create_journal_entry_via_api(journal_data, request):
             # ✅ ສ້າງ mock request object
             from unittest.mock import Mock
             mock_request = Mock()
-            mock_request.data = journal_data  # ໃຊ້ journal_data ໂດຍກົງ
-            mock_request.user = actual_user   # ໃຊ້ MTTB_Users instance
+            mock_request.data = journal_data  
+            mock_request.user = actual_user   
             mock_request.method = 'POST'
             
             print(f"👤 Using user: {actual_user.user_id} ({type(actual_user)})")
@@ -21510,15 +21616,7 @@ def process_overdue_depreciation(urgency_levels=None, user_id=None):
         }
 @csrf_exempt
 def overdue_depreciation_api(request):
-    """
-    API ສຳລັບຈັດການລາຍການຄ້າງຫັກຄ່າເສື່ອມລາຄາ
-    
-    Actions:
-    - get_overdue: ດຶງລາຍການຄ້າງຫັກທັງໝົດ
-    - get_by_urgency: ດຶງຕາມລະດັບຄວາມສຳຄັນ (ຕ້ອງມີ urgency_level)
-    - process_overdue: ຫັກລາຍການຄ້າງຫັກທັງໝົດ
-    - process_by_urgency: ຫັກຕາມລະດັບທີ່ເລືອກ (ຕ້ອງມີ urgency_levels)
-    """
+   
     try:
         # ກວດສອບ method
         if request.method not in ['POST', 'GET']:
@@ -21609,7 +21707,7 @@ def overdue_depreciation_api(request):
         }
         print("Overdue API Error Details:", error_details)
         return JsonResponse(error_details, status=500)
-    
+  
 
 
     
@@ -30742,12 +30840,12 @@ class JRNLLogViewSetAssetDisposal(viewsets.ReadOnlyModelViewSet):
         
         return queryset
 
-
+from .filters import JournalLogARDFilter
 class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
     serializer_class = DETB_JRNL_LOG_MASTER_AC_Serializer  # Use your existing serializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['Ccy_cd', 'fin_cycle', 'Auth_Status', 'Reference_No']
+    filterset_class = JournalLogARDFilter
     search_fields = ['Reference_No', 'Addl_text']
     ordering_fields = ['Maker_DT_Stamp', 'Value_date', 'Reference_No', 'Fcy_Amount', 'Auth_Status']
 
@@ -30800,7 +30898,7 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                     if to_date:
                         queryset = queryset.filter(Value_date__date__lte=to_date)
             
-            # Other filters
+           
             module_id = request.query_params.get('module_id')
             if module_id:
                 queryset = queryset.filter(module_id=module_id)
@@ -30851,34 +30949,30 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
     def init_data(self, request):
         """
         Combined endpoint for initial data loading - ARD transactions only
-        Returns paginated journal data + summary data in one request
+        Returns ALL journal data + summary data in one request (no pagination)
         """
         try:
-            
-            page_size = min(int(request.query_params.get('page_size', 25)), 100)
-            page = int(request.query_params.get('page', 1))
-            
-            print(f"DEBUG: ARD init_data called with page={page}, page_size={page_size}")
-            
-            
+            print(f"DEBUG: ARD init_data called (no pagination)")
+        
+            # Get base queryset
             base_queryset = self.get_queryset().select_related(
                 'Maker_Id', 'Checker_Id', 'module_id', 'Ccy_cd', 'Txn_code'
             )
-            
+        
             print(f"DEBUG: ARD Base queryset count: {base_queryset.count()}")
-            
+        
             # Apply existing filters
             queryset = self.filter_queryset(base_queryset)
-            
+        
             # Apply additional custom filters
             queryset = self._apply_custom_filters(queryset, request)
-            
+        
             print(f"DEBUG: ARD Filtered queryset count: {queryset.count()}")
-            
+        
             # For summary - get counts WITHOUT Auth_Status filter for accurate totals
             summary_queryset = self.filter_queryset(base_queryset)
             summary_queryset = self._apply_custom_filters_for_summary(summary_queryset, request)
-            
+        
             # Get summary counts
             summary_data = summary_queryset.aggregate(
                 total=Count('JRNLLog_id'),
@@ -30887,47 +30981,33 @@ class DETB_JRNL_LOG_MASTER_ARD_ViewSet(viewsets.ModelViewSet):
                 rejected=Count('JRNLLog_id', filter=Q(Auth_Status='R')),
                 correction=Count('JRNLLog_id', filter=Q(Auth_Status='P'))
             )
-            
+        
             print(f"DEBUG: ARD Summary data: {summary_data}")
-            
-            # Get total count for pagination
-            total_count = queryset.count()
-            
-            # Paginate the results
-            start = (page - 1) * page_size
-            end = start + page_size
-            paginated_queryset = queryset[start:end]
-            
-            print(f"DEBUG: ARD Paginated queryset: {start}-{end}, count: {len(paginated_queryset)}")
-            
+        
+            # Get ALL results (no pagination)
+            all_results = queryset
+        
             # Serialize data using your existing serializer
-            serializer = self.get_serializer(paginated_queryset, many=True)
-            
-            # Build response (NO CACHING)
+            serializer = self.get_serializer(all_results, many=True)
+        
+        # Build response (no pagination info)
             response_data = {
                 'results': serializer.data,
-                'count': total_count,
-                'next': f"?page={page + 1}" if end < total_count else None,
-                'previous': f"?page={page - 1}" if page > 1 else None,
+                'count': len(serializer.data),
                 'summary': summary_data,
-                'page_info': {
-                    'current_page': page,
-                    'page_size': page_size,
-                    'total_pages': (total_count + page_size - 1) // page_size
-                },
-                'transaction_type': 'ARD'  # Indicator for frontend
+                'transaction_type': 'ARD'
             }
-            
+        
             print(f"DEBUG: ARD Response ready, results count: {len(response_data['results'])}")
-            
+        
             return Response(response_data, status=200)
-            
+        
         except Exception as e:
             print(f"ERROR in ARD init_data: {str(e)}")
             logger.error(f"Error in ARD init_data: {str(e)}")
             import traceback
             traceback.print_exc()
-            
+        
             return Response({
                 'error': 'Failed to load ARD initial data',
                 'details': str(e)
@@ -35356,6 +35436,7 @@ def trial_balance_dairy_view(request):
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+<<<<<<< HEAD
 """
 Account Statement Search Views - ACTB and EOC
 Fixed version with no code duplication
@@ -35364,6 +35445,13 @@ Fixed version with no code duplication
 Account Statement Search Views - ACTB and EOC
 Fixed version with no code duplication
 """
+=======
+
+# =============================================
+# STORE PROCEDURE SEARCH ACCOUNT 
+# =============================================
+# Account Statement Search by Account Number
+>>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
 from django.db import connection
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -35404,6 +35492,7 @@ def validate_date_range(date_start, date_end):
 
 def validate_gl_code(gl_code):
     """
+<<<<<<< HEAD
     Validate GL Code - Supports formats:
     - Pure digits: 1131130 (7+ digits)
     - With decimal: 1131130.0000001 (main account + sub account)
@@ -35445,6 +35534,38 @@ def run_account_statement_proc_actb(currency_code, date_start, date_end, gl_code
     """Execute Account_Statement_By_Currency_7_ACTB stored procedure"""
     try:
         with connection.cursor() as cursor:
+=======
+    Validate GL Code (Account Number) - must be 7 characters
+    
+    Args:
+        gl_code (str): GL code to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not gl_code:
+        return False
+    return len(str(gl_code).strip()) == 7
+
+
+def run_account_statement_proc(currency_code=None, date_start=None, 
+                               date_end=None, gl_code=None):
+    """
+    Execute the Account_Statement_By_Currency_7_ACTB stored procedure
+    
+    Args:
+        currency_code (str): Currency code (max 5 characters)
+        date_start (str): Start date in YYYY-MM-DD format
+        date_end (str): End date in YYYY-MM-DD format
+        gl_code (str): GL Code / Account Number (7 digits)
+    
+    Returns:
+        list: Query results as list of dictionaries
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Use parameterized SQL to prevent SQL injection
+>>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
             sql = """
                 EXEC [dbo].[Account_Statement_By_Currency_7_ACTB]
                     @Currency_code = %s,
@@ -35454,6 +35575,7 @@ def run_account_statement_proc_actb(currency_code, date_start, date_end, gl_code
             """
             
             cursor.execute(sql, [currency_code, date_start, date_end, gl_code])
+<<<<<<< HEAD
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
             
@@ -35472,6 +35594,14 @@ def run_account_statement_proc_actb(currency_code, date_start, date_end, gl_code
                     'OPEN_BAL': float(row_dict.get('Opening_Balance', 0))
                 }
                 results.append(standardized_row)
+=======
+            
+            # Get column names
+            columns = [col[0] for col in cursor.description]
+            
+            # Fetch all results and convert to list of dictionaries
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+>>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
             
             return results
             
@@ -35595,8 +35725,9 @@ def validate_account_statement_request(request_data):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def account_statement_search_actb_view(request):
+def account_statement_search_view(request):
     """
+<<<<<<< HEAD
     ACTB Account Statement Search Endpoint
     Calls: Account_Statement_By_Currency_7_ACTB
     """
@@ -35618,6 +35749,87 @@ def account_statement_search_actb_view(request):
             f"[ACTB Statement] Searching - GL: {account_info}, "
             f"Currency: {currency_code}, Dates: {date_start} to {date_end}"
         )
+=======
+    API endpoint for searching account statement by account number
+    
+    Expected payload:
+    {
+        "currency_code": "LAK",        // required
+        "date_start": "2024-01-01",    // required
+        "date_end": "2024-01-31",      // required
+        "gl_code": "1010101"           // required (7 digits)
+    }
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "count": number_of_records,
+        "data": {
+            "account_info": {
+                "gl_code": "1010101",
+                "currency_code": "LAK",
+                "open_balance": 0.00
+            },
+            "transactions": [account_statement_records]
+        }
+    }
+    """
+    # Extract required parameters from request
+    currency_code = request.data.get("currency_code")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+    gl_code = request.data.get("gl_code")
+    
+    # Validate required fields
+    if not currency_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸລະຫັດສະກຸນເງິນ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not gl_code:
+        return Response({
+            "status": "error",
+            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate GL Code format (must be 7 digits)
+    if not validate_gl_code(gl_code):
+        return Response({
+            "status": "error",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date formats
+    if not validate_date_format(date_start):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ເລີ່ມຕົ້ນບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not validate_date_format(date_end):
+        return Response({
+            "status": "error",
+            "message": "ຮູບແບບວັນທີ່ສິ້ນສຸດບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນ: YYYY-MM-DD",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate date range
+    if not validate_date_range(date_start, date_end):
+        return Response({
+            "status": "error",
+            "message": "ຊ່ວງວັນທີ່ບໍ່ຖືກຕ້ອງ: ວັນທີ່ເລີ່ມຕົ້ນຕ້ອງມາກ່ອນຫຼືເທົ່າກັບວັນທີ່ສິ້ນສຸດ",
+            "data": None
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info(f"[AccountStatement] Searching account - GL: {gl_code}, Currency: {currency_code}, Dates: {date_start} to {date_end}")
+>>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
         
         # Execute ACTB stored procedure
         result = run_account_statement_proc_actb(
@@ -35641,13 +35853,17 @@ def account_statement_search_actb_view(request):
             "transactions": result
         }
         
+<<<<<<< HEAD
         message = f"ດຶງຂໍ້ມູນບັນຊີ {gl_code} ສໍາເລັດແລ້ວ (ACTB)" if gl_code else "ດຶງຂໍ້ມູນທຸກບັນຊີສໍາເລັດແລ້ວ (ACTB)"
         
         logger.info(f"[ACTB Statement] Success. Records: {len(result)}")
+=======
+        logger.info(f"[AccountStatement] Search completed successfully. Records: {len(result)}")
+>>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
         
         return Response({
             "status": "success",
-            "message": message,
+            "message": "ດຶງຂໍ້ມູນບັນຊີສໍາເລັດແລ້ວ",
             "count": len(result),
             "data": response_data
         }, status=status.HTTP_200_OK)
@@ -35663,6 +35879,7 @@ def account_statement_search_actb_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+<<<<<<< HEAD
 def account_search_validation_actb_view(request):
     """ACTB Account Number Validation"""
     gl_code = sanitize_gl_code(request.query_params.get("gl_code"))
@@ -35766,17 +35983,35 @@ def account_search_validation_eoc_view(request):
     """EOC Account Number Validation"""
     gl_code = sanitize_gl_code(request.query_params.get("gl_code"))
     
+=======
+def account_search_validation_view(request):
+    """
+    API endpoint to validate account number exists
+    
+    Query parameters:
+        gl_code: Account number (7 digits)
+    
+    Returns:
+    {
+        "status": "success|error",
+        "message": "Description in Lao",
+        "is_valid": true|false
+    }
+    """
+    gl_code = request.query_params.get("gl_code")
+    
+>>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
     if not gl_code:
         return Response({
-            "status": "success",
-            "message": "ບໍ່ມີເລກບັນຊີ - ຈະຄົ້ນຫາທຸກບັນຊີ",
-            "is_valid": True
-        }, status=status.HTTP_200_OK)
+            "status": "error",
+            "message": "ກະລຸນາລະບຸເລກບັນຊີ",
+            "is_valid": False
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     if not validate_gl_code(gl_code):
         return Response({
             "status": "error",
-            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກຢ່າງໜ້ອຍ 7 ຫຼັກ",
+            "message": "ເລກບັນຊີບໍ່ຖືກຕ້ອງ. ຕ້ອງເປັນຕົວເລກ 7 ຫຼັກ",
             "is_valid": False
         }, status=status.HTTP_400_BAD_REQUEST)
     
