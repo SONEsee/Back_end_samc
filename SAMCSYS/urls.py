@@ -141,15 +141,12 @@ from .views import (
     get_credit_unauthorized,
     journal_before_report_view,
     journal_before_report_get_view,
-<<<<<<< HEAD
     account_statement_search_actb_view,
     account_search_validation_actb_view,
     account_statement_search_eoc_view,
     account_search_validation_eoc_view,
     BackupDatabaseView,
-=======
    
->>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
 
 
     
@@ -294,7 +291,6 @@ urlpatterns = [
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
-<<<<<<< HEAD
     # Fixed URL patterns with unique names
     path('api/account/statement/search/actb/', 
         account_statement_search_actb_view, 
@@ -311,9 +307,7 @@ urlpatterns = [
     path('api/account/validate/eoc/', 
         account_search_validation_eoc_view, 
         name='account-validate-eoc'),  # Changed name
-=======
     
->>>>>>> a96ea41c0445b88c48864ea1d3f01fb6ef1f72fe
     
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
     path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
