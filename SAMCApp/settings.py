@@ -171,7 +171,7 @@ DATABASES = {
     # }
    'default': {
         'ENGINE': 'mssql',                
-        'NAME': 'SAMCDB_Dev',          
+        'NAME': 'SAMCDB_1',          
         'USER': 'sa',            
         'PASSWORD': 'mess!Q@083@@',
         'HOST': '192.168.10.35',  
@@ -229,3 +229,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+BACKUP_CONFIG = {
+    'DEFAULT_PATH': 'C:\\Backup',  # Use a path SQL Server can access
+    'MAX_FILE_AGE_DAYS': 30,  # Auto-cleanup old backups
+    'COMPRESSION': True,
+    'ALLOWED_EXTENSIONS': ['.bak'],
+}
