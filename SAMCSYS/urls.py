@@ -141,6 +141,11 @@ from .views import (
     get_credit_unauthorized,
     journal_before_report_view,
     journal_before_report_get_view,
+    account_statement_search_actb_view,
+    account_search_validation_actb_view,
+    account_statement_search_eoc_view,
+    account_search_validation_eoc_view,
+    BackupDatabaseView,
    
 
 
@@ -286,6 +291,22 @@ urlpatterns = [
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
+    # Fixed URL patterns with unique names
+    path('api/account/statement/search/actb/', 
+        account_statement_search_actb_view, 
+        name='account-statement-search-actb'),  # Changed name
+
+    path('api/account/validate/actb/', 
+        account_search_validation_actb_view, 
+        name='account-validate-actb'),  # Changed name
+
+    path('api/account/statement/search/eoc/', 
+        account_statement_search_eoc_view, 
+        name='account-statement-search-eoc'),  # Changed name
+
+    path('api/account/validate/eoc/', 
+        account_search_validation_eoc_view, 
+        name='account-validate-eoc'),  # Changed name
     
     
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
@@ -295,7 +316,8 @@ urlpatterns = [
     path('api/journal-report-actb/', journal_before_report_view, name='journal_report_post'),
     path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
 
-    # Store Procedure <---- Search AccountNo --------->
+    # Backup Views <---- Backup ------>
+    path('api/backup/', BackupDatabaseView.as_view(), name='backup_database'),
     
 
     # Store Procedure <---- Sub Trail Balance ------>
