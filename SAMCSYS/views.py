@@ -13337,16 +13337,16 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
     try:
         current_date = timezone.now()
         
-        # ✅ ດຶງວັນທີຈາກ STTB_Dates ທີ່ມີ date_id ໃຫຍ່ສຸດແລະ eod_time = 'N'
+
         try:
             latest_date_record = STTB_Dates.objects.filter(eod_time='N').order_by('-date_id').first()
             if latest_date_record and latest_date_record.Start_Date:
                 value_date = latest_date_record.Start_Date.date()
-                sttb_date = latest_date_record.Start_Date  # ✅ ເກັບ datetime object ສຳລັບໃຊ້ງານອື່ນ
+                sttb_date = latest_date_record.Start_Date  
             else:
-                # ຖ້າບໍ່ເຈົ້າໃຊ້ວັນທີປັດຈຸບັນແທນ
+                
                 value_date = current_date.date()
-                sttb_date = current_date  # ✅ ໃຊ້ current_date ເປັນ fallback
+                sttb_date = current_date  
         except Exception as date_error:
             print(f"❌ STTB_Dates query error: {date_error}")
             value_date = current_date.date()
@@ -13354,32 +13354,32 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         
-        # ນັບຈຳນວນ records ທີ່ມີ module_id = "AS" ໃນມື້ນີ້
+        
         daily_count = DETB_JRNL_LOG_MASTER.objects.filter(
             module_id="AS",
             Maker_DT_Stamp__range=[today_start, today_end]
         ).count()
         
-        # ເພີ່ມ 1 ສຳລັບ record ໃໝ່ນີ້
+        
         sequence_number = daily_count + 1
         
-        # ✅ ສ້າງ reference_no ໂດຍໃຊ້ວັນທີຈາກ STTB_Dates
+        
         reference_no = f"AS-ARD-{sttb_date.strftime('%Y%m%d')}-{sequence_number:04d}"
         
-        # ເອົາສ່ວນທີ່ເຫຼືອແບບເກົ່າ
+        
         debit_account_number = extract_account_number(accounting_method.debit_account_id)
         credit_account_number = extract_account_number(accounting_method.credit_account_id)
         
         debit_glid = find_gl_account(debit_account_number)
         credit_glid = find_gl_account(credit_account_number)
         
-        # ✅ ຄິດໄລ່ Amount ຕາມເງື່ອນໄຂ
+        
         try:
             asset_data = FA_Asset_Lists.objects.get(asset_list_id=asset.asset_list_id)
             c_dpac = int(asset_data.C_dpac or 0)
             asset_useful_life = int(asset_data.asset_useful_life or 0)
             
-            # ຄຳນວນເດືອນທັງໝົດ
+            
             total_depreciation_months = asset_useful_life * 12
             
             try:
@@ -13398,15 +13398,15 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                 print(f"❌ Depreciation record error: {dep_error}")
                 final_amount = float(depreciation_amount)
             
-            # ✅ ກຳນົດ start_date ແລະ end_date ໂດຍອີງຕາມ C_dpac
-            end_date = current_date  # ໃຊ້ວັນທີປັດຈຸບັນເປັນ end_date
+            
+            end_date = current_date  
             if c_dpac == 0:
-                # ຖ້າ C_dpac == 0, ໃຊ້ dpca_start_date ເປັນ start_date
+                
                 start_date = asset_data.dpca_start_date or current_date
             else:
                 start_date = asset_data.asset_latest_date_dpca or current_date
             
-            # ✅ NEW: ຄຳນວນຈຳນວນເດືອນຈາກ start_date ຫາ STTB_Dates Start_Date
+            
             months_from_start_to_sttb = 0
             if asset_data.dpca_start_date:
                 start_year = asset_data.dpca_start_date.year
