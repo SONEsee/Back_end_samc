@@ -1535,11 +1535,13 @@ class FA_Maintenance_Logs(models.Model):
     completed_by = models.IntegerField(null=True, blank=True)  
     completed_date = models.DateField(null=True, blank=True)  
     notes = models.TextField(null=True, blank=True) 
+    quarter = models.CharField(max_length=10, null=True, blank=True)
     Record_Status = models.CharField(max_length=1,null=True,blank=True, default='C')
     Maker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='created_maintenance_logs')
     Maker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
     Checker_Id = models.ForeignKey(MTTB_Users, null=True, blank=True, on_delete=models.CASCADE, related_name='checked_maintenance_logs')
     Checker_DT_Stamp = models.DateTimeField(auto_now=False, null=True, blank=True)
+
 
     class Meta:
         verbose_name_plural = 'MaintenanceLogs'

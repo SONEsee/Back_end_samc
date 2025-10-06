@@ -165,3 +165,6 @@ class JournalEntryHelper:
         """Check if a reference number already exists"""
         from .models import DETB_JRNL_LOG
         return DETB_JRNL_LOG.objects.filter(Reference_No=reference_no).exists()
+
+
+
