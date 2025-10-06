@@ -39,96 +39,98 @@ class RoleMasterSerializer(serializers.ModelSerializer):
             Role_ID=obj, 
             User_Status='E'
         ).count()
+from rest_framework import serializers
+from django.contrib.auth.hashers import make_password
+from django.core.validators import EmailValidator
+from django.utils import timezone
+import re
+
 
 class MTTBUserSerializer(serializers.ModelSerializer):
     """
-    Enhanced User serializer with improved security and validation
+    Simplified User serializer with proper password handling
     """
-    # Nested read-only representations with enhanced info
+    # Nested read-only representations
     division = DivisionSerializer(source='div_id', read_only=True)
     role = RoleMasterSerializer(source='Role_ID', read_only=True)
 
-    # Writable PK fields with validation
+    # Writable PK fields
     div_id = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Divisions.objects.filter(Record_Status='O'),
         write_only=True, 
-        required=False,
+        required=True,
         error_messages={
-            'does_not_exist': 'Invalid division ID or division is not active.',
-            'invalid_choice': 'Please select a valid division.'
+            'required': 'ກະລຸນາເລືອກພະແນກ',
+            'does_not_exist': 'ພະແນກທີ່ເລືອກບໍ່ຖືກຕ້ອງ',
         }
     )
+    
     Role_ID = serializers.PrimaryKeyRelatedField(
         queryset=MTTB_Role_Master.objects.filter(record_Status='O'),
         write_only=True, 
-        required=False,
+        required=True,
         error_messages={
-            'does_not_exist': 'Invalid role ID or role is not active.',
-            'invalid_choice': 'Please select a valid role.'
+            'required': 'ກະລຸນາເລືອກສິດການນຳໃຊ້',
+            'does_not_exist': 'ສິດການນຳໃຊ້ທີ່ເລືອກບໍ່ຖືກຕ້ອງ',
         }
     )
 
-    # Additional computed fields
-    full_name = serializers.SerializerMethodField()
-    is_active = serializers.SerializerMethodField()
-    is_authorized = serializers.SerializerMethodField()
-    profile_picture_url = serializers.SerializerMethodField()
-    
-    # Password confirmation for creation/updates
-    password_confirm = serializers.CharField(
-        write_only=True, 
-        required=False,
-        help_text="Password confirmation (required when setting password)"
+    # Password field (write-only)
+    user_password = serializers.CharField(
+        write_only=True,
+        required=True,
+        min_length=6,
+        max_length=50,
+        error_messages={
+            'required': 'ກະລຸນາປ້ອນລະຫັດຜ່ານ',
+            'min_length': 'ລະຫັດຜ່ານຕ້ອງມີຢ່າງໜ້ອຍ 6 ຕົວອັກສອນ',
+            'max_length': 'ລະຫັດຜ່ານບໍ່ຄວນເກີນ 50 ຕົວອັກສອນ',
+        }
     )
+
+    # Profile picture URL
+    profile_picture_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MTTB_Users
         fields = [
-            'user_id', 'user_name', 'user_password', 'password_confirm',
-            'user_email', 'user_mobile', 'User_Status', 'pwd_changed_on',
+            'user_id', 'user_name', 'user_password',
+            'user_email', 'user_mobile', 'User_Status',
             'div_id', 'division', 'Role_ID', 'role',
             'profile_picture', 'profile_picture_url',
             'InsertDate', 'UpdateDate',
-            'Maker_Id', 'Maker_DT_Stamp', 'Checker_Id', 'Checker_DT_Stamp',
-            'Auth_Status', 'Once_Auth',
-            'full_name', 'is_active', 'is_authorized'
+            'Auth_Status', 'Once_Auth'
         ]
         extra_kwargs = {
-            'user_password': {
-                'write_only': True,
-                'style': {'input_type': 'password'},
-                'help_text': 'Password must be at least 8 characters with letters and numbers'
-            },
-            'profile_picture': {
-                'required': False, 
-                'allow_null': True,
-                'help_text': 'Upload profile picture (JPG, PNG, max 5MB)'
-            },
             'user_id': {
-                'help_text': 'Unique user identifier (6-20 characters)'
+                'required': True,
+                'error_messages': {
+                    'required': 'ກະລຸນາປ້ອນລະຫັດຜູ້ໃຊ້',
+                    'blank': 'ລະຫັດຜູ້ໃຊ້ບໍ່ສາມາດຫວ່າງເປົ່າໄດ້',
+                }
             },
             'user_name': {
-                'help_text': 'Unique username (3-50 characters)'
+                'required': True,
+                'error_messages': {
+                    'required': 'ກະລຸນາປ້ອນຊື່ຜູ້ໃຊ້',
+                    'blank': 'ຊື່ຜູ້ໃຊ້ບໍ່ສາມາດຫວ່າງເປົ່າໄດ້',
+                }
             },
             'user_email': {
-                'help_text': 'Valid email address'
+                'required': False,
+                'allow_blank': True,
             },
             'user_mobile': {
-                'help_text': 'Mobile number with country code'
-            }
+                'required': True,
+                'error_messages': {
+                    'required': 'ກະລຸນາປ້ອນເບີໂທລະສັບ',
+                }
+            },
+            'profile_picture': {
+                'required': False,
+                'allow_null': True,
+            },
         }
-
-    def get_full_name(self, obj):
-        """Get user's full display name"""
-        return obj.get_full_name()
-
-    def get_is_active(self, obj):
-        """Check if user is active"""
-        return obj.User_Status == 'E'
-
-    def get_is_authorized(self, obj):
-        """Check if user is authorized"""
-        return obj.Auth_Status == 'A'
 
     def get_profile_picture_url(self, obj):
         """Get full URL for profile picture"""
@@ -140,38 +142,30 @@ class MTTBUserSerializer(serializers.ModelSerializer):
         return None
 
     def validate_user_id(self, value):
-        """Validate user ID format and uniqueness"""
+        """Validate user ID"""
         if not value:
-            raise serializers.ValidationError("User ID is required.")
+            raise serializers.ValidationError("ກະລຸນາປ້ອນລະຫັດຜູ້ໃຊ້")
         
-        # Check length
         if len(value) < 3 or len(value) > 20:
             raise serializers.ValidationError(
-                "User ID must be between 3 and 20 characters."
+                "ລະຫັດຜູ້ໃຊ້ຕ້ອງມີ 3-20 ຕົວອັກສອນ"
             )
         
-        # Check format (alphanumeric and underscores only)
         if not re.match(r'^[a-zA-Z0-9_]+$', value):
             raise serializers.ValidationError(
-                "User ID can only contain letters, numbers, and underscores."
+                "ລະຫັດຜູ້ໃຊ້ສາມາດໃຊ້ໄດ້ພຽງຕົວອັກສອນ, ຕົວເລກ ແລະ _"
             )
         
-        return value
+        return value.upper()
 
     def validate_user_name(self, value):
         """Validate username"""
         if not value:
-            raise serializers.ValidationError("Username is required.")
+            raise serializers.ValidationError("ກະລຸນາປ້ອນຊື່ຜູ້ໃຊ້")
         
-        if len(value) < 3 or len(value) > 50:
+        if len(value) < 3 or len(value) > 100:
             raise serializers.ValidationError(
-                "Username must be between 3 and 50 characters."
-            )
-        
-        # Check for valid characters (letters, numbers, spaces, common punctuation)
-        if not re.match(r'^[a-zA-Z0-9\s\.\-_]+$', value):
-            raise serializers.ValidationError(
-                "Username contains invalid characters."
+                "ຊື່ຜູ້ໃຊ້ຕ້ອງມີ 3-100 ຕົວອັກສອນ"
             )
         
         return value.strip()
@@ -182,132 +176,76 @@ class MTTBUserSerializer(serializers.ModelSerializer):
             validator = EmailValidator()
             try:
                 validator(value)
-            except serializers.ValidationError:
-                raise serializers.ValidationError("Enter a valid email address.")
+            except:
+                raise serializers.ValidationError("ຮູບແບບອີເມວບໍ່ຖືກຕ້ອງ")
         return value
 
     def validate_user_mobile(self, value):
         """Validate mobile number"""
         if value:
-            # Remove all non-digit characters for validation
             digits_only = re.sub(r'\D', '', value)
             
             if len(digits_only) < 8 or len(digits_only) > 15:
                 raise serializers.ValidationError(
-                    "Mobile number must be between 8 and 15 digits."
+                    "ເບີໂທລະສັບຕ້ອງມີ 8-15 ຕົວເລກ"
                 )
         
         return value
 
     def validate_user_password(self, value):
-        """Enhanced password validation"""
+        """Validate password"""
         if not value:
-            return value
+            raise serializers.ValidationError("ກະລຸນາປ້ອນລະຫັດຜ່ານ")
         
-        # Length check
-        if len(value) < 8:
+        if len(value) < 6:
             raise serializers.ValidationError(
-                "Password must be at least 8 characters long."
+                "ລະຫັດຜ່ານຕ້ອງມີຢ່າງໜ້ອຍ 6 ຕົວອັກສອນ"
             )
         
-        if len(value) > 128:
+        if len(value) > 50:
             raise serializers.ValidationError(
-                "Password must not exceed 128 characters."
-            )
-        
-        # Complexity checks
-        if not re.search(r'[A-Za-z]', value):
-            raise serializers.ValidationError(
-                "Password must contain at least one letter."
-            )
-        
-        if not re.search(r'\d', value):
-            raise serializers.ValidationError(
-                "Password must contain at least one number."
-            )
-        
-        # Check for common weak passwords
-        weak_passwords = [
-            'password', '12345678', 'qwerty', 'abc123', 
-            'password123', '123456789', 'admin'
-        ]
-        if value.lower() in weak_passwords:
-            raise serializers.ValidationError(
-                "Password is too common. Please choose a stronger password."
+                "ລະຫັດຜ່ານບໍ່ຄວນເກີນ 50 ຕົວອັກສອນ"
             )
         
         return value
-
-    def validate_profile_picture(self, value):
-        """Validate profile picture"""
-        if value:
-            # Check file size (max 5MB)
-            if value.size > 5 * 1024 * 1024:
-                raise serializers.ValidationError(
-                    "Profile picture must be smaller than 5MB."
-                )
-            
-            # Check file type
-            allowed_types = ['image/jpeg', 'image/png', 'image/jpg']
-            if hasattr(value, 'content_type') and value.content_type not in allowed_types:
-                raise serializers.ValidationError(
-                    "Only JPEG and PNG images are allowed."
-                )
-        
-        return value
-
-    def validate(self, attrs):
-        """Cross-field validation"""
-        # Password confirmation validation
-        password = attrs.get('user_password')
-        password_confirm = attrs.get('password_confirm')
-        
-        if password and password_confirm:
-            if password != password_confirm:
-                raise serializers.ValidationError({
-                    'password_confirm': "Passwords do not match."
-                })
-        
-        # Remove password_confirm from attrs as it's not a model field
-        attrs.pop('password_confirm', None)
-        
-        # Validate that user_id and user_name are different
-        user_id = attrs.get('user_id', getattr(self.instance, 'user_id', None))
-        user_name = attrs.get('user_name', getattr(self.instance, 'user_name', None))
-        
-        if user_id and user_name and user_id.lower() == user_name.lower():
-            raise serializers.ValidationError(
-                "Username and User ID should be different for security."
-            )
-        
-        return attrs
 
     def create(self, validated_data):
-        """Create user with secure password hashing"""
-        raw_password = validated_data.pop('user_password', None)
-        
-        if raw_password:
-            # Use Django's secure password hashing instead of MD5
-            validated_data['user_password'] = make_password(raw_password)
+        """Create user with hashed password"""
+        # Extract password before creating user
+        password = validated_data.pop('user_password', None)
         
         # Set default values
         validated_data.setdefault('User_Status', 'E')
         validated_data.setdefault('Auth_Status', 'U')
         validated_data.setdefault('Once_Auth', 'N')
         
-        return super().create(validated_data)
+        # Create user instance
+        user = MTTB_Users(**validated_data)
+        
+        # Hash and set password
+        if password:
+            user.user_password = make_password(password)
+        
+        # Save user
+        user.save()
+        
+        return user
 
     def update(self, instance, validated_data):
-        """Update user with secure password handling"""
-        raw_password = validated_data.get('user_password')
+        """Update user"""
+        password = validated_data.pop('user_password', None)
         
-        if raw_password:
-            # Use Django's secure password hashing
-            validated_data['user_password'] = make_password(raw_password)
-            # Update password change date
-            validated_data['pwd_changed_on'] = timezone.now().date()
+        # Update fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
         
-        return super().update(instance, validated_data)
+        # Update password if provided
+        if password:
+            instance.user_password = make_password(password)
+            instance.pwd_changed_on = timezone.now().date()
+        
+        instance.save()
+        return instance
 
 # Simplified serializers for dropdown/selection purposes
 class DivisionChoiceSerializer(serializers.ModelSerializer):

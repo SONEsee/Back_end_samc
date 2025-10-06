@@ -24377,21 +24377,13 @@ def execute_dairy_somtop_trailbalance(eod_function, user, processing_date=None):
         logger.error(f"[FN004] Error in EOD execution: {str(e)}", exc_info=True)
         return False, f"FN004 ຂໍ້ຜິດພາດ: {str(e)}"
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from django.db import transaction, connection
-from django.db.models import Max
-from datetime import datetime
-import logging
-import re
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bulk_insert_dairy_reports(request):
     """
     API endpoint for bulk inserting dairy reports.
+    This is the public API that can be called directly or through EOD processing.
     """
     result = bulk_insert_dairy_reports_internal(request)
     
@@ -24404,9 +24396,9 @@ def bulk_insert_dairy_reports(request):
 def bulk_insert_dairy_reports_internal(request):
     """
     Internal function for bulk inserting dairy reports.
-    Automatically replaces existing data if date range already exists.
+    This can be called by both the API endpoint and EOD processing.
     
-    Expected payload:
+    Expected payload in request.data:
     {
         "date_start": "YYYY-MM-DD",
         "date_end": "YYYY-MM-DD", 
@@ -24425,7 +24417,7 @@ def bulk_insert_dairy_reports_internal(request):
                 'message': 'ບໍ່ມີຂໍ້ມູນວັນທີ່ເລີ່ມຕົ້ນ ແລະ ວັນທີ່ສິ້ນສຸດ (Missing required parameters: date_start and date_end)'
             }
 
-        # Date validation
+        # Date validation and period_code calculation
         try:
             start_date_obj = datetime.strptime(date_start, '%Y-%m-%d').date()
             end_date_obj = datetime.strptime(date_end, '%Y-%m-%d').date()
@@ -24436,8 +24428,9 @@ def bulk_insert_dairy_reports_internal(request):
                     'message': 'ວັນທີເລີ່ມຕົ້ນຕ້ອງນ້ອຍກວ່າວັນທີສິ້ນສຸດ (Start date must be before end date)'
                 }
 
-            # Auto-calculate period_code and fin_year
+            # Auto-calculate period_code from date_end (YYYYMM format)
             period_code = end_date_obj.strftime('%Y%m')
+            # Auto-calculate fin_year from date_end (YYYY format) 
             fin_year = end_date_obj.strftime('%Y')
             
         except ValueError:
@@ -24446,11 +24439,10 @@ def bulk_insert_dairy_reports_internal(request):
                 'message': 'ຮູບແບບວັນທີບໍ່ຖືກຕ້ອງ ກະລຸນາໃຊ້ YYYY-MM-DD (Invalid date format, please use YYYY-MM-DD)'
             }
 
-        logger.info(f"[BulkInsertDairyReports] Starting operation from {date_start} to {date_end}")
+        logger.info(f"[BulkInsertDairyReports] Starting bulk insert operation from {date_start} to {date_end}, period: {period_code}, fin_year: {fin_year}")
 
         # Statistics tracking
         stats = {
-            'existing_records': 0,
             'cleared_records': 0,
             'fcy_records_fetched': 0,
             'fcy_records_inserted': 0,
@@ -24465,79 +24457,58 @@ def bulk_insert_dairy_reports_internal(request):
         failed_records = []
         created_records = []
 
-        # Create glType lookup dictionary
+        # Create glType lookup dictionary for performance
         logger.info("Creating glType lookup dictionary...")
         gltype_lookup = get_gltype_lookup_dict()
         logger.info(f"glType lookup created with {len(gltype_lookup)} mappings")
 
-        # Get related objects
+        # Get related objects once
         ccy_objects = {}
         fin_year_obj = None
         period_obj = None
         
         try:
             if fin_year:
-                from .models import MTTB_Fin_Cycle
+                from .models import MTTB_Fin_Cycle  # Replace with actual import
                 fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
         except Exception as e:
             logger.warning(f"Financial year {fin_year} not found: {str(e)}")
 
         try:
             if period_code:
-                from .models import MTTB_Per_Code
+                from .models import MTTB_Per_Code  # Replace with actual import
                 period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
         except Exception as e:
             logger.warning(f"Period code {period_code} not found: {str(e)}")
 
-        # CRITICAL: Get max DP_ID from database BEFORE starting transaction
-        # DP_ID is IntegerField(primary_key=True) - we MUST provide it manually
-        from .models import Dairy_Report
-        
-        max_result = Dairy_Report.objects.aggregate(Max('DP_ID'))
-        max_dp_id = max_result['DP_ID__max'] if max_result['DP_ID__max'] is not None else 0
-        
-        logger.info(f"Current max DP_ID in database: {max_dp_id}")
-        logger.info(f"Next DP_ID will start from: {max_dp_id + 1}")
-        
-        # Use a counter that we'll increment for each record
-        dp_id_counter = max_dp_id
-
         with transaction.atomic():
-            # Step 1: Check and clear existing records for this date range
+            # Step 1: Clear existing Dairy_Report data
             try:
-                existing_queryset = Dairy_Report.objects.filter(
-                    StartDate=start_date_obj,
-                    EndDate=end_date_obj
-                )
-                stats['existing_records'] = existing_queryset.count()
-                
-                if stats['existing_records'] > 0:
-                    logger.info(f"Found {stats['existing_records']} existing records for date range")
-                    stats['cleared_records'] = existing_queryset.delete()[0]
-                    logger.info(f"Successfully cleared {stats['cleared_records']} records")
-                else:
-                    logger.info(f"No existing records found for date range")
-                    
+                from .models import Dairy_Report  # Replace with actual import
+                logger.info("Clearing existing Dairy_Report data...")
+                stats['cleared_records'] = Dairy_Report.objects.all().count()
+                Dairy_Report.objects.all().delete()
+                logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
             except Exception as e:
-                logger.error(f"Error clearing data: {str(e)}")
+                logger.error(f"Error clearing Dairy_Report data: {str(e)}")
                 return {
                     'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)}'
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
                 }
 
-            # Step 2: Execute FCY stored procedure
+            # Step 2: Execute FCY stored procedure and insert FCY data
             logger.info("Executing FCY stored procedure...")
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute(
-                        "EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy @DateStart = %s, @DateEnd = %s",
-                        [date_start, date_end]
-                    )
+                    fcy_query = """
+                    EXEC dbo.Somtop_Trail_Balance_All_Currency_fcy @DateStart = %s, @DateEnd = %s
+                    """
+                    cursor.execute(fcy_query, [date_start, date_end])
                     fcy_columns = [col[0] for col in cursor.description]
                     fcy_results = [dict(zip(fcy_columns, row)) for row in cursor.fetchall()]
                     
                 stats['fcy_records_fetched'] = len(fcy_results)
-                logger.info(f"FCY procedure fetched {stats['fcy_records_fetched']} rows")
+                logger.info(f"FCY stored procedure completed. Rows fetched: {stats['fcy_records_fetched']}")
 
                 # Insert FCY data
                 for index, item in enumerate(fcy_results):
@@ -24545,10 +24516,10 @@ def bulk_insert_dairy_reports_internal(request):
                         gl_code = item.get('GL', '')
                         currency_code = item.get('Currency', '')
                         
-                        # Get currency object
+                        # Get or create currency object
                         if currency_code and currency_code not in ccy_objects:
                             try:
-                                from .models import MTTB_Ccy_DEFN
+                                from .models import MTTB_Ccy_DEFN  # Replace with actual import
                                 ccy_objects[currency_code] = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
                             except Exception:
                                 logger.warning(f"Currency {currency_code} not found")
@@ -24567,13 +24538,9 @@ def bulk_insert_dairy_reports_internal(request):
                                 if direct_gltype:
                                     record_gltype = direct_gltype
 
-                        # CRITICAL: Increment DP_ID counter BEFORE creating record
-                        dp_id_counter += 1
-                        logger.debug(f"FCY record {index}: Using DP_ID={dp_id_counter}")
-
-                        # Create record with explicit DP_ID
+                        # Create Dairy_Report record with FCY data
                         dairy_report = Dairy_Report(
-                            DP_ID=dp_id_counter,
+                            DP_ID=len(created_records) + 1,
                             gl_code=gl_code,
                             Desc=item.get('_Desc', ''),
                             CCy_Code=ccy_objects.get(currency_code),
@@ -24582,12 +24549,14 @@ def bulk_insert_dairy_reports_internal(request):
                             StartDate=start_date_obj,
                             EndDate=end_date_obj,
                             Category=record_gltype,
+                            # FCY fields from stored procedure
                             OP_DR=safe_decimal_convert(item.get('Opening_Dr_FCY', 0)),
                             OP_CR=safe_decimal_convert(item.get('Opening_Cr_FCY', 0)),
                             Mo_DR=safe_decimal_convert(item.get('Flow_Dr_FCY', 0)),
                             Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_FCY', 0)),
                             C1_DR=safe_decimal_convert(item.get('Closing_Dr_FCY', 0)),
                             C1_CR=safe_decimal_convert(item.get('Closing_Cr_FCY', 0)),
+                            # LCY fields set to 0 for FCY records
                             OP_DR_lcy=safe_decimal_convert(0),
                             OP_CR_lcy=safe_decimal_convert(0),
                             Mo_DR_lcy=safe_decimal_convert(0),
@@ -24600,51 +24569,51 @@ def bulk_insert_dairy_reports_internal(request):
                         
                         dairy_report.full_clean()
                         dairy_report.save()
-                        
                         stats['fcy_records_inserted'] += 1
                         created_records.append({
                             'type': 'FCY',
-                            'dp_id': dp_id_counter,
                             'gl_code': gl_code,
-                            'currency': currency_code
+                            'currency': currency_code,
+                            'category': record_gltype
                         })
                         
                     except Exception as e:
                         stats['fcy_records_failed'] += 1
-                        error_msg = f"FCY record {index} (DP_ID would be {dp_id_counter + 1}): {str(e)}"
+                        error_msg = f"FCY record {index} error: {str(e)}"
                         logger.error(error_msg)
                         failed_records.append({
                             'type': 'FCY',
                             'index': index,
                             'gl_code': item.get('GL', 'Unknown'),
-                            'error': str(e)
+                            'currency': item.get('Currency', ''),
+                            'error': error_msg
                         })
 
             except Exception as e:
-                logger.error(f"FCY procedure error: {str(e)}")
+                logger.error(f"Error executing FCY stored procedure: {str(e)}")
                 return {
                     'status': 'error',
                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ FCY stored procedure: {str(e)}'
                 }
 
-            # Step 3: Execute LCY stored procedure
-            logger.info("Executing LCY stored procedure...")
+            # Step 3: Execute LCY stored procedure and insert LCY data
+            logger.info("Executing LCY consolidated stored procedure...")
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute(
-                        "EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy @DateStart = %s, @DateEnd = %s",
-                        [date_start, date_end]
-                    )
+                    lcy_query = """
+                    EXEC dbo.Somtop_Trail_Balance_All_Currency_Consolidated_lcy @DateStart = %s, @DateEnd = %s
+                    """
+                    cursor.execute(lcy_query, [date_start, date_end])
                     lcy_columns = [col[0] for col in cursor.description]
                     lcy_results = [dict(zip(lcy_columns, row)) for row in cursor.fetchall()]
                     
                 stats['lcy_records_fetched'] = len(lcy_results)
-                logger.info(f"LCY procedure fetched {stats['lcy_records_fetched']} rows")
+                logger.info(f"LCY stored procedure completed. Rows fetched: {stats['lcy_records_fetched']}")
 
-                # Get LAK currency
+                # Get LAK currency object
                 lak_ccy_obj = None
                 try:
-                    from .models import MTTB_Ccy_DEFN
+                    from .models import MTTB_Ccy_DEFN  # Replace with actual import
                     lak_ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code='LAK')
                 except Exception:
                     logger.warning("LAK currency not found")
@@ -24667,13 +24636,9 @@ def bulk_insert_dairy_reports_internal(request):
                                 if direct_gltype:
                                     record_gltype = direct_gltype
 
-                        # CRITICAL: Increment DP_ID counter BEFORE creating record
-                        dp_id_counter += 1
-                        logger.debug(f"LCY record {index}: Using DP_ID={dp_id_counter}")
-
-                        # Create record with explicit DP_ID
+                        # Create Dairy_Report record with LCY data
                         dairy_report = Dairy_Report(
-                            DP_ID=dp_id_counter,
+                            DP_ID=len(created_records) + 1,
                             gl_code=gl_code,
                             Desc=item.get('Description', ''),
                             CCy_Code=lak_ccy_obj,
@@ -24682,12 +24647,14 @@ def bulk_insert_dairy_reports_internal(request):
                             StartDate=start_date_obj,
                             EndDate=end_date_obj,
                             Category=record_gltype,
+                            # Using LCY data for main fields (assuming this is what you want)
                             OP_DR=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
                             OP_CR=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
                             Mo_DR=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
                             Mo_Cr=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
                             C1_DR=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
                             C1_CR=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
+                            # LCY fields - you might want to use the same values or set to 0
                             OP_DR_lcy=safe_decimal_convert(item.get('Opening_Dr_LAK', 0)),
                             OP_CR_lcy=safe_decimal_convert(item.get('Opening_Cr_LAK', 0)),
                             Mo_DR_lcy=safe_decimal_convert(item.get('Flow_Dr_LAK', 0)),
@@ -24700,28 +24667,28 @@ def bulk_insert_dairy_reports_internal(request):
                         
                         dairy_report.full_clean()
                         dairy_report.save()
-                        
                         stats['lcy_records_inserted'] += 1
                         created_records.append({
                             'type': 'LCY',
-                            'dp_id': dp_id_counter,
                             'gl_code': gl_code,
-                            'currency': 'LAK'
+                            'currency': 'LAK',
+                            'category': record_gltype
                         })
                         
                     except Exception as e:
                         stats['lcy_records_failed'] += 1
-                        error_msg = f"LCY record {index} (DP_ID would be {dp_id_counter + 1}): {str(e)}"
+                        error_msg = f"LCY record {index} error: {str(e)}"
                         logger.error(error_msg)
                         failed_records.append({
                             'type': 'LCY',
                             'index': index,
                             'gl_code': item.get('GL_Code', 'Unknown'),
-                            'error': str(e)
+                            'currency': 'LAK',
+                            'error': error_msg
                         })
 
             except Exception as e:
-                logger.error(f"LCY procedure error: {str(e)}")
+                logger.error(f"Error executing LCY stored procedure: {str(e)}")
                 return {
                     'status': 'error',
                     'message': f'ເກີດຂໍ້ຜິດພາດໃນການເອີ້ນ LCY stored procedure: {str(e)}'
@@ -24731,22 +24698,14 @@ def bulk_insert_dairy_reports_internal(request):
         stats['total_inserted'] = stats['fcy_records_inserted'] + stats['lcy_records_inserted']
         stats['total_failed'] = stats['fcy_records_failed'] + stats['lcy_records_failed']
 
-        # Prepare message
-        if stats['cleared_records'] > 0:
-            message = f'🎉 ການດຳເນີນງານສຳເລັດ! ທົດແທນຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການດ້ວຍຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ'
-        else:
-            message = f'🎉 ການດຳເນີນງານສຳເລັດ! ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ'
-
+        # Prepare response
         response_data = {
             'status': 'success',
-            'message': message,
+            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} old records, inserted {stats["total_inserted"]} new records)',
             'date_range': f"{date_start} to {date_end}",
             'period_code': period_code,
             'fin_year': fin_year,
-            'dp_id_range': f"{max_dp_id + 1} to {dp_id_counter}",
-            'operation': 'replaced' if stats['cleared_records'] > 0 else 'inserted',
             'statistics': {
-                'existing_records': stats['existing_records'],
                 'cleared_records': stats['cleared_records'],
                 'fcy_procedure': {
                     'fetched': stats['fcy_records_fetched'],
@@ -24768,18 +24727,22 @@ def bulk_insert_dairy_reports_internal(request):
 
         if failed_records:
             response_data['failed_records_sample'] = failed_records[:5]
-            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ'
+            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
 
-        logger.info(f"Operation completed: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
-        logger.info(f"DP_ID range used: {max_dp_id + 1} to {dp_id_counter}")
+        logger.info(f"Bulk insert operation completed successfully:")
+        logger.info(f"- Cleared: {stats['cleared_records']} records")
+        logger.info(f"- Period: {period_code}, Fin Year: {fin_year}")
+        logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
+        logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
+        logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
 
         return response_data
 
     except Exception as e:
-        logger.error(f"Bulk insert error: {str(e)}")
+        logger.error(f"Bulk insert dairy reports error: {str(e)}")
         return {
             'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)}'
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
         }
 
 
