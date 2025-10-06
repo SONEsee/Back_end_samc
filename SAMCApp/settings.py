@@ -179,9 +179,20 @@ DATABASES = {
         'PASSWORD': 'mess!Q@083@@',
         'HOST': '192.168.10.35',  
         'PORT': '1433',                       
+        # 'OPTIONS': {
+        #     'driver': 'ODBC Driver 17 for SQL Server',
+        #     'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
+        # },
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
-            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
+            'connection_string': (
+                'DRIVER={ODBC Driver 17 for SQL Server};'
+                'SERVER=192.168.10.35;'
+                'DATABASE=master;'
+                'UID=sa;'
+                'PWD=mess!Q@083@@;'
+                'TrustServerCertificate=yes;'
+            ),
         },
     }
 }
@@ -244,3 +255,6 @@ BACKUP_CONFIG = {
     'COMPRESSION': True,
     'ALLOWED_EXTENSIONS': ['.bak'],
 }
+
+BACKUP_PATH = r'C:\Backup\\'
+ALLOWED_BACKUP_DATABASES = ['SAMCDB_Dev']

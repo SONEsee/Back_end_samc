@@ -2058,6 +2058,7 @@ class FA_Asset_Audit(models.Model):
     audit_status = models.CharField(max_length=20, null=True, blank=True)
     reviewer_name = models.CharField(max_length=100, null=True, blank=True)
     review_date = models.DateField(null=True, blank=True)
+    quarter = models.CharField(max_length=15, null=True, blank=True)
     approver_name = models.CharField(max_length=100, null=True, blank=True)
     approval_date = models.DateField(null=True, blank=True)
     remarks = models.TextField(max_length=1000, null=True, blank=True)

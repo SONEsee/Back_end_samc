@@ -146,6 +146,8 @@ from .views import (
     account_statement_search_eoc_view,
     account_search_validation_eoc_view,
     BackupDatabaseView,
+    BackupHistoryView,
+    TestBackupConnection,
    
 
 )
@@ -313,7 +315,10 @@ urlpatterns = [
     path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
 
     # Backup Views <---- Backup ------>
-    path('api/backup/', BackupDatabaseView.as_view(), name='backup_database'),
+    path('api/backup/', BackupDatabaseView, name='backup_database'),
+    path('api/backup/history/', BackupHistoryView, name='backup_history'),
+    path('api/backup/test/', TestBackupConnection, name='test_backup_connection'),
+
     
 
     # Store Procedure <---- Sub Trail Balance ------>

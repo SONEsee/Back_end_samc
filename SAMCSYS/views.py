@@ -374,148 +374,7 @@ class MTTBUserViewSet(viewsets.ModelViewSet):
             return False
 
 
-# views.py - Fixed version with proper timeout handling
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from django.http import FileResponse, JsonResponse
-from SAMCSYS.backup import backup_database
-import os
-
-
-class BackupDatabaseView(APIView):
-    """
-    Database backup endpoint with extended timeout support
-    """
-    
-    def get(self, request):
-        try:
-            # Get optional backup path from query params
-            backup_path = request.query_params.get('backup_path', None)
-            
-            # Trigger backup with extended timeout
-            file_path, success, message = backup_database(backup_path)
-            
-            if not success:
-                return Response(
-                    {"error": message}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-            
-            # Verify file exists
-            if not os.path.exists(file_path):
-                return Response(
-                    {"error": "Backup file was not created"}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-            
-            # Serve the backup file for download
-            try:
-                backup_file = open(file_path, 'rb')
-                filename = os.path.basename(file_path)
-                
-                response = FileResponse(
-                    backup_file, 
-                    as_attachment=True, 
-                    filename=filename
-                )
-                
-                # Add custom headers
-                response['Content-Type'] = 'application/octet-stream'
-                response['Content-Length'] = os.path.getsize(file_path)
-                
-                return response
-                
-            except Exception as e:
-                return Response(
-                    {"error": f"Failed to serve backup file: {str(e)}"}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-                
-        except Exception as e:
-            return Response(    
-                {"error": f"Unexpected error: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-            
-# from rest_framework_simplejwt.tokens import RefreshToken
-# from .models import MTTB_USER_ACCESS_LOG
-# from rest_framework_simplejwt.settings import api_settings
-# from django.utils import timezone
-
-# def get_client_ip(request):
-#     xff = request.META.get('HTTP_X_FORWARDED_FOR')
-#     if xff:
-#         return xff.split(',')[0].strip()
-#     return request.META.get('REMOTE_ADDR')
-
-# @api_view(["POST"])
-# @permission_classes([AllowAny])
-# def login_view(request):
-#     uid = request.data.get("user_name")
-#     pwd = request.data.get("user_password")
-#     if not uid or not pwd:
-#         # log failure
-#         MTTB_USER_ACCESS_LOG.objects.create(
-#             user_id=None,
-#             session_id=None,
-#             ip_address=get_client_ip(request),
-#             user_agent=request.META.get('HTTP_USER_AGENT'),
-#             login_status='F',        # F = failed
-#             remarks='Missing credentials'
-#         )
-#         return Response(
-#             {"error": "User_Name and User_Password required"},
-#             status=status.HTTP_400_BAD_REQUEST,
-#         )
-
-#     hashed = _hash(pwd)
-#     try:
-#         user = MTTB_Users.objects.get(
-#             user_name=uid, user_password=hashed
-#         )
-#     except MTTB_Users.DoesNotExist:
-#         # log failure
-#         MTTB_USER_ACCESS_LOG.objects.create(
-#             user_id=None,
-#             session_id=None,
-#             ip_address=get_client_ip(request),
-#             user_agent=request.META.get('HTTP_USER_AGENT'),
-#             login_status='F',
-#             remarks='Invalid credentials'
-#         )
-#         return Response(
-#             {"error": "Invalid credentials"},
-#             status=status.HTTP_401_UNAUTHORIZED,
-#         )
-
-#     # 1) Create tokens
-#     refresh = RefreshToken.for_user(user)
-#     access  = refresh.access_token
-
-#     # 2) Log the successful login
-#     # Grab the JTI (unique token ID) for session tracking
-#     jti = refresh.get(api_settings.JTI_CLAIM)
-#     MTTB_USER_ACCESS_LOG.objects.create(
-#         user_id=user,
-#         session_id=jti,
-#         ip_address=get_client_ip(request),
-#         user_agent=request.META.get('HTTP_USER_AGENT'),
-#         login_status='S'   # S = success
-#     )
-
-#     # 3) Serialize your user data
-#     data = MTTBUserSerializer(user).data
-
-#     # 4) Return tokens + user info
-#     return Response({
-#         "message": "Login successful",
-#         "refresh": str(refresh),
-#         "access": str(access),
-#         "user": data
-#     })
-
+        
 
 
 from rest_framework.decorators import api_view, permission_classes
@@ -35876,6 +35735,283 @@ def journal_before_report_view(request):
             "data": None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+# views.py
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.conf import settings
+import pyodbc
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def BackupDatabaseView(request):
+    """
+    Create database backup
+    POST: /api/backup/
+    Body: {
+        "database_name": "SAMCDB",
+        "backup_type": "FULL"  # FULL, DIFF, LOG
+    }
+    """
+    try:
+        # Get request data
+        database_name = request.data.get('database_name', 'SAMCDB')
+        backup_type = request.data.get('backup_type', 'FULL').upper()
+        
+        # Validate backup type
+        if backup_type not in ['FULL', 'DIFF', 'LOG']:
+            return Response(
+                {'success': False, 'error': 'Invalid backup type. Use FULL, DIFF, or LOG'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate database name (whitelist approach)
+        allowed_databases = getattr(settings, 'ALLOWED_BACKUP_DATABASES', ['SAMCDB', 'SAMCDB_Dev'])
+        if database_name not in allowed_databases:
+            return Response(
+                {'success': False, 'error': 'Database not allowed for backup'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        logger.info(f"User {request.user.user_name} initiated {backup_type} backup for {database_name}")
+        
+        # Execute backup
+        result = execute_backup(database_name, backup_type)
+        
+        if result['success']:
+            logger.info(f"Backup completed: {result.get('file_name', 'N/A')}")
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Backup failed: {result.get('error', 'Unknown error')}")
+            return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except Exception as e:
+        logger.error(f"Backup error: {str(e)}", exc_info=True)
+        return Response(
+            {'success': False, 'error': 'An unexpected error occurred'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def execute_backup(database_name, backup_type):
+    """Execute SQL Server backup using stored procedure"""
+    conn = None
+    cursor = None
+    
+    try:
+        # Get backup path from settings
+        backup_path = getattr(settings, 'BACKUP_PATH', r'C:\Backup\\')
+        
+        # Build connection string from DATABASES settings
+        db_settings = settings.DATABASES['default']
+        
+        # Try to get connection_string from OPTIONS first
+        conn_str = db_settings.get('OPTIONS', {}).get('connection_string')
+        
+        # If no connection_string, build it manually
+        if not conn_str:
+            driver = db_settings.get('OPTIONS', {}).get('driver', 'ODBC Driver 17 for SQL Server')
+            server = db_settings.get('HOST', '192.168.10.35')
+            database = 'SAMCDB_Dev'  # Connect to master for backup operations
+            user = db_settings.get('USER', '')
+            password = db_settings.get('PASSWORD', '')
+            
+            if user and password:
+                conn_str = (
+                    f"DRIVER={{{driver}}};"
+                    f"SERVER={server};"
+                    f"DATABASE={database};"
+                    f"UID={user};"
+                    f"PWD={password};"
+                    f"TrustServerCertificate=yes;"
+                )
+            else:
+                # Use Windows Authentication
+                conn_str = (
+                    f"DRIVER={{{driver}}};"
+                    f"SERVER={server};"
+                    f"DATABASE={database};"
+                    f"Trusted_Connection=yes;"
+                    f"TrustServerCertificate=yes;"
+                )
+        
+        logger.info(f"Connecting to SQL Server for backup...")
+        
+        # Connect to SQL Server
+        conn = pyodbc.connect(conn_str, timeout=600)
+        cursor = conn.cursor()
+        logger.info(f"Connecting to SQL Server for backup...")
+        
+        # Connect to SQL Server
+        conn = pyodbc.connect(conn_str, timeout=600)
+        cursor = conn.cursor()
+        
+        logger.info(f"Executing backup: {database_name} ({backup_type})")
+        
+        # Call stored procedure with explicit parameter names
+        sql = """
+        EXEC [dbo].[sp_BackupDatabase] 
+            @DatabaseName = ?,
+            @BackupPath = ?,
+            @BackupType = ?
+        """
+        cursor.execute(sql, (database_name, backup_path, backup_type))
+        
+        # Get result - use index-based access instead of column names
+        row = cursor.fetchone()
+        
+        if row:
+            # Access by index: 0=Status, 1=FileName, 2=FullPath, 3=BackupTime, 4=BackupType
+            status = row[0]
+            
+            if status == 'SUCCESS':
+                file_name = row[1]
+                full_path = row[2]
+                backup_time = row[3]
+                backup_type_result = row[4]
+                
+                logger.info(f"Backup successful: {file_name}")
+                return {
+                    'success': True,
+                    'message': 'Backup created successfully',
+                    'file_name': file_name,
+                    'full_path': full_path,
+                    'backup_time': backup_time.isoformat() if backup_time else None,
+                    'backup_type': backup_type_result
+                }
+            else:
+                # ERROR status - access error details
+                error_msg = row[1] if len(row) > 1 else 'Unknown error'
+                logger.error(f"Backup failed: {error_msg}")
+                return {
+                    'success': False,
+                    'error': error_msg
+                }
+        else:
+            logger.error("No result returned from stored procedure")
+            return {
+                'success': False,
+                'error': 'No result returned from stored procedure'
+            }
+            
+    except pyodbc.Error as e:
+        logger.error(f"SQL Server error: {str(e)}")
+        return {
+            'success': False,
+            'error': f'Database error: {str(e)}'
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        return {
+            'success': False,
+            'error': f'Error: {str(e)}'
+        }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def BackupHistoryView(request):
+    """
+    Get backup history
+    GET: /api/backup/history/
+    """
+    try:
+        # This is optional - implement if you track backups in Django model
+        return Response({
+            'success': True,
+            'message': 'Feature not implemented yet'
+        })
+    except Exception as e:
+        logger.error(f"Error fetching backup history: {str(e)}")
+        return Response(
+            {'success': False, 'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def TestBackupConnection(request):
+    """Test SQL Server connection and stored procedure"""
+    try:
+        import pyodbc
+        
+        # Build connection string
+        db_settings = settings.DATABASES['default']
+        conn_str = db_settings.get('OPTIONS', {}).get('connection_string')
+        
+        if not conn_str:
+            driver = db_settings.get('OPTIONS', {}).get('driver', 'ODBC Driver 17 for SQL Server')
+            server = db_settings.get('HOST', 'localhost')
+            user = db_settings.get('USER', '')
+            password = db_settings.get('PASSWORD', '')
+            
+            conn_str = (
+                f"DRIVER={{{driver}}};"
+                f"SERVER={server};"
+                f"DATABASE=master;"
+                f"UID={user};"
+                f"PWD={password};"
+                f"TrustServerCertificate=yes;"
+            )
+        
+        # Test connection
+        conn = pyodbc.connect(conn_str, timeout=10)
+        cursor = conn.cursor()
+        
+        # Check current database
+        cursor.execute("SELECT DB_NAME()")
+        current_db = cursor.fetchone()[0]
+        
+        # Check if stored procedure exists
+        cursor.execute("""
+            SELECT COUNT(*) FROM sys.procedures 
+            WHERE name = 'sp_BackupDatabase' AND SCHEMA_NAME(schema_id) = 'dbo'
+        """)
+        proc_exists = cursor.fetchone()[0]
+        
+        # Try to call the stored procedure
+        cursor.execute("""
+            EXEC [dbo].[sp_BackupDatabase] 
+                @DatabaseName = ?,
+                @BackupPath = ?,
+                @BackupType = ?
+        """, ('SAMCDB_Dev', r'C:\Backup\\', 'FULL'))
+        
+        row = cursor.fetchone()
+        result_data = {
+            'status': row[0] if row else None,
+            'file_name': row[1] if row and len(row) > 1 else None,
+            'full_path': row[2] if row and len(row) > 2 else None,
+        }
+        
+        cursor.close()
+        conn.close()
+        
+        return Response({
+            'success': True,
+            'current_database': current_db,
+            'stored_procedure_exists': proc_exists == 1,
+            'test_backup_result': result_data
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
