@@ -141,8 +141,6 @@ from .views import (
     get_credit_unauthorized,
     journal_before_report_view,
     journal_before_report_get_view,
-<<<<<<< HEAD
-=======
     account_statement_search_actb_view,
     account_search_validation_actb_view,
     account_statement_search_eoc_view,
@@ -150,7 +148,6 @@ from .views import (
     BackupDatabaseView,
     BackupHistoryView,
     TestBackupConnection,
->>>>>>> cbc2b251db84c3c61d4334a7082253f248cd9add
    
 
 
@@ -305,15 +302,12 @@ urlpatterns = [
     path('api/journal-report-actb/', journal_before_report_view, name='journal_report_post'),
     path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
 
-<<<<<<< HEAD
     # Store Procedure <---- Search AccountNo --------->
-=======
     # Backup Views <---- Backup ------>
     path('api/backup/', BackupDatabaseView, name='backup_database'),
     path('api/backup/history/', BackupHistoryView, name='backup_history'),
     path('api/backup/test/', TestBackupConnection, name='test_backup_connection'),
 
->>>>>>> cbc2b251db84c3c61d4334a7082253f248cd9add
     
 
     # Store Procedure <---- Sub Trail Balance ------>

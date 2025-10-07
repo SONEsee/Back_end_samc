@@ -183,18 +183,7 @@ DATABASES = {
         # },
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
-<<<<<<< HEAD
             'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
-=======
-            'connection_string': (
-                'DRIVER={ODBC Driver 17 for SQL Server};'
-                'SERVER=192.168.10.35;'
-                'DATABASE=master;'
-                'UID=sa;'
-                'PWD=mess!Q@083@@;'
-                'TrustServerCertificate=yes;'
-            ),
->>>>>>> cbc2b251db84c3c61d4334a7082253f248cd9add
         },
     }
 }
@@ -251,8 +240,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-<<<<<<< HEAD
-=======
 BACKUP_CONFIG = {
     'DEFAULT_PATH': 'C:\\Backup',  # Use a path SQL Server can access
     'MAX_FILE_AGE_DAYS': 30,  # Auto-cleanup old backups
@@ -262,4 +249,3 @@ BACKUP_CONFIG = {
 
 BACKUP_PATH = r'C:\Backup\\'
 ALLOWED_BACKUP_DATABASES = ['SAMCDB_Dev']
->>>>>>> cbc2b251db84c3c61d4334a7082253f248cd9add
