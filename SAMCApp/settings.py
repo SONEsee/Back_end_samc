@@ -103,8 +103,6 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "rest_framework_simplejwt",
-    # 'rest_framework_simplejwt.token_blacklist',
-    # "SAMCSYS.apps.SamcsysConfig"
     "SAMCSYS",
   
 ]
@@ -116,7 +114,7 @@ CSRF_TRUSTED_ORIGINS = ['http://localhost:3000','http://192.168.45.54:3000']
 
 CORS_ALLOWED_ORIGINS = [
     "http://192.168.1.11:35729",
-    # origins ອື່ນໆທີ່ມີຢູ່ແລ້ວ...
+   
 ]
 CORS_ORIGIN_ALLOW_ALL = True
 
@@ -129,7 +127,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "SAMCSYS.middleware.ForceLogoutMiddleware", # pherm
+    "SAMCSYS.middleware.ForceLogoutMiddleware", 
 ]
 
 ROOT_URLCONF = "SAMCApp.urls"
@@ -185,14 +183,7 @@ DATABASES = {
         # },
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
-            'connection_string': (
-                'DRIVER={ODBC Driver 17 for SQL Server};'
-                'SERVER=192.168.10.35;'
-                'DATABASE=master;'
-                'UID=sa;'
-                'PWD=mess!Q@083@@;'
-                'TrustServerCertificate=yes;'
-            ),
+            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
         },
     }
 }

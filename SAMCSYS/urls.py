@@ -150,6 +150,10 @@ from .views import (
     TestBackupConnection,
    
 
+
+    
+
+
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -289,22 +293,6 @@ urlpatterns = [
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
-    # Fixed URL patterns with unique names
-    path('api/account/statement/search/actb/', 
-        account_statement_search_actb_view, 
-        name='account-statement-search-actb'),  # Changed name
-
-    path('api/account/validate/actb/', 
-        account_search_validation_actb_view, 
-        name='account-validate-actb'),  # Changed name
-
-    path('api/account/statement/search/eoc/', 
-        account_statement_search_eoc_view, 
-        name='account-statement-search-eoc'),  # Changed name
-
-    path('api/account/validate/eoc/', 
-        account_search_validation_eoc_view, 
-        name='account-validate-eoc'),  # Changed name
     
     
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
@@ -314,6 +302,7 @@ urlpatterns = [
     path('api/journal-report-actb/', journal_before_report_view, name='journal_report_post'),
     path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
 
+    # Store Procedure <---- Search AccountNo --------->
     # Backup Views <---- Backup ------>
     path('api/backup/', BackupDatabaseView, name='backup_database'),
     path('api/backup/history/', BackupHistoryView, name='backup_history'),
@@ -368,7 +357,6 @@ urlpatterns = [
     path('api/asset-depreciation-report/', 
          AssetDepreciationReportView.as_view(), 
          name='asset_depreciation_report'),
-    
     path('latest-eod/', views.get_latest_eod_date, name='latest_eod_date'),
     path('api/depreciation/', calculate_depreciation_api),
     

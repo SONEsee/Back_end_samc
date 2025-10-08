@@ -5312,6 +5312,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             "updated_field": "Auth_Status" if asset.asset_status == "UC" else "Auth_Status_ARC"
         }, status=status.HTTP_200_OK)
 
+
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_all(self, request):
         """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
@@ -5391,14 +5392,15 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                     ).order_by('JRNLLog_id')
                     
                     for idx, entry in enumerate(approved_entries):
-                        # Get GL Master info through the relationship chain
+                        # Get GL Master info through the relationship chain:
+                        # entry.Account (MTTB_GLSub) -> entry.Account.gl_code (MTTB_GLMaster)
                         gl_master = None
                         gl_type = None
                         category = None
                         
                         try:
                             if entry.Account and entry.Account.gl_code:
-                                gl_master = entry.Account.gl_code
+                                gl_master = entry.Account.gl_code  # This is the MTTB_GLMaster instance
                                 gl_type = gl_master.glType
                                 category = gl_master.category
                                 print(f"Found GLMaster: {gl_master.glid}, Type: {gl_type}, Category: {category}")
@@ -5420,17 +5422,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         
                         # ACTB_DAIRY_LOG data (with ForeignKey references)
                         actb_log_data = {
-                            'module': entry.module_id,
-                            'trn_ref_no': entry.Reference_No,
+                            'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
+                            'trn_ref_no': entry.Reference_No,  # ForeignKey to DETB_JRNL_LOG (the entry itself!)
                             'trn_ref_sub_no': entry.Reference_sub_No,
                             'event_sr_no': idx + 1,
                             'event': 'JRNL',
-                            'ac_no': entry.Account,
+                            'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
                             'ac_no_full': entry.Account_no,
                             'ac_relative': entry.Ac_relatives,
-                            'ac_ccy': entry.Ccy_cd,
+                            'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
                             'drcr_ind': entry.Dr_cr,
-                            'trn_code': entry.Txn_code,
+                            'trn_code': entry.Txn_code,  # ForeignKey to MTTB_TRN_Code
                             'fcy_amount': fcy_amount,
                             'exch_rate': exchange_rate,
                             'lcy_amount': lcy_amount,
@@ -5442,17 +5444,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                             'addl_text': entry.Addl_text or '',
                             'addl_sub_text': addl_sub_text,
                             'trn_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'glid': gl_master,
-                            'glType': gl_type,
-                            'category': category,
+                            'glid': gl_master,  # ForeignKey to MTTB_GLMaster
+                            'glType': gl_type,  # CharField from GLMaster
+                            'category': category,  # CharField from GLMaster
                             'value_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'financial_cycle': entry.fin_cycle,
-                            'period_code': entry.Period_code,
-                            'Maker_id': entry.Maker_Id,  # ✅ UPDATED: Get from original entry creator
-                            'Maker_DT_Stamp': entry.Maker_DT_Stamp,  # ✅ Use original timestamp
-                            'Checker_id': request.user,  # Approver/Checker is current user
+                            'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
+                            'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
+                            'Maker_id': request.user,  # ForeignKey to MTTB_Users
+                            'Maker_DT_Stamp': current_time,
+                            'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
                             'Checker_DT_Stamp': current_time,
-                            'Auth_Status': 'A',
+                            'Auth_Status': 'A',  # Authorized
                             'product': 'GL',
                             'entry_seq_no': idx + 1,
                             'delete_stat': None
@@ -5460,17 +5462,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                         
                         # ACTB_DAIRY_LOG_HISTORY data (with CharField references)
                         actb_hist_data = {
-                            'module': entry.module_id,
-                            'trn_ref_no': entry.Reference_No,
+                            'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
+                            'trn_ref_no': entry.Reference_No,  # CharField (Reference_No string)
                             'trn_ref_sub_no': entry.Reference_sub_No,
                             'event_sr_no': idx + 1,
                             'event': 'JRNL',
-                            'ac_no': entry.Account,
+                            'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
                             'ac_no_full': entry.Account_no,
                             'ac_relative': entry.Ac_relatives,
-                            'ac_ccy': entry.Ccy_cd,
+                            'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
                             'drcr_ind': entry.Dr_cr,
-                            'trn_code': entry.Txn_code,
+                            'trn_code': entry.Txn_code,  
                             'fcy_amount': fcy_amount,
                             'exch_rate': exchange_rate,
                             'lcy_amount': lcy_amount,
@@ -5482,17 +5484,17 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
                             'addl_text': entry.Addl_text or '',
                             'addl_sub_text': addl_sub_text,
                             'trn_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'glid': gl_master,
-                            'glType': gl_type,
-                            'category': category,
+                            'glid': gl_master,  # ForeignKey to MTTB_GLMaster
+                            'glType': gl_type,  # CharField from GLMaster
+                            'category': category,  # CharField from GLMaster
                             'value_dt': entry.Value_date.date() if entry.Value_date else None,
-                            'financial_cycle': entry.fin_cycle,
-                            'period_code': entry.Period_code,
-                            'Maker_id': entry.Maker_Id,  # ✅ UPDATED: Get from original entry creator
-                            'Maker_DT_Stamp': entry.Maker_DT_Stamp,  # ✅ Use original timestamp
-                            'Checker_id': request.user,  # Approver/Checker is current user
+                            'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
+                            'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
+                            'Maker_id': request.user,  # ForeignKey to MTTB_Users
+                            'Maker_DT_Stamp': current_time,
+                            'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
                             'Checker_DT_Stamp': current_time,
-                            'Auth_Status': 'A',
+                            'Auth_Status': 'A',  # Authorized
                             'product': 'GL',
                             'entry_seq_no': idx + 1,
                             'delete_stat': None
@@ -5535,232 +5537,7 @@ class JRNLLogViewSet(viewsets.ModelViewSet):
             import traceback
             traceback.print_exc()
             return Response({'error': f'Error during approval: {str(e)}'}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    # @action(detail=False, methods=['post'], url_path='approve-all')
-    # def approve_all(self, request):
-    #     """Approve all records (MASTER, LOG, HIST) for a Reference_No and insert into daily log tables"""
-    #     reference_no = request.data.get('Reference_No')
-        
-    #     if not reference_no:
-    #         return Response({'error': 'Reference_No is required'}, 
-    #                     status=status.HTTP_400_BAD_REQUEST)
-        
-    #     # Check if any LOG entries have status 'P' or 'R'
-    #     log_entries = DETB_JRNL_LOG.objects.filter(Reference_No=reference_no)
-    #     if not log_entries.exists():
-    #         return Response({'error': 'No entries found for this reference number'}, 
-    #                     status=status.HTTP_404_NOT_FOUND)
-        
-    #     # Check for problematic entries
-    #     problematic_entries = log_entries.filter(Auth_Status__in=['P', 'R'])
-    #     if problematic_entries.exists():
-    #         return Response({'error': 'Cannot approve: entries with status P or R found'}, 
-    #                     status=status.HTTP_400_BAD_REQUEST)
-        
-    #     # Check if already approved
-    #     if log_entries.filter(Auth_Status='A').exists():
-    #         return Response({'error': 'Entries are already approved'}, 
-    #                     status=status.HTTP_400_BAD_REQUEST)
-        
-    #     try:
-    #         from django.db import transaction
-    #         from django.utils import timezone
-            
-    #         with transaction.atomic():
-    #             # Update DETB_JRNL_LOG
-    #             log_updated = log_entries.update(
-    #                 Auth_Status='A',
-    #                 Checker_Id=request.user,
-    #                 Checker_DT_Stamp=timezone.now()
-    #             )
-                
-    #             # Update DETB_JRNL_LOG_MASTER
-    #             try:
-    #                 from .models import DETB_JRNL_LOG_MASTER
-    #                 master_record = DETB_JRNL_LOG_MASTER.objects.get(Reference_No=reference_no)
-    #                 master_record.Auth_Status = 'A'
-    #                 master_record.Checker_Id = request.user
-    #                 master_record.Checker_DT_Stamp = timezone.now()
-    #                 master_record.save()
-    #                 master_updated = 1
-    #             except DETB_JRNL_LOG_MASTER.DoesNotExist:
-    #                 master_updated = 0
-                
-    #             # Update DETB_JRNL_LOG_HIST (if exists)
-    #             hist_updated = 0
-    #             try:
-    #                 from .models import DETB_JRNL_LOG_HIST
-    #                 hist_updated = DETB_JRNL_LOG_HIST.objects.filter(
-    #                     Reference_No=reference_no
-    #                 ).update(
-    #                     Auth_Status='A',
-    #                     Checker_Id=request.user,
-    #                     Checker_DT_Stamp=timezone.now()
-    #                 )
-    #             except:
-    #                 pass  # HIST table might not exist
-                
-    #             # After successful approval, insert into daily log tables
-    #             daily_log_entries_created = 0
-    #             daily_log_hist_entries_created = 0
-                
-    #             try:
-    #                 from .models import ACTB_DAIRY_LOG, ACTB_DAIRY_LOG_HISTORY
-    #                 current_time = timezone.now()
-                    
-    #                 # Get the updated approved entries from DETB_JRNL_LOG
-    #                 approved_entries = DETB_JRNL_LOG.objects.filter(
-    #                     Reference_No=reference_no,
-    #                     Auth_Status='A'
-    #                 ).order_by('JRNLLog_id')
-                    
-    #                 for idx, entry in enumerate(approved_entries):
-    #                     # Get GL Master info through the relationship chain:
-    #                     # entry.Account (MTTB_GLSub) -> entry.Account.gl_code (MTTB_GLMaster)
-    #                     gl_master = None
-    #                     gl_type = None
-    #                     category = None
-                        
-    #                     try:
-    #                         if entry.Account and entry.Account.gl_code:
-    #                             gl_master = entry.Account.gl_code  # This is the MTTB_GLMaster instance
-    #                             gl_type = gl_master.glType
-    #                             category = gl_master.category
-    #                             print(f"Found GLMaster: {gl_master.glid}, Type: {gl_type}, Category: {category}")
-    #                     except Exception as gl_error:
-    #                         print(f"GLMaster lookup error: {gl_error}")
-                        
-    #                     # Calculate amounts based on Dr_cr indicator
-    #                     fcy_amount = entry.Fcy_Amount or 0
-    #                     lcy_amount = entry.Lcy_Amount or 0
-    #                     exchange_rate = entry.Exch_rate or 1
-                        
-    #                     fcy_dr = fcy_amount if entry.Dr_cr == 'D' else 0
-    #                     fcy_cr = fcy_amount if entry.Dr_cr == 'C' else 0
-    #                     lcy_dr = lcy_amount if entry.Dr_cr == 'D' else 0
-    #                     lcy_cr = lcy_amount if entry.Dr_cr == 'C' else 0
-                        
-    #                     # Prepare additional sub text
-    #                     addl_sub_text = f"{entry.Addl_sub_text[:255] if entry.Addl_sub_text else ''}"
-                        
-    #                     # ACTB_DAIRY_LOG data (with ForeignKey references)
-    #                     actb_log_data = {
-    #                         'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
-    #                         'trn_ref_no': entry.Reference_No,  # ForeignKey to DETB_JRNL_LOG (the entry itself!)
-    #                         'trn_ref_sub_no': entry.Reference_sub_No,
-    #                         'event_sr_no': idx + 1,
-    #                         'event': 'JRNL',
-    #                         'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
-    #                         'ac_no_full': entry.Account_no,
-    #                         'ac_relative': entry.Ac_relatives,
-    #                         'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
-    #                         'drcr_ind': entry.Dr_cr,
-    #                         'trn_code': entry.Txn_code,  # ForeignKey to MTTB_TRN_Code
-    #                         'fcy_amount': fcy_amount,
-    #                         'exch_rate': exchange_rate,
-    #                         'lcy_amount': lcy_amount,
-    #                         'fcy_dr': fcy_dr,
-    #                         'fcy_cr': fcy_cr,
-    #                         'lcy_dr': lcy_dr,
-    #                         'lcy_cr': lcy_cr,
-    #                         'external_ref_no': '',
-    #                         'addl_text': entry.Addl_text or '',
-    #                         'addl_sub_text': addl_sub_text,
-    #                         'trn_dt': entry.Value_date.date() if entry.Value_date else None,
-    #                         'glid': gl_master,  # ForeignKey to MTTB_GLMaster
-    #                         'glType': gl_type,  # CharField from GLMaster
-    #                         'category': category,  # CharField from GLMaster
-    #                         'value_dt': entry.Value_date.date() if entry.Value_date else None,
-    #                         'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
-    #                         'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
-    #                         'Maker_id': request.user, 
-    #                         'Maker_DT_Stamp': current_time,
-    #                         'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
-    #                         'Checker_DT_Stamp': current_time,
-    #                         'Auth_Status': 'A',  # Authorized
-    #                         'product': 'GL',
-    #                         'entry_seq_no': idx + 1,
-    #                         'delete_stat': None
-    #                     }
-                        
-    #                     # ACTB_DAIRY_LOG_HISTORY data (with CharField references)
-    #                     actb_hist_data = {
-    #                         'module': entry.module_id,  # ForeignKey to STTB_ModulesInfo
-    #                         'trn_ref_no': entry.Reference_No,  # CharField (Reference_No string)
-    #                         'trn_ref_sub_no': entry.Reference_sub_No,
-    #                         'event_sr_no': idx + 1,
-    #                         'event': 'JRNL',
-    #                         'ac_no': entry.Account,  # ForeignKey to MTTB_GLSub
-    #                         'ac_no_full': entry.Account_no,
-    #                         'ac_relative': entry.Ac_relatives,
-    #                         'ac_ccy': entry.Ccy_cd,  # ForeignKey to MTTB_Ccy_DEFN
-    #                         'drcr_ind': entry.Dr_cr,
-    #                         'trn_code': entry.Txn_code,  
-    #                         'fcy_amount': fcy_amount,
-    #                         'exch_rate': exchange_rate,
-    #                         'lcy_amount': lcy_amount,
-    #                         'fcy_dr': fcy_dr,
-    #                         'fcy_cr': fcy_cr,
-    #                         'lcy_dr': lcy_dr,
-    #                         'lcy_cr': lcy_cr,
-    #                         'external_ref_no': '',
-    #                         'addl_text': entry.Addl_text or '',
-    #                         'addl_sub_text': addl_sub_text,
-    #                         'trn_dt': entry.Value_date.date() if entry.Value_date else None,
-    #                         'glid': gl_master,  # ForeignKey to MTTB_GLMaster
-    #                         'glType': gl_type,  # CharField from GLMaster
-    #                         'category': category,  # CharField from GLMaster
-    #                         'value_dt': entry.Value_date.date() if entry.Value_date else None,
-    #                         'financial_cycle': entry.fin_cycle,  # ForeignKey to MTTB_Fin_Cycle
-    #                         'period_code': entry.Period_code,  # ForeignKey to MTTB_Per_Code
-    #                         'Maker_id': request.user, 
-    #                         'Maker_DT_Stamp': current_time,
-    #                         'Checker_id': request.user,  # ForeignKey to MTTB_Users (approver)
-    #                         'Checker_DT_Stamp': current_time,
-    #                         'Auth_Status': 'A',  # Authorized
-    #                         'product': 'GL',
-    #                         'entry_seq_no': idx + 1,
-    #                         'delete_stat': None
-    #                     }
-                        
-    #                     # Create ACTB_DAIRY_LOG entry
-    #                     try:
-    #                         daily_log_entry = ACTB_DAIRY_LOG.objects.create(**actb_log_data)
-    #                         daily_log_entries_created += 1
-    #                         print(f"Created ACTB_DAIRY_LOG entry {daily_log_entry.ac_entry_sr_no}")
-    #                     except Exception as log_error:
-    #                         print(f"Error creating ACTB_DAIRY_LOG: {str(log_error)}")
-    #                         import traceback
-    #                         traceback.print_exc()
-                        
-    #                     # Create ACTB_DAIRY_LOG_HISTORY entry  
-    #                     try:
-    #                         daily_log_hist_entry = ACTB_DAIRY_LOG_HISTORY.objects.create(**actb_hist_data)
-    #                         daily_log_hist_entries_created += 1
-    #                         print(f"Created ACTB_DAIRY_LOG_HISTORY entry {daily_log_hist_entry.ac_entry_sr_no}")
-    #                     except Exception as hist_error:
-    #                         print(f"Error creating ACTB_DAIRY_LOG_HISTORY: {str(hist_error)}")
-    #                         import traceback
-    #                         traceback.print_exc()
-                        
-    #             except Exception as daily_log_error:
-    #                 # Log the error but don't fail the entire approval process
-    #                 print(f"Error creating daily log entries: {str(daily_log_error)}")
-    #                 import traceback
-    #                 traceback.print_exc()
-            
-    #         return Response({
-    #             'message': f'ສໍາເລັດການອະນຸມັດ {log_updated} ລາຍການ, {master_updated} ລາຍການ, {hist_updated} ລາຍການ',
-    #             'daily_log_created': daily_log_entries_created,
-    #             'daily_log_hist_created': daily_log_hist_entries_created,
-    #             'reference_no': reference_no
-    #         })
-            
-    #     except Exception as e:
-    #         import traceback
-    #         traceback.print_exc()
-    #         return Response({'error': f'Error during approval: {str(e)}'}, 
-    #                     status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     @action(detail=False, methods=['post'], url_path='reject-all')  
     def reject_all(self, request):
         """Reject all records (MASTER, LOG, HIST) for a Reference_No"""
@@ -13419,16 +13196,16 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
     try:
         current_date = timezone.now()
         
-        # ✅ ດຶງວັນທີຈາກ STTB_Dates ທີ່ມີ date_id ໃຫຍ່ສຸດແລະ eod_time = 'N'
+
         try:
             latest_date_record = STTB_Dates.objects.filter(eod_time='N').order_by('-date_id').first()
             if latest_date_record and latest_date_record.Start_Date:
                 value_date = latest_date_record.Start_Date.date()
-                sttb_date = latest_date_record.Start_Date  # ✅ ເກັບ datetime object ສຳລັບໃຊ້ງານອື່ນ
+                sttb_date = latest_date_record.Start_Date  
             else:
-                # ຖ້າບໍ່ເຈົ້າໃຊ້ວັນທີປັດຈຸບັນແທນ
+                
                 value_date = current_date.date()
-                sttb_date = current_date  # ✅ ໃຊ້ current_date ເປັນ fallback
+                sttb_date = current_date  
         except Exception as date_error:
             print(f"❌ STTB_Dates query error: {date_error}")
             value_date = current_date.date()
@@ -13436,32 +13213,32 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
         today_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         
-        # ນັບຈຳນວນ records ທີ່ມີ module_id = "AS" ໃນມື້ນີ້
+        
         daily_count = DETB_JRNL_LOG_MASTER.objects.filter(
             module_id="AS",
             Maker_DT_Stamp__range=[today_start, today_end]
         ).count()
         
-        # ເພີ່ມ 1 ສຳລັບ record ໃໝ່ນີ້
+        
         sequence_number = daily_count + 1
         
-        # ✅ ສ້າງ reference_no ໂດຍໃຊ້ວັນທີຈາກ STTB_Dates
+        
         reference_no = f"AS-ARD-{sttb_date.strftime('%Y%m%d')}-{sequence_number:04d}"
         
-        # ເອົາສ່ວນທີ່ເຫຼືອແບບເກົ່າ
+        
         debit_account_number = extract_account_number(accounting_method.debit_account_id)
         credit_account_number = extract_account_number(accounting_method.credit_account_id)
         
         debit_glid = find_gl_account(debit_account_number)
         credit_glid = find_gl_account(credit_account_number)
         
-        # ✅ ຄິດໄລ່ Amount ຕາມເງື່ອນໄຂ
+        
         try:
             asset_data = FA_Asset_Lists.objects.get(asset_list_id=asset.asset_list_id)
             c_dpac = int(asset_data.C_dpac or 0)
             asset_useful_life = int(asset_data.asset_useful_life or 0)
             
-            # ຄຳນວນເດືອນທັງໝົດ
+            
             total_depreciation_months = asset_useful_life * 12
             
             try:
@@ -13480,15 +13257,15 @@ def create_journal_entry_data(asset, accounting_method, depreciation_amount, cur
                 print(f"❌ Depreciation record error: {dep_error}")
                 final_amount = float(depreciation_amount)
             
-            # ✅ ກຳນົດ start_date ແລະ end_date ໂດຍອີງຕາມ C_dpac
-            end_date = current_date  # ໃຊ້ວັນທີປັດຈຸບັນເປັນ end_date
+            
+            end_date = current_date  
             if c_dpac == 0:
-                # ຖ້າ C_dpac == 0, ໃຊ້ dpca_start_date ເປັນ start_date
+                
                 start_date = asset_data.dpca_start_date or current_date
             else:
                 start_date = asset_data.asset_latest_date_dpca or current_date
             
-            # ✅ NEW: ຄຳນວນຈຳນວນເດືອນຈາກ start_date ຫາ STTB_Dates Start_Date
+            
             months_from_start_to_sttb = 0
             if asset_data.dpca_start_date:
                 start_year = asset_data.dpca_start_date.year
@@ -14408,6 +14185,10 @@ def process_bulk_depreciation_with_journal(mapping_ids, check_only=False, user_i
     except Exception as e:
         print(f"💥 Bulk processing fatal error: {str(e)}")
         return {"error": f"Bulk processing with journal error: {str(e)}"}
+
+
+
+
 @csrf_exempt
 def calculate_depreciation_api_with_journal(request):
     """
@@ -15168,48 +14949,183 @@ def create_journal_entry_via_api(journal_data, request):
             'error': f"Journal creation fatal error: {str(e)}",
             'method': 'fatal_error'
         }
+# def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=None, create_journal=True, request=None):
+#     """
+#     ✅ ຫັກຄ່າເສື່ອມລາຄາພ້ອມສ້າງ Journal Entry
+#     """
+#     try:
+#         print(f"🎯 Processing mapping_id: {mapping_id}, create_journal: {create_journal}")
+        
+        
+#         depreciation_result = process_monthly_depreciation_with_inmonth(mapping_id, user_id, None, date)
+        
+#         if not depreciation_result.get('success'):
+#             print(f"❌ Depreciation failed for mapping_id {mapping_id}")
+#             return depreciation_result
+        
+#         print(f"✅ Depreciation success for mapping_id {mapping_id}")
+        
+       
+#         if not create_journal:
+#             print(f"ℹ️ Journal creation disabled for mapping_id {mapping_id}")
+#             depreciation_result['journal_entry'] = {'success': False, 'message': 'Journal creation disabled'}
+#             return depreciation_result
+        
+        
+#         if not request:
+#             print(f"⚠️ No request object for mapping_id {mapping_id}")
+#             depreciation_result['journal_entry'] = {
+#                 'success': False,
+#                 'error': 'Request object required for journal entry creation'
+#             }
+#             return depreciation_result
+        
+#         try:
+#             print(f"📝 Creating journal entry for mapping_id {mapping_id}")
+            
+           
+#             accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+#             if accounting_method.asset_list_id:
+#                 asset = accounting_method.asset_list_id
+#             else:
+#                 asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+            
+           
+#             depreciation_processed = depreciation_result['depreciation_processed']
+#             depreciation_amount = Decimal(str(depreciation_processed['monthly_depreciation']))
+#             current_count = depreciation_processed['month_number']
+#             total_months = int(asset.asset_useful_life) * 12
+            
+#             print(f"💰 Amount: {depreciation_amount}, Month: {current_count}/{total_months}")
+            
+          
+#             journal_data_result = create_journal_entry_data(
+#                 asset, accounting_method, depreciation_amount, current_count, total_months
+#             )
+            
+#             if not journal_data_result['success']:
+#                 print(f"❌ Journal data creation failed: {journal_data_result['error']}")
+#                 depreciation_result['journal_entry'] = journal_data_result
+#                 return depreciation_result
+            
+           
+#             validation = journal_data_result['validation']
+#             if not validation['debit_found'] or not validation['credit_found']:
+#                 print(f"❌ GL Accounts not found: Debit={validation['debit_found']}, Credit={validation['credit_found']}")
+#                 depreciation_result['journal_entry'] = {
+#                     'success': False,
+#                     'error': 'GL Account not found',
+#                     'details': {
+#                         'debit_account': validation['debit_account_number'],
+#                         'credit_account': validation['credit_account_number'],
+#                         'debit_found': validation['debit_found'],
+#                         'credit_found': validation['credit_found']
+#                     }
+#                 }
+#                 return depreciation_result
+            
+#             print(f"✅ GL Accounts found: Debit GLID={validation['debit_glid']}, Credit GLID={validation['credit_glid']}")
+            
+#             # ສ້າງ Journal Entry
+#             journal_response = create_journal_entry_via_api(
+#                 journal_data_result['journal_data'], request
+#             )
+            
+#             # ເພີ່ມຜົນລັບ Journal Entry ໃສ່ຜົນລັບການຫັກຄ່າເສື່ອມ
+#             depreciation_result['journal_entry'] = journal_response
+#             depreciation_result['journal_entry']['journal_data'] = journal_data_result['journal_data']
+#             depreciation_result['journal_entry']['validation'] = validation
+            
+#             if journal_response['success']:
+#                 print(f"🎉 Complete success for mapping_id {mapping_id}")
+#             else:
+#                 print(f"⚠️ Depreciation success but journal failed for mapping_id {mapping_id}")
+            
+#             return depreciation_result
+            
+#         except Exception as journal_error:
+#             print(f"💥 Journal creation error for mapping_id {mapping_id}: {str(journal_error)}")
+#             # ຖ້າການສ້າງ Journal Entry ຜິດພາດ ແຕ່ການຫັກຄ່າເສື່ອມສຳເລັດແລ້ວ
+#             depreciation_result['journal_entry'] = {
+#                 'success': False,
+#                 'error': f"Journal creation failed: {str(journal_error)}",
+#                 'depreciation_success': True  # ການຫັກຄ່າເສື່ອມຍັງສຳເລັດ
+#             }
+#             return depreciation_result
+        
+#     except Exception as e:
+#         print(f"💥 General error for mapping_id {mapping_id}: {str(e)}")
+#         return {"error": f"Process with journal error: {str(e)}"}
+@transaction.atomic
 def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=None, create_journal=True, request=None):
     """
-    ✅ ຫັກຄ່າເສື່ອມລາຄາພ້ອມສ້າງ Journal Entry
+    ✅ ຫັກຄ່າເສື່ອມລາຄາພ້ອມສ້າງ Journal Entry ສຳລັບ mapping_id ດຽວ
+    ✅ ມີ Transaction ແລະ ກວດຫັກຊ້ຳເດືອນ
+    
+    Parameters:
+        mapping_id: ID ຂອງ FA_Accounting_Method ທີ່ສົ່ງມາຈາກ frontend
+        user_id: ID ຂອງຜູ້ໃຊ້
+        date: ວັນທີທີ່ຕ້ອງການຫັກ (YYYY-MM-DD) ຖ້າບໍ່ສົ່ງມາຈະໃຊ້ວັນທີປັດຈຸບັນ
+        create_journal: True/False ສ້າງ Journal Entry ຫຼືບໍ່
+        request: Request object ສຳລັບເອີ້ນ API
+    
+    Returns:
+        {
+            'success': True/False,
+            'mapping_id': mapping_id,
+            'depreciation_processed': {...},
+            'history_records': {...},
+            'journal_entry': {...}  # ຖ້າ create_journal=True
+        }
     """
     try:
         print(f"🎯 Processing mapping_id: {mapping_id}, create_journal: {create_journal}")
         
-        # ດຳເນີນການຫັກຄ່າເສື່ອມລາຄາປົກກະຕິ
+        # ຫັກຄ່າເສື່ອມລາຄາສຳລັບ mapping_id ນີ້
         depreciation_result = process_monthly_depreciation_with_inmonth(mapping_id, user_id, None, date)
         
         if not depreciation_result.get('success'):
             print(f"❌ Depreciation failed for mapping_id {mapping_id}")
-            return depreciation_result
+            # Transaction ຈະ rollback ອັດຕະໂນມັດ
+            return {
+                'success': False,
+                'mapping_id': mapping_id,
+                **depreciation_result
+            }
         
         print(f"✅ Depreciation success for mapping_id {mapping_id}")
         
-       
+        # ຖ້າບໍ່ຕ້ອງການສ້າງ Journal
         if not create_journal:
             print(f"ℹ️ Journal creation disabled for mapping_id {mapping_id}")
-            depreciation_result['journal_entry'] = {'success': False, 'message': 'Journal creation disabled'}
+            depreciation_result['journal_entry'] = {
+                'success': False, 
+                'message': 'Journal creation disabled'
+            }
+            depreciation_result['mapping_id'] = mapping_id
             return depreciation_result
         
-        
+        # ກວດສອບ request object
         if not request:
             print(f"⚠️ No request object for mapping_id {mapping_id}")
             depreciation_result['journal_entry'] = {
                 'success': False,
                 'error': 'Request object required for journal entry creation'
             }
+            depreciation_result['mapping_id'] = mapping_id
             return depreciation_result
         
         try:
             print(f"📝 Creating journal entry for mapping_id {mapping_id}")
             
-           
+            # ດຶງຂໍ້ມູນຊັບສິນ
             accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
             if accounting_method.asset_list_id:
                 asset = accounting_method.asset_list_id
             else:
                 asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
             
-           
+            # ດຶງຂໍ້ມູນການຫັກຄ່າເສື່ອມ
             depreciation_processed = depreciation_result['depreciation_processed']
             depreciation_amount = Decimal(str(depreciation_processed['monthly_depreciation']))
             current_count = depreciation_processed['month_number']
@@ -15217,7 +15133,7 @@ def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=Non
             
             print(f"💰 Amount: {depreciation_amount}, Month: {current_count}/{total_months}")
             
-          
+            # ສ້າງຂໍ້ມູນ Journal Entry
             journal_data_result = create_journal_entry_data(
                 asset, accounting_method, depreciation_amount, current_count, total_months
             )
@@ -15225,9 +15141,14 @@ def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=Non
             if not journal_data_result['success']:
                 print(f"❌ Journal data creation failed: {journal_data_result['error']}")
                 depreciation_result['journal_entry'] = journal_data_result
-                return depreciation_result
+                # Transaction ຈະ rollback
+                return {
+                    'success': False,
+                    'mapping_id': mapping_id,
+                    **depreciation_result
+                }
             
-            # ກວດສອບວ່າພົບ GL Accounts ທັງຄູ່ບໍ
+            # ກວດສອບບັນຊີ GL
             validation = journal_data_result['validation']
             if not validation['debit_found'] or not validation['credit_found']:
                 print(f"❌ GL Accounts not found: Debit={validation['debit_found']}, Credit={validation['credit_found']}")
@@ -15241,7 +15162,12 @@ def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=Non
                         'credit_found': validation['credit_found']
                     }
                 }
-                return depreciation_result
+                # Transaction ຈະ rollback
+                return {
+                    'success': False,
+                    'mapping_id': mapping_id,
+                    **depreciation_result
+                }
             
             print(f"✅ GL Accounts found: Debit GLID={validation['debit_glid']}, Credit GLID={validation['credit_glid']}")
             
@@ -15250,31 +15176,40 @@ def process_monthly_depreciation_with_journal(mapping_id, user_id=None, date=Non
                 journal_data_result['journal_data'], request
             )
             
-            # ເພີ່ມຜົນລັບ Journal Entry ໃສ່ຜົນລັບການຫັກຄ່າເສື່ອມ
+            # ກວດສອບຜົນລັບການສ້າງ Journal
+            if not journal_response['success']:
+                print(f"❌ Journal creation failed for mapping_id {mapping_id}")
+                # Transaction ຈະ rollback ທັງໝົດ
+                depreciation_result['journal_entry'] = journal_response
+                return {
+                    'success': False,
+                    'mapping_id': mapping_id,
+                    **depreciation_result
+                }
+            
+            # ເພີ່ມຜົນລັບ Journal Entry
             depreciation_result['journal_entry'] = journal_response
             depreciation_result['journal_entry']['journal_data'] = journal_data_result['journal_data']
             depreciation_result['journal_entry']['validation'] = validation
+            depreciation_result['mapping_id'] = mapping_id
             
-            if journal_response['success']:
-                print(f"🎉 Complete success for mapping_id {mapping_id}")
-            else:
-                print(f"⚠️ Depreciation success but journal failed for mapping_id {mapping_id}")
-            
+            print(f"🎉 Complete success for mapping_id {mapping_id}")
+            # Transaction ຈະ commit ອັດຕະໂນມັດ
             return depreciation_result
             
         except Exception as journal_error:
             print(f"💥 Journal creation error for mapping_id {mapping_id}: {str(journal_error)}")
-            # ຖ້າການສ້າງ Journal Entry ຜິດພາດ ແຕ່ການຫັກຄ່າເສື່ອມສຳເລັດແລ້ວ
-            depreciation_result['journal_entry'] = {
-                'success': False,
-                'error': f"Journal creation failed: {str(journal_error)}",
-                'depreciation_success': True  # ການຫັກຄ່າເສື່ອມຍັງສຳເລັດ
-            }
-            return depreciation_result
+            # Transaction ຈະ rollback ທັງໝົດ
+            raise
         
     except Exception as e:
         print(f"💥 General error for mapping_id {mapping_id}: {str(e)}")
-        return {"error": f"Process with journal error: {str(e)}"}
+        # Transaction ຈະ rollback ທັງໝົດ
+        return {
+            "success": False,
+            "mapping_id": mapping_id,
+            "error": f"Process with journal error: {str(e)}"
+        }
 
 def validate_user_id(user_id):
     """ກວດສອບວ່າ user_id ມີຢູ່ບໍ"""
@@ -18554,8 +18489,175 @@ def get_status_message(current_count, total_months):
         
 #     except Exception as e:
 #         return {"error": f"Process error: {str(e)}"}
+# def process_monthly_depreciation(mapping_id, user_id=None, date=None):
+#     """ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ - ວິທີ Vue.js: ໃຊ້ຈຳນວນມື້ຕົວຈິງ, ຮັບປະກັນມູນຄ່າສະສົມຄົບ depreciable_amount"""
+#     try:
+#         # ກວດສອບສະຖານະກ່ອນ
+#         calc_result = calculate_depreciation_schedule(mapping_id)
+#         if 'error' in calc_result:
+#             return calc_result
+        
+#         if not calc_result['depreciation_status']['can_depreciate']:
+#             return {
+#                 "error": "ຫັກຄົບມູນຄ່າທີ່ສາມາດຫັກເສື່ອມໄດ້ແລ້ວ! ມູນຄ່າຄົງເຫຼືອ = salvage_value",
+#                 "current_status": calc_result['depreciation_status']
+#             }
+        
+#         # ດຶງຂໍ້ມູນ
+#         accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
+#         if accounting_method.asset_list_id:
+#             asset = accounting_method.asset_list_id
+#         else:
+#             asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
+        
+#         current_count = int(asset.C_dpac or 0)
+#         next_month = current_count + 1
+        
+#         start_date = asset.dpca_start_date
+#         useful_life = int(asset.asset_useful_life)
+#         total_months = useful_life * 12
+#         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
+        
+#         # ✅ ຂໍ້ມູນພື້ນຖານ (ໃຊ້ Decimal ເພື່ອຄວາມແມ່ນຍຳ)
+#         asset_value = Decimal(str(asset.asset_value or 0))  
+#         accu_dpca_value_total = Decimal(str(asset.accu_dpca_value_total))  # depreciable_amount
+#         salvage_value = Decimal(str(asset.asset_salvage_value or 0))  
+#         depreciable_amount = asset_value - salvage_value  
+        
+#         # ຄ່າເສື່ອມຕໍ່ປີ ແລະ ຕໍ່ເດືອນ
+#         annual_depreciation = depreciable_amount / Decimal(str(useful_life))
+#         monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+#         # ✅ ກວດສອບວ່າເປັນເດືອນສຸດທ້າຍບໍ່
+#         is_last_month = (next_month == total_months)
+        
+#         # ✅ ຄິດວັນທີ່ (ຮອງຮັບ date parameter)
+#         if date:
+#             target_date = datetime.strptime(date, '%Y-%m-%d').date()
+#             # ໃຊ້ target_date ສຳລັບການຄິດເດືອນ
+#             if next_month == 1:
+#                 month_actual_start = start_date
+#                 month_end = datetime(target_date.year, target_date.month,
+#                                    get_last_day_of_month(target_date.year, target_date.month)).date()
+#             else:
+#                 month_actual_start = datetime(target_date.year, target_date.month, 1).date()
+#                 month_end = datetime(target_date.year, target_date.month,
+#                                    get_last_day_of_month(target_date.year, target_date.month)).date()
+#         else:
+#             # ໃຊ້ start_date + months ແບບເດີມ
+#             month_start_date = start_date + relativedelta(months=current_count)
+#             if next_month == 1:
+#                 month_actual_start = start_date
+#                 month_end = datetime(month_start_date.year, month_start_date.month,
+#                                    get_last_day_of_month(month_start_date.year, month_start_date.month)).date()
+#             else:
+#                 month_actual_start = datetime(month_start_date.year, month_start_date.month, 1).date()
+#                 month_end = datetime(month_start_date.year, month_start_date.month,
+#                                    get_last_day_of_month(month_start_date.year, month_start_date.month)).date()
+        
+#         # ກວດສອບວ່າເປັນເດືອນສຸດທ້າຍບໍ່
+#         if month_end > end_date:
+#             month_end = end_date
+        
+#         # ✅ ຄິດຈຳນວນມື້ຕົວຈິງ
+#         days_in_month = (month_end - month_actual_start + timedelta(days=1)).days
+#         total_days_in_month = get_last_day_of_month(month_actual_start.year, month_actual_start.month)
+        
+#         # ✅ ການຄິດຄ່າເສື່ອມລາຄາໃໝ່ (ຕາມວິທີ Vue.js)
+#         old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
+        
+#         # ✅ ປະກາດຕົວແປສຳລັບ setup_value ແລະ end_value
+#         setup_value = Decimal('0')
+#         end_value = Decimal('0')
+        
+#         if next_month == 1:
+#             # 🎯 ງວດທຳອິດ: ມູນຄ່າຕົ້ນງວດ
+#             setup_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             monthly_depreciation_value = setup_value
+#             end_value = (monthly_depreciation - setup_value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             new_accumulated = monthly_depreciation_value  # ບໍ່ບວກ old ເພາະ old = 0
+#             new_remaining = accu_dpca_value_total - new_accumulated
+#             calculation_note = f"ງວດທຳອິດ - ມູນຄ່າຕົ້ນງວດ = ({monthly_depreciation:,.2f} × {days_in_month}) ÷ {total_days_in_month} = {monthly_depreciation_value:,.2f} ກີບ"
+            
+#             print(f"🎯 ງວດທຳອິດ (ເດືອນທີ່ {next_month}):")
+#             print(f"   - ວັນໃຊ້ຈິງ: {days_in_month}/{total_days_in_month} ມື້")
+#             print(f"   - ຄ່າເສື່ອມຕໍ່ເດືອນ: {monthly_depreciation:,.2f}")
+#             print(f"   - ມູນຄ່າຕົ້ນງວດ: {setup_value:,.2f}")
+#             print(f"   - ມູນຄ່າທ້າຍງວດ: {end_value:,.2f}")
+#             print(f"   - Accumulated: {new_accumulated:,.2f}")
+#             print(f"   - Remaining: {new_remaining:,.2f}")
+            
+#         elif is_last_month:
+#             # 🎯 ງວດສຸດທ້າຍ: ຄ່າເສື່ອມ = ມູນຄ່າທີ່ເຫຼືອຈົນກວ່າຈະຄົບ depreciable_amount
+#             remaining_to_depreciate = depreciable_amount - old_accumulated
+#             monthly_depreciation_value = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             new_accumulated = old_accumulated + monthly_depreciation_value
+#             new_remaining = accu_dpca_value_total - new_accumulated
+#             end_value = Decimal('0')  # ບໍ່ມີມູນຄ່າທ້າຍງວດໃນເດືອນສຸດທ້າຍ
+#             calculation_note = f"ງວດສຸດທ້າຍ - ຫັກຄົບ {depreciable_amount:,.0f} ກີບ (ຄ່າເສື່ອມ = {monthly_depreciation_value:,.2f})"
+            
+#             print(f"🎯 ງວດສຸດທ້າຍ (ເດືອນທີ່ {next_month}):")
+#             print(f"   - ເປົ້າໝາຍ: ຫັກຄົບ {depreciable_amount:,.0f} ກີບ")
+#             print(f"   - ຫັກມາແລ້ວ: {old_accumulated:,.2f}")
+#             print(f"   - ຄ່າເສື່ອມເດືອນນີ້: {monthly_depreciation_value:,.2f}")
+#             print(f"   - Accumulated: {new_accumulated:,.2f}")
+#             print(f"   - Remaining: {new_remaining:,.2f}")
+            
+#         else:
+#             # 🎯 ງວດປົກກະຕິ: ຫັກຕາມວັນທີ່ແທ້ຈິງ
+#             monthly_depreciation_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             new_accumulated = old_accumulated + monthly_depreciation_value
+#             new_remaining = accu_dpca_value_total - new_accumulated
+#             end_value = Decimal('0')  
+#             calculation_note = f"ງວດປົກກະຕິ - ຄ່າເສື່ອມ = ({monthly_depreciation:,.2f} × {days_in_month}) ÷ {total_days_in_month} = {monthly_depreciation_value:,.2f}"
+            
+#             print(f"🎯 ງວດປົກກະຕິ (ເດືອນທີ່ {next_month}):")
+#             print(f"   - ວັນໃຊ້ຈິງ: {days_in_month}/{total_days_in_month} ມື້")
+#             print(f"   - ຄ່າເສື່ອມເດືອນນີ້: {monthly_depreciation_value:,.2f}")
+#             print(f"   - Accumulated: {new_accumulated:,.2f}")
+#             print(f"   - Remaining: {new_remaining:,.2f}")
+        
+#         # 📝 ກວດສອບຄວາມຖືກຕ້ອງ
+#         if new_accumulated > depreciable_amount:
+#             monthly_depreciation_value = (monthly_depreciation_value - (new_accumulated - depreciable_amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             new_accumulated = depreciable_amount
+#             new_remaining = asset_value - new_accumulated  # ໃຊ້ asset_value ໃນ safety check
+#             calculation_note += f" | ປັບປ່ຽນເພື່ອໃຫ້ accumulated = {depreciable_amount:,.0f}"
+        
+        
+#         return {
+#             'success': True,
+#             'depreciation_processed': {
+#                 'month_number': next_month,
+#                 'month_year': f"{get_month_name_la(month_actual_start.month)} {month_actual_start.year}",
+#                 'period': f"{month_actual_start.strftime('%d/%m/%Y')} - {month_end.strftime('%d/%m/%Y')}",
+#                 'days_count': days_in_month,
+#                 'total_days_in_month': total_days_in_month,
+#                 'monthly_depreciation': float(monthly_depreciation_value),
+#                 'setup_value': float(setup_value) if next_month == 1 else None,
+#                 'end_value': float(end_value) if next_month == 1 else None,
+#                 'old_accumulated': float(old_accumulated),
+#                 'new_accumulated': float(new_accumulated),
+#                 'remaining_value': float(new_remaining),
+#                 'is_final_month': is_last_month,
+#                 'calculation_note': calculation_note,
+#                 'target_achieved': f"ຫັກຄົບ {depreciable_amount:,.0f} ກີບ, Remaining = {salvage_value:,.0f}" if is_last_month else None
+#             },
+#             'updated_status': {
+#                 'C_dpac': next_month,
+#                 'total_months': total_months,
+#                 'remaining_months': total_months - next_month,
+#                 'is_completed': next_month >= total_months,
+#                 'final_achieved': new_accumulated >= depreciable_amount and new_remaining <= salvage_value if is_last_month else None
+#             }
+#         }
+        
+#     except Exception as e:
+#         return {"error": f"Process error: {str(e)}"}
 def process_monthly_depreciation(mapping_id, user_id=None, date=None):
-    """ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ - ວິທີ Vue.js: ໃຊ້ຈຳນວນມື້ຕົວຈິງ, ຮັບປະກັນມູນຄ່າສະສົມຄົບ depreciable_amount"""
+    """
+    ✅ ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ (ມີການກວດຫັກຊ້ຳເດືອນ)
+    """
     try:
         # ກວດສອບສະຖານະກ່ອນ
         calc_result = calculate_depreciation_schedule(mapping_id)
@@ -18564,6 +18666,7 @@ def process_monthly_depreciation(mapping_id, user_id=None, date=None):
         
         if not calc_result['depreciation_status']['can_depreciate']:
             return {
+                "success": False,
                 "error": "ຫັກຄົບມູນຄ່າທີ່ສາມາດຫັກເສື່ອມໄດ້ແລ້ວ! ມູນຄ່າຄົງເຫຼືອ = salvage_value",
                 "current_status": calc_result['depreciation_status']
             }
@@ -18575,6 +18678,44 @@ def process_monthly_depreciation(mapping_id, user_id=None, date=None):
         else:
             asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
         
+        # 🆕 ກວດສອບວ່າຫັກເດືອນນີ້ແລ້ວຫຼືຍັງ
+        if asset.asset_latest_date_dpca:
+            # ກຳນົດວັນທີທີ່ຈະກວດສອບ
+            if date:
+                check_date = datetime.strptime(date, '%Y-%m-%d').date()
+            else:
+                check_date = datetime.now().date()
+            
+            # ກວດວ່າເດືອນ/ປີ ຕົງກັນບໍ່
+            last_depreciation_month = asset.asset_latest_date_dpca.month
+            last_depreciation_year = asset.asset_latest_date_dpca.year
+            check_month = check_date.month
+            check_year = check_date.year
+            
+            if last_depreciation_month == check_month and last_depreciation_year == check_year:
+                return {
+                    "success": False,
+                    "error": f"ຫັກເດືອນ {check_month}/{check_year} ແລ້ວ!",
+                    "error_detail": f"ວັນທີຫັກຄັ້ງສຸດທ້າຍ: {asset.asset_latest_date_dpca.strftime('%d/%m/%Y')}",
+                    "last_depreciation_date": asset.asset_latest_date_dpca.strftime('%Y-%m-%d')
+                }
+            
+            print(f"✅ ຍັງບໍ່ໄດ້ຫັກເດືອນ {check_month}/{check_year}")
+        
+        # 🆕 ກວດວ່າຮອດວັນທີເລີ່ມຕົ້ນແລ້ວຫຼືຍັງ
+        if date:
+            check_date = datetime.strptime(date, '%Y-%m-%d').date()
+        else:
+            check_date = datetime.now().date()
+        
+        if check_date < asset.dpca_start_date:
+            return {
+                "success": False,
+                "error": f"ຍັງບໍ່ຮອດວັນທີເລີ່ມຫັກຄ່າເສື່ອມ!",
+                "error_detail": f"ເລີ່ມຫັກໄດ້ຕັ້ງແຕ່: {asset.dpca_start_date.strftime('%d/%m/%Y')}",
+                "start_date": asset.dpca_start_date.strftime('%Y-%m-%d')
+            }
+        
         current_count = int(asset.C_dpac or 0)
         next_month = current_count + 1
         
@@ -18583,23 +18724,22 @@ def process_monthly_depreciation(mapping_id, user_id=None, date=None):
         total_months = useful_life * 12
         end_date = start_date + relativedelta(years=useful_life) - timedelta(days=1)
         
-        # ✅ ຂໍ້ມູນພື້ນຖານ (ໃຊ້ Decimal ເພື່ອຄວາມແມ່ນຍຳ)
-        asset_value = Decimal(str(asset.asset_value or 0))  
-        accu_dpca_value_total = Decimal(str(asset.accu_dpca_value_total))  # depreciable_amount
-        salvage_value = Decimal(str(asset.asset_salvage_value or 0))  
-        depreciable_amount = asset_value - salvage_value  
+        # ຂໍ້ມູນພື້ນຖານ
+        asset_value = Decimal(str(asset.asset_value or 0))
+        accu_dpca_value_total = Decimal(str(asset.accu_dpca_value_total))
+        salvage_value = Decimal(str(asset.asset_salvage_value or 0))
+        depreciable_amount = asset_value - salvage_value
         
         # ຄ່າເສື່ອມຕໍ່ປີ ແລະ ຕໍ່ເດືອນ
         annual_depreciation = depreciable_amount / Decimal(str(useful_life))
         monthly_depreciation = (annual_depreciation / Decimal('12')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
-        # ✅ ກວດສອບວ່າເປັນເດືອນສຸດທ້າຍບໍ່
+        # ກວດສອບວ່າເປັນເດືອນສຸດທ້າຍບໍ່
         is_last_month = (next_month == total_months)
         
-        # ✅ ຄິດວັນທີ່ (ຮອງຮັບ date parameter)
+        # ຄິດວັນທີ່
         if date:
             target_date = datetime.strptime(date, '%Y-%m-%d').date()
-            # ໃຊ້ target_date ສຳລັບການຄິດເດືອນ
             if next_month == 1:
                 month_actual_start = start_date
                 month_end = datetime(target_date.year, target_date.month,
@@ -18609,7 +18749,6 @@ def process_monthly_depreciation(mapping_id, user_id=None, date=None):
                 month_end = datetime(target_date.year, target_date.month,
                                    get_last_day_of_month(target_date.year, target_date.month)).date()
         else:
-            # ໃຊ້ start_date + months ແບບເດີມ
             month_start_date = start_date + relativedelta(months=current_count)
             if next_month == 1:
                 month_actual_start = start_date
@@ -18620,75 +18759,51 @@ def process_monthly_depreciation(mapping_id, user_id=None, date=None):
                 month_end = datetime(month_start_date.year, month_start_date.month,
                                    get_last_day_of_month(month_start_date.year, month_start_date.month)).date()
         
-        # ກວດສອບວ່າເປັນເດືອນສຸດທ້າຍບໍ່
         if month_end > end_date:
             month_end = end_date
         
-        # ✅ ຄິດຈຳນວນມື້ຕົວຈິງ
+        # ຄິດຈຳນວນມື້ຕົວຈິງ
         days_in_month = (month_end - month_actual_start + timedelta(days=1)).days
         total_days_in_month = get_last_day_of_month(month_actual_start.year, month_actual_start.month)
         
-        # ✅ ການຄິດຄ່າເສື່ອມລາຄາໃໝ່ (ຕາມວິທີ Vue.js)
+        # ການຄິດຄ່າເສື່ອມລາຄາ
         old_accumulated = Decimal(str(asset.asset_accu_dpca_value or 0))
         
-        # ✅ ປະກາດຕົວແປສຳລັບ setup_value ແລະ end_value
         setup_value = Decimal('0')
         end_value = Decimal('0')
         
         if next_month == 1:
-            # 🎯 ງວດທຳອິດ: ມູນຄ່າຕົ້ນງວດ
+            # ງວດທຳອິດ
             setup_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             monthly_depreciation_value = setup_value
             end_value = (monthly_depreciation - setup_value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            new_accumulated = monthly_depreciation_value  # ບໍ່ບວກ old ເພາະ old = 0
+            new_accumulated = monthly_depreciation_value
             new_remaining = accu_dpca_value_total - new_accumulated
             calculation_note = f"ງວດທຳອິດ - ມູນຄ່າຕົ້ນງວດ = ({monthly_depreciation:,.2f} × {days_in_month}) ÷ {total_days_in_month} = {monthly_depreciation_value:,.2f} ກີບ"
             
-            print(f"🎯 ງວດທຳອິດ (ເດືອນທີ່ {next_month}):")
-            print(f"   - ວັນໃຊ້ຈິງ: {days_in_month}/{total_days_in_month} ມື້")
-            print(f"   - ຄ່າເສື່ອມຕໍ່ເດືອນ: {monthly_depreciation:,.2f}")
-            print(f"   - ມູນຄ່າຕົ້ນງວດ: {setup_value:,.2f}")
-            print(f"   - ມູນຄ່າທ້າຍງວດ: {end_value:,.2f}")
-            print(f"   - Accumulated: {new_accumulated:,.2f}")
-            print(f"   - Remaining: {new_remaining:,.2f}")
-            
         elif is_last_month:
-            # 🎯 ງວດສຸດທ້າຍ: ຄ່າເສື່ອມ = ມູນຄ່າທີ່ເຫຼືອຈົນກວ່າຈະຄົບ depreciable_amount
+            # ງວດສຸດທ້າຍ
             remaining_to_depreciate = depreciable_amount - old_accumulated
             monthly_depreciation_value = remaining_to_depreciate.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             new_accumulated = old_accumulated + monthly_depreciation_value
             new_remaining = accu_dpca_value_total - new_accumulated
-            end_value = Decimal('0')  # ບໍ່ມີມູນຄ່າທ້າຍງວດໃນເດືອນສຸດທ້າຍ
+            end_value = Decimal('0')
             calculation_note = f"ງວດສຸດທ້າຍ - ຫັກຄົບ {depreciable_amount:,.0f} ກີບ (ຄ່າເສື່ອມ = {monthly_depreciation_value:,.2f})"
             
-            print(f"🎯 ງວດສຸດທ້າຍ (ເດືອນທີ່ {next_month}):")
-            print(f"   - ເປົ້າໝາຍ: ຫັກຄົບ {depreciable_amount:,.0f} ກີບ")
-            print(f"   - ຫັກມາແລ້ວ: {old_accumulated:,.2f}")
-            print(f"   - ຄ່າເສື່ອມເດືອນນີ້: {monthly_depreciation_value:,.2f}")
-            print(f"   - Accumulated: {new_accumulated:,.2f}")
-            print(f"   - Remaining: {new_remaining:,.2f}")
-            
         else:
-            # 🎯 ງວດປົກກະຕິ: ຫັກຕາມວັນທີ່ແທ້ຈິງ
+            # ງວດປົກກະຕິ
             monthly_depreciation_value = (monthly_depreciation * Decimal(str(days_in_month)) / Decimal(str(total_days_in_month))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             new_accumulated = old_accumulated + monthly_depreciation_value
             new_remaining = accu_dpca_value_total - new_accumulated
-            end_value = Decimal('0')  
+            end_value = Decimal('0')
             calculation_note = f"ງວດປົກກະຕິ - ຄ່າເສື່ອມ = ({monthly_depreciation:,.2f} × {days_in_month}) ÷ {total_days_in_month} = {monthly_depreciation_value:,.2f}"
-            
-            print(f"🎯 ງວດປົກກະຕິ (ເດືອນທີ່ {next_month}):")
-            print(f"   - ວັນໃຊ້ຈິງ: {days_in_month}/{total_days_in_month} ມື້")
-            print(f"   - ຄ່າເສື່ອມເດືອນນີ້: {monthly_depreciation_value:,.2f}")
-            print(f"   - Accumulated: {new_accumulated:,.2f}")
-            print(f"   - Remaining: {new_remaining:,.2f}")
         
-        # 📝 ກວດສອບຄວາມຖືກຕ້ອງ
+        # ກວດສອບຄວາມຖືກຕ້ອງ
         if new_accumulated > depreciable_amount:
             monthly_depreciation_value = (monthly_depreciation_value - (new_accumulated - depreciable_amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             new_accumulated = depreciable_amount
-            new_remaining = asset_value - new_accumulated  # ໃຊ້ asset_value ໃນ safety check
+            new_remaining = asset_value - new_accumulated
             calculation_note += f" | ປັບປ່ຽນເພື່ອໃຫ້ accumulated = {depreciable_amount:,.0f}"
-        
         
         return {
             'success': True,
@@ -18718,8 +18833,10 @@ def process_monthly_depreciation(mapping_id, user_id=None, date=None):
         }
         
     except Exception as e:
-        return {"error": f"Process error: {str(e)}"}
-
+        return {
+            "success": False,
+            "error": f"Process error: {str(e)}"
+        }
 
 # ✅ ຕົວຢ່າງການໃຊ້ງານ
 """
@@ -18755,22 +18872,22 @@ def process_monthly_depreciation_with_inmonth(mapping_id, user_id=None, in_month
     ✅ FIXED: ຫັກຄ່າເສື່ອມລາຄາ 1 ເດືອນ - ບໍ່ອັບເດດ FA_Asset_Lists (ລໍຖ້າຢືນຢັນ)
     """
     try:
-        # ດຳເນີນການຫັກຄ່າເສື່ອມລາຄາ
+      
         result = process_monthly_depreciation(mapping_id, user_id, date)
         
         if not result.get('success'):
             return result
         
-        # ✅ ບັນທຶກປະຫວັດ (ແຕ່ບໍ່ອັບເດດ FA_Asset_Lists)
+       
         try:
-            # ດຶງຂໍ້ມູນ asset
+           
             accounting_method = FA_Accounting_Method.objects.get(mapping_id=mapping_id)
             if accounting_method.asset_list_id:
                 asset = accounting_method.asset_list_id
             else:
                 asset = FA_Asset_Lists.objects.get(asset_list_id=accounting_method.ref_id)
             
-            # ສ້າງຂໍ້ມູນສຳລັບບັນທຶກປະຫວັດ
+           
             depreciation_data = {
                 'period_start': datetime.strptime(date, '%Y-%m-%d').date() if date else asset.dpca_start_date + relativedelta(months=int(asset.C_dpac or 0)),
                 'monthly_depreciation': result['depreciation_processed']['monthly_depreciation'],
@@ -18781,7 +18898,7 @@ def process_monthly_depreciation_with_inmonth(mapping_id, user_id=None, in_month
                 'days_count': result['depreciation_processed']['days_count']
             }
             
-            # ✅ ບັນທຶກປະຫວັດ (ສະຖານະ Unauthorized)
+         
             history_result = create_depreciation_history(
                 asset, depreciation_data, user_id, in_month_record_id
             )
@@ -18811,6 +18928,8 @@ def process_monthly_depreciation_with_inmonth(mapping_id, user_id=None, in_month
         
     except Exception as e:
         return {"error": f"Process with InMonth error: {str(e)}"}
+
+
 def process_bulk_depreciation(mapping_ids, check_only=False, user_id=None):
     """ຫັກຄ່າເສື່ອມລາຄາຫຼາຍລາຍການ"""
     try:
