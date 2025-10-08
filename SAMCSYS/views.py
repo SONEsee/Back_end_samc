@@ -35800,83 +35800,167 @@ def BackupDatabaseView(request):
         )
 
 
+# def execute_backup(database_name, backup_type):
+#     """Execute SQL Server backup using stored procedure"""
+#     conn = None
+#     cursor = None
+    
+#     try:
+#         # Get backup path from settings
+#         backup_path = getattr(settings, 'BACKUP_PATH', r'C:\Backup\\')
+        
+#         # Build connection string from DATABASES settings
+#         db_settings = settings.DATABASES['default']
+        
+#         # Try to get connection_string from OPTIONS first
+#         conn_str = db_settings.get('OPTIONS', {}).get('connection_string')
+        
+#         # If no connection_string, build it manually
+#         if not conn_str:
+#             driver = db_settings.get('OPTIONS', {}).get('driver', 'ODBC Driver 17 for SQL Server')
+#             server = db_settings.get('HOST', '192.168.10.35')
+#             database = 'SAMCDB_Dev'  # Connect to master for backup operations
+#             user = db_settings.get('USER', '')
+#             password = db_settings.get('PASSWORD', '')
+            
+#             if user and password:
+#                 conn_str = (
+#                     f"DRIVER={{{driver}}};"
+#                     f"SERVER={server};"
+#                     f"DATABASE={database};"
+#                     f"UID={user};"
+#                     f"PWD={password};"
+#                     f"TrustServerCertificate=yes;"
+#                 )
+#             else:
+#                 # Use Windows Authentication
+#                 conn_str = (
+#                     f"DRIVER={{{driver}}};"
+#                     f"SERVER={server};"
+#                     f"DATABASE={database};"
+#                     f"Trusted_Connection=yes;"
+#                     f"TrustServerCertificate=yes;"
+#                 )
+        
+#         logger.info(f"Connecting to SQL Server for backup...")
+        
+#         # Connect to SQL Server
+#         conn = pyodbc.connect(conn_str, timeout=600)
+#         cursor = conn.cursor()
+#         logger.info(f"Connecting to SQL Server for backup...")
+        
+#         # Connect to SQL Server
+#         conn = pyodbc.connect(conn_str, timeout=600)
+#         cursor = conn.cursor()
+        
+#         logger.info(f"Executing backup: {database_name} ({backup_type})")
+        
+#         # Call stored procedure with explicit parameter names
+#         sql = """
+#         EXEC [dbo].[sp_BackupDatabase] 
+#             @DatabaseName = ?,
+#             @BackupPath = ?,
+#             @BackupType = ?
+#         """
+#         cursor.execute(sql, (database_name, backup_path, backup_type))
+        
+#         # Get result - use index-based access instead of column names
+#         row = cursor.fetchone()
+        
+#         if row:
+#             # Access by index: 0=Status, 1=FileName, 2=FullPath, 3=BackupTime, 4=BackupType
+#             status = row[0]
+            
+#             if status == 'SUCCESS':
+#                 file_name = row[1]
+#                 full_path = row[2]
+#                 backup_time = row[3]
+#                 backup_type_result = row[4]
+                
+#                 logger.info(f"Backup successful: {file_name}")
+#                 return {
+#                     'success': True,
+#                     'message': 'Backup created successfully',
+#                     'file_name': file_name,
+#                     'full_path': full_path,
+#                     'backup_time': backup_time.isoformat() if backup_time else None,
+#                     'backup_type': backup_type_result
+#                 }
+#             else:
+#                 # ERROR status - access error details
+#                 error_msg = row[1] if len(row) > 1 else 'Unknown error'
+#                 logger.error(f"Backup failed: {error_msg}")
+#                 return {
+#                     'success': False,
+#                     'error': error_msg
+#                 }
+#         else:
+#             logger.error("No result returned from stored procedure")
+#             return {
+#                 'success': False,
+#                 'error': 'No result returned from stored procedure'
+#             }
+            
+#     except pyodbc.Error as e:
+#         logger.error(f"SQL Server error: {str(e)}")
+#         return {
+#             'success': False,
+#             'error': f'Database error: {str(e)}'
+#         }
+#     except Exception as e:
+#         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+#         return {
+#             'success': False,
+#             'error': f'Error: {str(e)}'
+#         }
+#     finally:
+#         if cursor:
+#             cursor.close()
+#         if conn:
+#             conn.close()
+
 def execute_backup(database_name, backup_type):
     """Execute SQL Server backup using stored procedure"""
     conn = None
     cursor = None
     
     try:
-        # Get backup path from settings
         backup_path = getattr(settings, 'BACKUP_PATH', r'C:\Backup\\')
-        
-        # Build connection string from DATABASES settings
         db_settings = settings.DATABASES['default']
         
-        # Try to get connection_string from OPTIONS first
-        conn_str = db_settings.get('OPTIONS', {}).get('connection_string')
+        conn_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={db_settings.get('HOST', '192.168.10.35')};"
+            f"DATABASE=SAMCDB_Dev;"
+            f"Trusted_Connection=yes;"
+            f"TrustServerCertificate=yes;"
+        )
         
-        # If no connection_string, build it manually
-        if not conn_str:
-            driver = db_settings.get('OPTIONS', {}).get('driver', 'ODBC Driver 17 for SQL Server')
-            server = db_settings.get('HOST', '192.168.10.35')
-            database = 'SAMCDB_Dev'  # Connect to master for backup operations
-            user = db_settings.get('USER', '')
-            password = db_settings.get('PASSWORD', '')
-            
-            if user and password:
-                conn_str = (
-                    f"DRIVER={{{driver}}};"
-                    f"SERVER={server};"
-                    f"DATABASE={database};"
-                    f"UID={user};"
-                    f"PWD={password};"
-                    f"TrustServerCertificate=yes;"
-                )
-            else:
-                # Use Windows Authentication
-                conn_str = (
-                    f"DRIVER={{{driver}}};"
-                    f"SERVER={server};"
-                    f"DATABASE={database};"
-                    f"Trusted_Connection=yes;"
-                    f"TrustServerCertificate=yes;"
-                )
-        
-        logger.info(f"Connecting to SQL Server for backup...")
-        
-        # Connect to SQL Server
-        conn = pyodbc.connect(conn_str, timeout=600)
-        cursor = conn.cursor()
-        logger.info(f"Connecting to SQL Server for backup...")
-        
-        # Connect to SQL Server
+        logger.info(f"Connection string: {conn_str}")
         conn = pyodbc.connect(conn_str, timeout=600)
         cursor = conn.cursor()
         
-        logger.info(f"Executing backup: {database_name} ({backup_type})")
+        cursor.execute("SELECT DB_NAME() AS CurrentDatabase")
+        db_name = cursor.fetchone()[0]
+        logger.info(f"Connected to database: {db_name}")
         
-        # Call stored procedure with explicit parameter names
         sql = """
         EXEC [dbo].[sp_BackupDatabase] 
             @DatabaseName = ?,
             @BackupPath = ?,
             @BackupType = ?
         """
+        logger.info(f"Executing backup: {database_name} ({backup_type}) to {backup_path}")
         cursor.execute(sql, (database_name, backup_path, backup_type))
         
-        # Get result - use index-based access instead of column names
         row = cursor.fetchone()
-        
         if row:
-            # Access by index: 0=Status, 1=FileName, 2=FullPath, 3=BackupTime, 4=BackupType
             status = row[0]
-            
             if status == 'SUCCESS':
                 file_name = row[1]
                 full_path = row[2]
                 backup_time = row[3]
                 backup_type_result = row[4]
-                
                 logger.info(f"Backup successful: {file_name}")
                 return {
                     'success': True,
@@ -35887,7 +35971,6 @@ def execute_backup(database_name, backup_type):
                     'backup_type': backup_type_result
                 }
             else:
-                # ERROR status - access error details
                 error_msg = row[1] if len(row) > 1 else 'Unknown error'
                 logger.error(f"Backup failed: {error_msg}")
                 return {
@@ -35902,10 +35985,12 @@ def execute_backup(database_name, backup_type):
             }
             
     except pyodbc.Error as e:
-        logger.error(f"SQL Server error: {str(e)}")
+        sqlstate = e.args[0] if e.args else 'Unknown'
+        error_msg = e.args[1] if len(e.args) > 1 else str(e)
+        logger.error(f"SQL Server error: SQLSTATE={sqlstate}, Message={error_msg}")
         return {
             'success': False,
-            'error': f'Database error: {str(e)}'
+            'error': f'Database error: {error_msg}'
         }
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
@@ -35918,7 +36003,6 @@ def execute_backup(database_name, backup_type):
             cursor.close()
         if conn:
             conn.close()
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
