@@ -359,6 +359,7 @@ urlpatterns = [
          name='asset_depreciation_report'),
     path('latest-eod/', views.get_latest_eod_date, name='latest_eod_date'),
     path('api/depreciation/', calculate_depreciation_api),
+    path('users/', views.get_all_users),
     
 
 

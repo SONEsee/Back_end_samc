@@ -761,7 +761,12 @@ class PerCodeSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MTTB_Users
-        fields = ['id', 'username']  # Adjust fields to match your model
+        fields = ['id', 'username']  
+
+class UserSerializers(serializers.ModelSerializer):
+    class Meta:
+        model = MTTB_Users
+        fields = '__all__'  
 
 
 # serializers.py
