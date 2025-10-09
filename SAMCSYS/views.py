@@ -1111,20 +1111,20 @@ def sidebar_for_user(request, user_id):
           )
     )
 
-    # 3) Build nested dict: module → main_menu → sub_menu
+ 
     modules = OrderedDict()
     for det in details:
         sub   = det.sub_menu_id
         main  = sub.menu_id if sub else None
         mod   = main.module_Id if main else None
 
-        # Ensure all related records have Record_Status = 'O'
+       
         if not (sub and main and mod):
             continue
         if sub.Record_Status != 'O' or main.Record_Status != 'O' or mod.Record_Status != 'O':
             continue
 
-        # Module level
+ 
         mod_key = mod.module_Id
         if mod_key not in modules:
             modules[mod_key] = {
@@ -1137,7 +1137,7 @@ def sidebar_for_user(request, user_id):
                 'main_menus':     OrderedDict()
             }
 
-        # Main menu level
+     
         mm_key = main.menu_id
         mm_group = modules[mod_key]['main_menus']
         if mm_key not in mm_group:
@@ -1151,7 +1151,7 @@ def sidebar_for_user(request, user_id):
                 'sub_menus':    OrderedDict()
             }
 
-        # Sub menu level
+     
         sm_key = sub.sub_menu_id
         sm_group = mm_group[mm_key]['sub_menus']
         if sm_key not in sm_group:
@@ -1172,7 +1172,7 @@ def sidebar_for_user(request, user_id):
                 }
             }
 
-    # 4) Convert sub-dicts to lists
+   
     result = []
     for mod in modules.values():
         mm_list = []
@@ -38157,3 +38157,14 @@ def get_credit_unauthorized(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+from django.shortcuts import get_list_or_404
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .models import MTTB_Users
+from .serializers import UserSerializers
+@api_view(['GET'])
+def get_all_users(request):
+    users = MTTB_Users.objects.all()
+    serializer =  UserSerializers(users ,many = True)
+    return Response(serializer.data)
