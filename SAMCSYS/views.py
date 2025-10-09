@@ -23848,7 +23848,6 @@ def get_gltype_lookup_dict():
 #             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
 #         }
 
-
 from django.db import transaction, connection
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
@@ -23856,64 +23855,76 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 import logging
 import re
 
 logger = logging.getLogger(__name__)
 
-# EOD Integration Function for FN007
+# EOD Integration Function for FN0009
 def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
     """
-    Execute FN007: Somtop Trial Balancesheet for EOD processing.
-    This function integrates with the EOD system to use the current processing date.
+    Execute FN0009: Somtop Trial Balancesheet for EOD processing.
+    Date range: First day of month to current processing date.
+    Records are marked with Eoc_status = 'EOD'.
     """
     try:
         # Get current processing date from system or use provided date
         if not processing_date:
             processing_date = date.today()
         
-        # Convert to string format if it's a date object
-        if isinstance(processing_date, date):
-            date_str = processing_date.strftime('%Y-%m-%d')
+        # Convert to date object if it's a string
+        if isinstance(processing_date, str):
+            processing_date_obj = datetime.strptime(processing_date, '%Y-%m-%d').date()
         else:
-            date_str = str(processing_date)
+            processing_date_obj = processing_date
 
-        logger.info(f"[FN007] Starting Somtop Trial Balancesheet for processing date: {date_str}")
+        # Calculate first day of the month
+        first_day_of_month = processing_date_obj.replace(day=1)
+        
+        # Convert to string format
+        date_start_str = first_day_of_month.strftime('%Y-%m-%d')
+        date_end_str = processing_date_obj.strftime('%Y-%m-%d')
+
+        logger.info(f"[FN0009] Starting Somtop Trial Balancesheet for EOD")
+        logger.info(f"[FN0009] Date range: {date_start_str} to {date_end_str}")
+        logger.info(f"[FN0009] Processing date: {date_end_str}")
         
         # Auto-calculate period_code and fin_year from processing date
-        processing_date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
         period_code = processing_date_obj.strftime('%Y%m')
         fin_year = processing_date_obj.strftime('%Y')
         
         # Create request-like object for the bulk_insert function
         class MockRequest:
-            def __init__(self, user, date_str, period_code, fin_year):
+            def __init__(self, user, date_start, date_end, period_code, fin_year):
                 self.user = user
                 self.data = {
-                    'date_start': date_str,  # Both start and end are same for EOD
-                    'date_end': date_str,    # Both start and end are same for EOD
+                    'date_start': date_start,
+                    'date_end': date_end,
                     'period_code': period_code,
                     'fin_year': fin_year,
-                    'category': 'TRIAL_BALANCE'
+                    'category': 'TRIAL_BALANCE',
+                    'eoc_status': 'EOD'  # Mark as EOD-generated record
                 }
         
-        mock_request = MockRequest(user, date_str, period_code, fin_year)
+        mock_request = MockRequest(user, date_start_str, date_end_str, period_code, fin_year)
         
         # Execute the bulk insert function
         result = bulk_insert_somtop_trial_balancesheet_internal(mock_request)
         
         if result.get('status') == 'success':
-            message = f"FN007 ສຳເລັດ: {result.get('statistics', {}).get('totals', {}).get('inserted', 0)} ລາຍການ"
-            logger.info(f"[FN007] Completed successfully for {date_str}")
+            stats = result.get('statistics', {}).get('totals', {})
+            message = f"FN0009 ສຳເລັດ: {stats.get('inserted', 0)} ລາຍການ (ຈາກ {date_start_str} ຫາ {date_end_str})"
+            logger.info(f"[FN0009] Completed successfully for {date_start_str} to {date_end_str}")
             return True, message
         else:
             error_message = result.get('message', 'Unknown error')
-            logger.error(f"[FN007] Failed for {date_str}: {error_message}")
-            return False, f"FN007 ຜິດພາດ: {error_message}"
+            logger.error(f"[FN0009] Failed: {error_message}")
+            return False, f"FN0009 ຜິດພາດ: {error_message}"
             
     except Exception as e:
-        logger.error(f"[FN007] Error in EOD execution: {str(e)}", exc_info=True)
-        return False, f"FN007 ຂໍ້ຜິດພາດ: {str(e)}"
+        logger.error(f"[FN0009] Error in EOD execution: {str(e)}", exc_info=True)
+        return False, f"FN0009 ຂໍ້ຜິດພາດ: {str(e)}"
 
 
 @api_view(['POST'])
@@ -23925,11 +23936,12 @@ def bulk_insert_somtop_trial_balancesheet(request):
     
     Expected POST body:
     {
-        "date_start": "2025-09-01",
-        "date_end": "2025-09-08", 
+        "date_start": "2025-10-01",
+        "date_end": "2025-10-08", 
         "fin_year": "2025",
-        "period_code": "202509",
-        "category": "TRIAL_BALANCE"
+        "period_code": "202510",
+        "category": "TRIAL_BALANCE",
+        "eoc_status": "EOD" (optional - for EOD-generated records)
     }
     """
     result = bulk_insert_somtop_trial_balancesheet_internal(request)
@@ -23950,8 +23962,9 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         "date_start": "YYYY-MM-DD",
         "date_end": "YYYY-MM-DD",
         "fin_year": "2025",
-        "period_code": "202508",
-        "category": "TRIAL_BALANCE"
+        "period_code": "202510",
+        "category": "TRIAL_BALANCE",
+        "eoc_status": "EOD" (optional)
     }
     """
     try:
@@ -23961,6 +23974,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         fin_year = request.data.get("fin_year", "2025")
         period_code = request.data.get("period_code", "")
         default_category = request.data.get("category", "TRIAL_BALANCE")
+        eoc_status = request.data.get("eoc_status")  # Get EOC status if provided
 
         if not all([date_start, date_end]):
             return {
@@ -23986,6 +24000,8 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
             }
 
         logger.info(f"[BulkInsertSomtopTrialBalancesheet] Starting bulk insert operation from {date_start} to {date_end}")
+        if eoc_status:
+            logger.info(f"[BulkInsertSomtopTrialBalancesheet] EOC Status: {eoc_status}")
 
         # Statistics tracking
         stats = {
@@ -24015,23 +24031,23 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
 
         try:
             if fin_year:
-                from .models import MTTB_Fin_Cycle  # Replace with actual import
+                from .models import MTTB_Fin_Cycle
                 fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
         except Exception as e:
             logger.warning(f"Financial year {fin_year} not found: {str(e)}")
 
         try:
             if period_code:
-                from .models import MTTB_Per_Code  # Replace with actual import
+                from .models import MTTB_Per_Code
                 period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
         except Exception as e:
             logger.warning(f"Period code {period_code} not found: {str(e)}")
 
         with transaction.atomic():
-            # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data for the specific date range only
+            # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data
             try:
-                from .models import STTB_Somtop_Trial_Balancesheet  # Replace with actual import
-                logger.info(f"Clearing existing STTB_Somtop_Trial_Balancesheet data for date range {date_start} to {date_end}...")
+                from .models import STTB_Somtop_Trial_Balancesheet
+                logger.info(f"Clearing existing STTB_Somtop_Trial_Balancesheet data...")
                 
                 # Build filter conditions for selective deletion
                 deletion_filters = {
@@ -24039,11 +24055,17 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                     'EndDate__lte': end_date_obj
                 }
                 
-                # Add additional filters if provided
+                # Add additional filters
                 if fin_year_obj:
                     deletion_filters['Fin_year'] = fin_year_obj
                 if period_obj:
                     deletion_filters['Period_code'] = period_obj
+                
+                # IMPORTANT: If eoc_status is 'EOD', only delete EOD records
+                # This protects manually created or other process-generated records
+                if eoc_status == 'EOD':
+                    deletion_filters['Eoc_status'] = 'EOD'
+                    logger.info("Deleting only EOD-generated records in this period")
                 
                 # Count records to be deleted before deletion
                 existing_records = STTB_Somtop_Trial_Balancesheet.objects.filter(**deletion_filters)
@@ -24052,13 +24074,13 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                 # Delete only matching records
                 existing_records.delete()
                 
-                logger.info(f"Successfully cleared {stats['cleared_records']} existing records for the specified date range")
+                logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
                 
             except Exception as e:
                 logger.error(f"Error clearing STTB_Somtop_Trial_Balancesheet data: {str(e)}")
                 return {
                     'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data for date range)'
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
                 }
 
             # Step 2: Execute FCY stored procedure and insert FCY data
@@ -24086,7 +24108,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                         # Get or create currency object
                         if currency_code and currency_code not in ccy_objects:
                             try:
-                                from .models import MTTB_Ccy_DEFN  # Replace with actual import
+                                from .models import MTTB_Ccy_DEFN
                                 ccy_objects[currency_code] = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
                             except Exception:
                                 logger.warning(f"Currency {currency_code} not found")
@@ -24127,6 +24149,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             Mo_Cr_lcy=safe_decimal_convert(0),
                             C1_DR_lcy=safe_decimal_convert(0),
                             C1_CR_lcy=safe_decimal_convert(0),
+                            Eoc_status=eoc_status,  # Set EOC status
                             Maker_Id=request.user,
                             MSegment=item.get('MSegment', '')
                         )
@@ -24139,7 +24162,8 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             'type': 'FCY',
                             'gl_code': gl_code,
                             'currency': currency_code,
-                            'category': record_gltype
+                            'category': record_gltype,
+                            'eoc_status': eoc_status
                         })
                         
                     except Exception as e:
@@ -24180,7 +24204,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                 # Get LAK currency object
                 lak_ccy_obj = None
                 try:
-                    from .models import MTTB_Ccy_DEFN  # Replace with actual import
+                    from .models import MTTB_Ccy_DEFN
                     lak_ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code='LAK')
                 except Exception:
                     logger.warning("LAK currency not found")
@@ -24225,6 +24249,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             Mo_Cr_lcy=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
                             C1_DR_lcy=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
                             C1_CR_lcy=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
+                            Eoc_status=eoc_status,  # Set EOC status
                             Maker_Id=request.user,
                             MSegment=item.get('MSegment', '')
                         )
@@ -24237,7 +24262,8 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             'type': 'LCY',
                             'gl_code': gl_code,
                             'currency': 'LAK',
-                            'category': record_gltype
+                            'category': record_gltype,
+                            'eoc_status': eoc_status
                         })
                         
                     except Exception as e:
@@ -24264,10 +24290,12 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         stats['total_failed'] = stats['fcy_records_failed'] + stats['lcy_records_failed']
 
         # Prepare response
+        eoc_status_msg = f" (Eoc_status: {eoc_status})" if eoc_status else ""
         response_data = {
             'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າໃນຊ່ວງວັນທີ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} records for date range, inserted {stats["total_inserted"]} new records)',
+            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ{eoc_status_msg}',
             'date_range': f"{date_start} to {date_end}",
+            'eoc_status': eoc_status,
             'statistics': {
                 'cleared_records': stats['cleared_records'],
                 'fcy_procedure': {
@@ -24290,10 +24318,11 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
 
         if failed_records:
             response_data['failed_records_sample'] = failed_records[:5]
-            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
+            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ'
 
         logger.info(f"Bulk insert Somtop Trial Balancesheet operation completed successfully:")
-        logger.info(f"- Cleared: {stats['cleared_records']} records for date range {date_start} to {date_end}")
+        logger.info(f"- Cleared: {stats['cleared_records']} records")
+        logger.info(f"- Date range: {date_start} to {date_end}")
         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
@@ -24304,7 +24333,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         logger.error(f"Bulk insert Somtop Trial Balancesheet error: {str(e)}")
         return {
             'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)}'
         }
 
 
@@ -26488,6 +26517,9 @@ class FAAssetAuditViewSet(viewsets.ModelViewSet):
 #     except Exception as e:
 #         logger.error(f"Error checking if {date} is working day: {str(e)}")
 #         return False
+
+
+
 from datetime import datetime, timedelta, time
 from django.utils import timezone
 from django.db import transaction
