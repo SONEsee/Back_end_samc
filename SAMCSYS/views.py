@@ -23864,9 +23864,16 @@ logger = logging.getLogger(__name__)
 # EOD Integration Function for FN0009
 def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
     """
-    Execute FN0009: Somtop Trial Balancesheet for EOD processing.
-    Date range: First day of month to current processing date.
-    Records are marked with Eoc_status = 'EOD'.
+    Execute FN0009: Somtop Trial Balancesheet for EOD/EOM/EOY processing.
+    
+    Logic:
+    - Normal day: Date range = first day of month to processing_date, Eoc_status = 'EOD'
+    - Last working day of month (not December): Date range = first day of month to last day, Eoc_status = 'EOM'
+    - Last working day of year (December): Date range = January 1 to December 31, Eoc_status = 'EOY'
+    
+    Deletion Policy:
+    - Always delete only EOD records
+    - Never delete EOM or EOY records
     """
     try:
         # Get current processing date from system or use provided date
@@ -23879,16 +23886,38 @@ def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
         else:
             processing_date_obj = processing_date
 
-        # Calculate first day of the month
-        first_day_of_month = processing_date_obj.replace(day=1)
+        # Determine EOC status and date range based on processing date
+        if is_last_working_day_of_year(processing_date_obj):
+            # End of Year: January 1 to December 31
+            eoc_status = 'EOY'
+            date_start_obj = processing_date_obj.replace(month=1, day=1)  # January 1
+            date_end_obj = processing_date_obj  # December 31 (last working day)
+            eoc_label_la = 'ສິ້ນປີ'
+            logger.info(f"[FN0009] Detected last working day of year: {processing_date_obj}")
+            
+        elif is_last_working_day_of_month(processing_date_obj):
+            # End of Month: First day of month to last working day
+            eoc_status = 'EOM'
+            date_start_obj = processing_date_obj.replace(day=1)  # First day of month
+            date_end_obj = processing_date_obj  # Last working day of month
+            eoc_label_la = 'ສິ້ນເດືອນ'
+            logger.info(f"[FN0009] Detected last working day of month: {processing_date_obj}")
+            
+        else:
+            # Normal Day: First day of month to processing date
+            eoc_status = 'EOD'
+            date_start_obj = processing_date_obj.replace(day=1)  # First day of month
+            date_end_obj = processing_date_obj  # Current processing date
+            eoc_label_la = 'ສິ້ນວັນ'
+            logger.info(f"[FN0009] Normal working day: {processing_date_obj}")
         
         # Convert to string format
-        date_start_str = first_day_of_month.strftime('%Y-%m-%d')
-        date_end_str = processing_date_obj.strftime('%Y-%m-%d')
+        date_start_str = date_start_obj.strftime('%Y-%m-%d')
+        date_end_str = date_end_obj.strftime('%Y-%m-%d')
 
-        logger.info(f"[FN0009] Starting Somtop Trial Balancesheet for EOD")
+        logger.info(f"[FN0009] Starting Somtop Trial Balancesheet for {eoc_status}")
         logger.info(f"[FN0009] Date range: {date_start_str} to {date_end_str}")
-        logger.info(f"[FN0009] Processing date: {date_end_str}")
+        logger.info(f"[FN0009] EOC Status: {eoc_status}")
         
         # Auto-calculate period_code and fin_year from processing date
         period_code = processing_date_obj.strftime('%Y%m')
@@ -23896,7 +23925,7 @@ def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
         
         # Create request-like object for the bulk_insert function
         class MockRequest:
-            def __init__(self, user, date_start, date_end, period_code, fin_year):
+            def __init__(self, user, date_start, date_end, period_code, fin_year, eoc_status):
                 self.user = user
                 self.data = {
                     'date_start': date_start,
@@ -23904,18 +23933,18 @@ def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
                     'period_code': period_code,
                     'fin_year': fin_year,
                     'category': 'TRIAL_BALANCE',
-                    'eoc_status': 'EOD'  # Mark as EOD-generated record
+                    'eoc_status': eoc_status  # EOD, EOM, or EOY
                 }
         
-        mock_request = MockRequest(user, date_start_str, date_end_str, period_code, fin_year)
+        mock_request = MockRequest(user, date_start_str, date_end_str, period_code, fin_year, eoc_status)
         
         # Execute the bulk insert function
         result = bulk_insert_somtop_trial_balancesheet_internal(mock_request)
         
         if result.get('status') == 'success':
             stats = result.get('statistics', {}).get('totals', {})
-            message = f"FN0009 ສຳເລັດ: {stats.get('inserted', 0)} ລາຍການ (ຈາກ {date_start_str} ຫາ {date_end_str})"
-            logger.info(f"[FN0009] Completed successfully for {date_start_str} to {date_end_str}")
+            message = f"FN0009 ສຳເລັດ ({eoc_label_la}): {stats.get('inserted', 0)} ລາຍການ (ຈາກ {date_start_str} ຫາ {date_end_str})"
+            logger.info(f"[FN0009] Completed successfully for {date_start_str} to {date_end_str} with {eoc_status}")
             return True, message
         else:
             error_message = result.get('message', 'Unknown error')
@@ -23923,9 +23952,8 @@ def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
             return False, f"FN0009 ຜິດພາດ: {error_message}"
             
     except Exception as e:
-        logger.error(f"[FN0009] Error in EOD execution: {str(e)}", exc_info=True)
+        logger.error(f"[FN0009] Error in EOD/EOM/EOY execution: {str(e)}", exc_info=True)
         return False, f"FN0009 ຂໍ້ຜິດພາດ: {str(e)}"
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -23936,13 +23964,24 @@ def bulk_insert_somtop_trial_balancesheet(request):
     
     Expected POST body:
     {
-        "date_start": "2025-10-01",
-        "date_end": "2025-10-08", 
+        "date_start": "2025-01-01",
+        "date_end": "2025-12-31", 
         "fin_year": "2025",
-        "period_code": "202510",
+        "period_code": "202512",
         "category": "TRIAL_BALANCE",
-        "eoc_status": "EOD" (optional - for EOD-generated records)
+        "eoc_status": "EOY" (optional - values: 'EOD', 'EOM', 'EOY', or null)
     }
+    
+    Notes:
+    - eoc_status='EOD': End of Day processing (daily, replaced by next EOD)
+    - eoc_status='EOM': End of Month processing (permanent for the month)
+    - eoc_status='EOY': End of Year processing (permanent for the year)
+    - eoc_status=null: Manual entries (protected from automatic deletion)
+    
+    Deletion Policy:
+    - Only EOD records are deleted during processing
+    - EOM and EOY records are NEVER deleted (permanent records)
+    - Manual entries (null) are NEVER deleted
     """
     result = bulk_insert_somtop_trial_balancesheet_internal(request)
     
@@ -24061,20 +24100,22 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                 if period_obj:
                     deletion_filters['Period_code'] = period_obj
                 
-                # IMPORTANT: If eoc_status is 'EOD', only delete EOD records
-                # This protects manually created or other process-generated records
-                if eoc_status == 'EOD':
-                    deletion_filters['Eoc_status'] = 'EOD'
-                    logger.info("Deleting only EOD-generated records in this period")
+                # CRITICAL: Only delete EOD records
+                # NEVER delete EOM or EOY records - they are permanent
+                # This protects month-end and year-end records from being replaced
+                if eoc_status in ['EOD', 'EOM', 'EOY']:
+                    deletion_filters['Eoc_status'] = 'EOD'  # Only delete EOD
+                    logger.info(f"Deleting only EOD records for {eoc_status} processing")
+                    logger.info("EOM and EOY records are protected and will not be deleted")
                 
                 # Count records to be deleted before deletion
                 existing_records = STTB_Somtop_Trial_Balancesheet.objects.filter(**deletion_filters)
                 stats['cleared_records'] = existing_records.count()
                 
-                # Delete only matching records
+                # Delete only matching EOD records
                 existing_records.delete()
                 
-                logger.info(f"Successfully cleared {stats['cleared_records']} existing records")
+                logger.info(f"Successfully cleared {stats['cleared_records']} EOD records")
                 
             except Exception as e:
                 logger.error(f"Error clearing STTB_Somtop_Trial_Balancesheet data: {str(e)}")
@@ -24289,11 +24330,19 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         stats['total_inserted'] = stats['fcy_records_inserted'] + stats['lcy_records_inserted']
         stats['total_failed'] = stats['fcy_records_failed'] + stats['lcy_records_failed']
 
-        # Prepare response
-        eoc_status_msg = f" (Eoc_status: {eoc_status})" if eoc_status else ""
+        # Prepare response with appropriate message based on EOC status
+        eoc_type_la = ''
+        if eoc_status == 'EOY':
+            eoc_type_la = 'ສິ້ນປີ'
+        elif eoc_status == 'EOM':
+            eoc_type_la = 'ສິ້ນເດືອນ'
+        elif eoc_status == 'EOD':
+            eoc_type_la = 'ສິ້ນວັນ'
+        
+        eoc_status_msg = f" ({eoc_type_la} - Eoc_status: {eoc_status})" if eoc_status else ""
         response_data = {
             'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ{eoc_status_msg}',
+            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນ EOD {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ{eoc_status_msg}',
             'date_range': f"{date_start} to {date_end}",
             'eoc_status': eoc_status,
             'statistics': {
@@ -24321,8 +24370,9 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
             response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ'
 
         logger.info(f"Bulk insert Somtop Trial Balancesheet operation completed successfully:")
-        logger.info(f"- Cleared: {stats['cleared_records']} records")
+        logger.info(f"- Cleared: {stats['cleared_records']} EOD records (EOM/EOY protected)")
         logger.info(f"- Date range: {date_start} to {date_end}")
+        logger.info(f"- EOC Status: {eoc_status}")
         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
