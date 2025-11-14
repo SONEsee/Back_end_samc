@@ -303,6 +303,11 @@ urlpatterns = [
     path('api/journal-report-actb-get/',journal_before_report_get_view, name='journal_report_get'),
 
     # Store Procedure <---- Search AccountNo --------->
+    path('api/account/statement/search/actb/', account_statement_search_actb_view, name='account_statement_search'),
+    path('api/account/search/validation/actb/', account_search_validation_actb_view, name='account_search_validation'),
+    path('api/account/statement/search/eoc/', account_statement_search_eoc_view, name='account_statement_search_eoc'),
+    path('api/account/search/validation/eoc/', account_search_validation_eoc_view, name='account_search_validation_eoc'),
+
     # Backup Views <---- Backup ------>
     path('api/backup/', BackupDatabaseView, name='backup_database'),
     path('api/backup/history/', BackupHistoryView, name='backup_history'),
