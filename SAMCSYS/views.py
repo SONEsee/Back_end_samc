@@ -27070,12 +27070,12 @@ def clear_eod_journal_with_transaction(value_date):
             cleared_count = 0
             cleared_details = []
 
-            # Clear ACTB_DAIRY_LOG
-            actb_count = ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).count()
-            if actb_count > 0:
-                ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).delete()
-                cleared_count += actb_count
-                cleared_details.append(f"ACTB_DAIRY_LOG: {actb_count}")
+            # # Clear ACTB_DAIRY_LOG
+            # actb_count = ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).count()
+            # if actb_count > 0:
+            #     ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).delete()
+            #     cleared_count += actb_count
+            #     cleared_details.append(f"ACTB_DAIRY_LOG: {actb_count}")
 
             # Clear DETB_JRNL_LOG
             jrnl_count = DETB_JRNL_LOG.objects.filter(Value_date=value_date).count()
@@ -27183,7 +27183,7 @@ def execute_eoy_function(eoy_function, user, processing_date=None, is_back_date=
             # 'FN001': lambda eoy_func, usr: execute_eoy_annual_reports(eoy_func, usr, processing_date),
             # 'FN008': lambda eoy_func, usr: execute_eoy_year_end_closing(eoy_func, usr, processing_date),
             # 'FN009': lambda eoy_func, usr: execute_eoy_tax_reports(eoy_func, usr, processing_date),
-            # 'EOY_AUDIT': execute_eoy_audit_preparation,
+            'EOY_AUDIT': execute_generic_eoy_function,
             # 'EOY_ARCHIVE': execute_eoy_data_archival,
             # 'EOY_BACKUP': execute_eoy_annual_backup,
             # Add more EOY function mappings as needed
