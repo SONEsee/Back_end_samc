@@ -1111,20 +1111,20 @@ def sidebar_for_user(request, user_id):
           )
     )
 
-    # 3) Build nested dict: module → main_menu → sub_menu
+ 
     modules = OrderedDict()
     for det in details:
         sub   = det.sub_menu_id
         main  = sub.menu_id if sub else None
         mod   = main.module_Id if main else None
 
-        # Ensure all related records have Record_Status = 'O'
+       
         if not (sub and main and mod):
             continue
         if sub.Record_Status != 'O' or main.Record_Status != 'O' or mod.Record_Status != 'O':
             continue
 
-        # Module level
+ 
         mod_key = mod.module_Id
         if mod_key not in modules:
             modules[mod_key] = {
@@ -1137,7 +1137,7 @@ def sidebar_for_user(request, user_id):
                 'main_menus':     OrderedDict()
             }
 
-        # Main menu level
+     
         mm_key = main.menu_id
         mm_group = modules[mod_key]['main_menus']
         if mm_key not in mm_group:
@@ -1151,7 +1151,7 @@ def sidebar_for_user(request, user_id):
                 'sub_menus':    OrderedDict()
             }
 
-        # Sub menu level
+     
         sm_key = sub.sub_menu_id
         sm_group = mm_group[mm_key]['sub_menus']
         if sm_key not in sm_group:
@@ -1172,7 +1172,7 @@ def sidebar_for_user(request, user_id):
                 }
             }
 
-    # 4) Convert sub-dicts to lists
+   
     result = []
     for mod in modules.values():
         mm_list = []
@@ -23848,7 +23848,6 @@ def get_gltype_lookup_dict():
 #             'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
 #         }
 
-
 from django.db import transaction, connection
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
@@ -23856,65 +23855,105 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 import logging
 import re
 
 logger = logging.getLogger(__name__)
 
-# EOD Integration Function for FN007
+# EOD Integration Function for FN0009
 def execute_somtop_trial_balancesheet(eod_function, user, processing_date=None):
     """
-    Execute FN007: Somtop Trial Balancesheet for EOD processing.
-    This function integrates with the EOD system to use the current processing date.
+    Execute FN0009: Somtop Trial Balancesheet for EOD/EOM/EOY processing.
+    
+    Logic:
+    - Normal day: Date range = first day of month to processing_date, Eoc_status = 'EOD'
+    - Last working day of month (not December): Date range = first day of month to last day, Eoc_status = 'EOM'
+    - Last working day of year (December): Date range = January 1 to December 31, Eoc_status = 'EOY'
+    
+    Deletion Policy:
+    - Always delete only EOD records
+    - Never delete EOM or EOY records
     """
     try:
         # Get current processing date from system or use provided date
         if not processing_date:
             processing_date = date.today()
         
-        # Convert to string format if it's a date object
-        if isinstance(processing_date, date):
-            date_str = processing_date.strftime('%Y-%m-%d')
+        # Convert to date object if it's a string
+        if isinstance(processing_date, str):
+            processing_date_obj = datetime.strptime(processing_date, '%Y-%m-%d').date()
         else:
-            date_str = str(processing_date)
+            processing_date_obj = processing_date
 
-        logger.info(f"[FN007] Starting Somtop Trial Balancesheet for processing date: {date_str}")
+        # Determine EOC status and date range based on processing date
+        if is_last_working_day_of_year(processing_date_obj):
+            # End of Year: January 1 to December 31
+            eoc_status = 'EOY'
+            date_start_obj = processing_date_obj.replace(month=1, day=1)  # January 1
+            date_end_obj = processing_date_obj  # December 31 (last working day)
+            eoc_label_la = 'ສິ້ນປີ'
+            logger.info(f"[FN0009] Detected last working day of year: {processing_date_obj}")
+            
+        elif is_last_working_day_of_month(processing_date_obj):
+            # End of Month: First day of month to last working day
+            eoc_status = 'EOM'
+            date_start_obj = processing_date_obj.replace(day=1)  # First day of month
+            date_end_obj = processing_date_obj  # Last working day of month
+            eoc_label_la = 'ສິ້ນເດືອນ'
+            logger.info(f"[FN0009] Detected last working day of month: {processing_date_obj}")
+            
+        else:
+            # Normal Day: First day of month to processing date
+            eoc_status = 'EOD'
+            date_start_obj = processing_date_obj.replace(day=1)  # First day of month
+            date_end_obj = processing_date_obj  # Current processing date
+            eoc_label_la = 'ສິ້ນວັນ'
+            logger.info(f"[FN0009] Normal working day: {processing_date_obj}")
+        
+        # Convert to string format
+        date_start_str = date_start_obj.strftime('%Y-%m-%d')
+        date_end_str = date_end_obj.strftime('%Y-%m-%d')
+
+        logger.info(f"[FN0009] Starting Somtop Trial Balancesheet for {eoc_status}")
+        logger.info(f"[FN0009] Date range: {date_start_str} to {date_end_str}")
+        logger.info(f"[FN0009] EOC Status: {eoc_status}")
         
         # Auto-calculate period_code and fin_year from processing date
-        processing_date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
         period_code = processing_date_obj.strftime('%Y%m')
         fin_year = processing_date_obj.strftime('%Y')
         
         # Create request-like object for the bulk_insert function
         class MockRequest:
-            def __init__(self, user, date_str, period_code, fin_year):
+            def __init__(self, user, date_start, date_end, period_code, fin_year, eoc_status):
                 self.user = user
                 self.data = {
-                    'date_start': date_str,  # Both start and end are same for EOD
-                    'date_end': date_str,    # Both start and end are same for EOD
+                    'date_start': date_start,
+                    'date_end': date_end,
                     'period_code': period_code,
                     'fin_year': fin_year,
-                    'category': 'TRIAL_BALANCE'
+                    'category': 'TRIAL_BALANCE',
+                    'eoc_status': eoc_status  # EOD, EOM, or EOY
                 }
         
-        mock_request = MockRequest(user, date_str, period_code, fin_year)
+        mock_request = MockRequest(user, date_start_str, date_end_str, period_code, fin_year, eoc_status)
         
         # Execute the bulk insert function
         result = bulk_insert_somtop_trial_balancesheet_internal(mock_request)
         
         if result.get('status') == 'success':
-            message = f"FN007 ສຳເລັດ: {result.get('statistics', {}).get('totals', {}).get('inserted', 0)} ລາຍການ"
-            logger.info(f"[FN007] Completed successfully for {date_str}")
+            stats = result.get('statistics', {}).get('totals', {})
+            message = f"FN0009 ສຳເລັດ ({eoc_label_la}): {stats.get('inserted', 0)} ລາຍການ (ຈາກ {date_start_str} ຫາ {date_end_str})"
+            logger.info(f"[FN0009] Completed successfully for {date_start_str} to {date_end_str} with {eoc_status}")
             return True, message
         else:
             error_message = result.get('message', 'Unknown error')
-            logger.error(f"[FN007] Failed for {date_str}: {error_message}")
-            return False, f"FN007 ຜິດພາດ: {error_message}"
+            logger.error(f"[FN0009] Failed: {error_message}")
+            return False, f"FN0009 ຜິດພາດ: {error_message}"
             
     except Exception as e:
-        logger.error(f"[FN007] Error in EOD execution: {str(e)}", exc_info=True)
-        return False, f"FN007 ຂໍ້ຜິດພາດ: {str(e)}"
-
+        logger.error(f"[FN0009] Error in EOD/EOM/EOY execution: {str(e)}", exc_info=True)
+        return False, f"FN0009 ຂໍ້ຜິດພາດ: {str(e)}"
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -23925,12 +23964,24 @@ def bulk_insert_somtop_trial_balancesheet(request):
     
     Expected POST body:
     {
-        "date_start": "2025-09-01",
-        "date_end": "2025-09-08", 
+        "date_start": "2025-01-01",
+        "date_end": "2025-12-31", 
         "fin_year": "2025",
-        "period_code": "202509",
-        "category": "TRIAL_BALANCE"
+        "period_code": "202512",
+        "category": "TRIAL_BALANCE",
+        "eoc_status": "EOY" (optional - values: 'EOD', 'EOM', 'EOY', or null)
     }
+    
+    Notes:
+    - eoc_status='EOD': End of Day processing (daily, replaced by next EOD)
+    - eoc_status='EOM': End of Month processing (permanent for the month)
+    - eoc_status='EOY': End of Year processing (permanent for the year)
+    - eoc_status=null: Manual entries (protected from automatic deletion)
+    
+    Deletion Policy:
+    - Only EOD records are deleted during processing
+    - EOM and EOY records are NEVER deleted (permanent records)
+    - Manual entries (null) are NEVER deleted
     """
     result = bulk_insert_somtop_trial_balancesheet_internal(request)
     
@@ -23950,8 +24001,9 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         "date_start": "YYYY-MM-DD",
         "date_end": "YYYY-MM-DD",
         "fin_year": "2025",
-        "period_code": "202508",
-        "category": "TRIAL_BALANCE"
+        "period_code": "202510",
+        "category": "TRIAL_BALANCE",
+        "eoc_status": "EOD" (optional)
     }
     """
     try:
@@ -23961,6 +24013,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         fin_year = request.data.get("fin_year", "2025")
         period_code = request.data.get("period_code", "")
         default_category = request.data.get("category", "TRIAL_BALANCE")
+        eoc_status = request.data.get("eoc_status")  # Get EOC status if provided
 
         if not all([date_start, date_end]):
             return {
@@ -23986,6 +24039,8 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
             }
 
         logger.info(f"[BulkInsertSomtopTrialBalancesheet] Starting bulk insert operation from {date_start} to {date_end}")
+        if eoc_status:
+            logger.info(f"[BulkInsertSomtopTrialBalancesheet] EOC Status: {eoc_status}")
 
         # Statistics tracking
         stats = {
@@ -24015,23 +24070,23 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
 
         try:
             if fin_year:
-                from .models import MTTB_Fin_Cycle  # Replace with actual import
+                from .models import MTTB_Fin_Cycle
                 fin_year_obj = MTTB_Fin_Cycle.objects.get(fin_cycle=fin_year)
         except Exception as e:
             logger.warning(f"Financial year {fin_year} not found: {str(e)}")
 
         try:
             if period_code:
-                from .models import MTTB_Per_Code  # Replace with actual import
+                from .models import MTTB_Per_Code
                 period_obj = MTTB_Per_Code.objects.get(period_code=period_code)
         except Exception as e:
             logger.warning(f"Period code {period_code} not found: {str(e)}")
 
         with transaction.atomic():
-            # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data for the specific date range only
+            # Step 1: Clear existing STTB_Somtop_Trial_Balancesheet data
             try:
-                from .models import STTB_Somtop_Trial_Balancesheet  # Replace with actual import
-                logger.info(f"Clearing existing STTB_Somtop_Trial_Balancesheet data for date range {date_start} to {date_end}...")
+                from .models import STTB_Somtop_Trial_Balancesheet
+                logger.info(f"Clearing existing STTB_Somtop_Trial_Balancesheet data...")
                 
                 # Build filter conditions for selective deletion
                 deletion_filters = {
@@ -24039,26 +24094,34 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                     'EndDate__lte': end_date_obj
                 }
                 
-                # Add additional filters if provided
+                # Add additional filters
                 if fin_year_obj:
                     deletion_filters['Fin_year'] = fin_year_obj
                 if period_obj:
                     deletion_filters['Period_code'] = period_obj
                 
+                # CRITICAL: Only delete EOD records
+                # NEVER delete EOM or EOY records - they are permanent
+                # This protects month-end and year-end records from being replaced
+                if eoc_status in ['EOD', 'EOM', 'EOY']:
+                    deletion_filters['Eoc_status'] = 'EOD'  # Only delete EOD
+                    logger.info(f"Deleting only EOD records for {eoc_status} processing")
+                    logger.info("EOM and EOY records are protected and will not be deleted")
+                
                 # Count records to be deleted before deletion
                 existing_records = STTB_Somtop_Trial_Balancesheet.objects.filter(**deletion_filters)
                 stats['cleared_records'] = existing_records.count()
                 
-                # Delete only matching records
+                # Delete only matching EOD records
                 existing_records.delete()
                 
-                logger.info(f"Successfully cleared {stats['cleared_records']} existing records for the specified date range")
+                logger.info(f"Successfully cleared {stats['cleared_records']} EOD records")
                 
             except Exception as e:
                 logger.error(f"Error clearing STTB_Somtop_Trial_Balancesheet data: {str(e)}")
                 return {
                     'status': 'error',
-                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data for date range)'
+                    'message': f'ເກີດຂໍ້ຜິດພາດໃນການລຶບຂໍ້ມູນເກົ່າ: {str(e)} (Error clearing existing data)'
                 }
 
             # Step 2: Execute FCY stored procedure and insert FCY data
@@ -24086,7 +24149,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                         # Get or create currency object
                         if currency_code and currency_code not in ccy_objects:
                             try:
-                                from .models import MTTB_Ccy_DEFN  # Replace with actual import
+                                from .models import MTTB_Ccy_DEFN
                                 ccy_objects[currency_code] = MTTB_Ccy_DEFN.objects.get(ccy_code=currency_code)
                             except Exception:
                                 logger.warning(f"Currency {currency_code} not found")
@@ -24127,6 +24190,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             Mo_Cr_lcy=safe_decimal_convert(0),
                             C1_DR_lcy=safe_decimal_convert(0),
                             C1_CR_lcy=safe_decimal_convert(0),
+                            Eoc_status=eoc_status,  # Set EOC status
                             Maker_Id=request.user,
                             MSegment=item.get('MSegment', '')
                         )
@@ -24139,7 +24203,8 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             'type': 'FCY',
                             'gl_code': gl_code,
                             'currency': currency_code,
-                            'category': record_gltype
+                            'category': record_gltype,
+                            'eoc_status': eoc_status
                         })
                         
                     except Exception as e:
@@ -24180,7 +24245,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                 # Get LAK currency object
                 lak_ccy_obj = None
                 try:
-                    from .models import MTTB_Ccy_DEFN  # Replace with actual import
+                    from .models import MTTB_Ccy_DEFN
                     lak_ccy_obj = MTTB_Ccy_DEFN.objects.get(ccy_code='LAK')
                 except Exception:
                     logger.warning("LAK currency not found")
@@ -24225,6 +24290,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             Mo_Cr_lcy=safe_decimal_convert(item.get('Flow_Cr_LAK', 0)),
                             C1_DR_lcy=safe_decimal_convert(item.get('Closing_Dr_LAK', 0)),
                             C1_CR_lcy=safe_decimal_convert(item.get('Closing_Cr_LAK', 0)),
+                            Eoc_status=eoc_status,  # Set EOC status
                             Maker_Id=request.user,
                             MSegment=item.get('MSegment', '')
                         )
@@ -24237,7 +24303,8 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
                             'type': 'LCY',
                             'gl_code': gl_code,
                             'currency': 'LAK',
-                            'category': record_gltype
+                            'category': record_gltype,
+                            'eoc_status': eoc_status
                         })
                         
                     except Exception as e:
@@ -24263,11 +24330,21 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         stats['total_inserted'] = stats['fcy_records_inserted'] + stats['lcy_records_inserted']
         stats['total_failed'] = stats['fcy_records_failed'] + stats['lcy_records_failed']
 
-        # Prepare response
+        # Prepare response with appropriate message based on EOC status
+        eoc_type_la = ''
+        if eoc_status == 'EOY':
+            eoc_type_la = 'ສິ້ນປີ'
+        elif eoc_status == 'EOM':
+            eoc_type_la = 'ສິ້ນເດືອນ'
+        elif eoc_status == 'EOD':
+            eoc_type_la = 'ສິ້ນວັນ'
+        
+        eoc_status_msg = f" ({eoc_type_la} - Eoc_status: {eoc_status})" if eoc_status else ""
         response_data = {
             'status': 'success',
-            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນເກົ່າໃນຊ່ວງວັນທີ {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ (Operation completed successfully! Cleared {stats["cleared_records"]} records for date range, inserted {stats["total_inserted"]} new records)',
+            'message': f'🎉 ການດຳເນີນງານສຳເລັດ! ລຶບຂໍ້ມູນ EOD {stats["cleared_records"]} ລາຍການ, ນຳເຂົ້າຂໍ້ມູນໃໝ່ {stats["total_inserted"]} ລາຍການ{eoc_status_msg}',
             'date_range': f"{date_start} to {date_end}",
+            'eoc_status': eoc_status,
             'statistics': {
                 'cleared_records': stats['cleared_records'],
                 'fcy_procedure': {
@@ -24290,10 +24367,12 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
 
         if failed_records:
             response_data['failed_records_sample'] = failed_records[:5]
-            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ ({stats["total_failed"]} records failed)'
+            response_data['message'] += f' ⚠️ {stats["total_failed"]} ລາຍການຜິດພາດ'
 
         logger.info(f"Bulk insert Somtop Trial Balancesheet operation completed successfully:")
-        logger.info(f"- Cleared: {stats['cleared_records']} records for date range {date_start} to {date_end}")
+        logger.info(f"- Cleared: {stats['cleared_records']} EOD records (EOM/EOY protected)")
+        logger.info(f"- Date range: {date_start} to {date_end}")
+        logger.info(f"- EOC Status: {eoc_status}")
         logger.info(f"- FCY: {stats['fcy_records_inserted']}/{stats['fcy_records_fetched']} inserted")
         logger.info(f"- LCY: {stats['lcy_records_inserted']}/{stats['lcy_records_fetched']} inserted")
         logger.info(f"- Total: {stats['total_inserted']} inserted, {stats['total_failed']} failed")
@@ -24304,7 +24383,7 @@ def bulk_insert_somtop_trial_balancesheet_internal(request):
         logger.error(f"Bulk insert Somtop Trial Balancesheet error: {str(e)}")
         return {
             'status': 'error',
-            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)} (Error in operation)'
+            'message': f'ເກີດຂໍ້ຜິດພາດໃນການດຳເນີນງານ: {str(e)}'
         }
 
 
@@ -26488,6 +26567,9 @@ class FAAssetAuditViewSet(viewsets.ModelViewSet):
 #     except Exception as e:
 #         logger.error(f"Error checking if {date} is working day: {str(e)}")
 #         return False
+
+
+
 from datetime import datetime, timedelta, time
 from django.utils import timezone
 from django.db import transaction
@@ -26988,12 +27070,12 @@ def clear_eod_journal_with_transaction(value_date):
             cleared_count = 0
             cleared_details = []
 
-            # Clear ACTB_DAIRY_LOG
-            actb_count = ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).count()
-            if actb_count > 0:
-                ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).delete()
-                cleared_count += actb_count
-                cleared_details.append(f"ACTB_DAIRY_LOG: {actb_count}")
+            # # Clear ACTB_DAIRY_LOG
+            # actb_count = ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).count()
+            # if actb_count > 0:
+            #     ACTB_DAIRY_LOG.objects.filter(value_dt=value_date).delete()
+            #     cleared_count += actb_count
+            #     cleared_details.append(f"ACTB_DAIRY_LOG: {actb_count}")
 
             # Clear DETB_JRNL_LOG
             jrnl_count = DETB_JRNL_LOG.objects.filter(Value_date=value_date).count()
@@ -27101,7 +27183,7 @@ def execute_eoy_function(eoy_function, user, processing_date=None, is_back_date=
             # 'FN001': lambda eoy_func, usr: execute_eoy_annual_reports(eoy_func, usr, processing_date),
             # 'FN008': lambda eoy_func, usr: execute_eoy_year_end_closing(eoy_func, usr, processing_date),
             # 'FN009': lambda eoy_func, usr: execute_eoy_tax_reports(eoy_func, usr, processing_date),
-            # 'EOY_AUDIT': execute_eoy_audit_preparation,
+            'EOY_AUDIT': execute_generic_eoy_function,
             # 'EOY_ARCHIVE': execute_eoy_data_archival,
             # 'EOY_BACKUP': execute_eoy_annual_backup,
             # Add more EOY function mappings as needed
@@ -35919,83 +36001,167 @@ def BackupDatabaseView(request):
         )
 
 
+# def execute_backup(database_name, backup_type):
+#     """Execute SQL Server backup using stored procedure"""
+#     conn = None
+#     cursor = None
+    
+#     try:
+#         # Get backup path from settings
+#         backup_path = getattr(settings, 'BACKUP_PATH', r'C:\Backup\\')
+        
+#         # Build connection string from DATABASES settings
+#         db_settings = settings.DATABASES['default']
+        
+#         # Try to get connection_string from OPTIONS first
+#         conn_str = db_settings.get('OPTIONS', {}).get('connection_string')
+        
+#         # If no connection_string, build it manually
+#         if not conn_str:
+#             driver = db_settings.get('OPTIONS', {}).get('driver', 'ODBC Driver 17 for SQL Server')
+#             server = db_settings.get('HOST', '192.168.10.35')
+#             database = 'SAMCDB_Dev'  # Connect to master for backup operations
+#             user = db_settings.get('USER', '')
+#             password = db_settings.get('PASSWORD', '')
+            
+#             if user and password:
+#                 conn_str = (
+#                     f"DRIVER={{{driver}}};"
+#                     f"SERVER={server};"
+#                     f"DATABASE={database};"
+#                     f"UID={user};"
+#                     f"PWD={password};"
+#                     f"TrustServerCertificate=yes;"
+#                 )
+#             else:
+#                 # Use Windows Authentication
+#                 conn_str = (
+#                     f"DRIVER={{{driver}}};"
+#                     f"SERVER={server};"
+#                     f"DATABASE={database};"
+#                     f"Trusted_Connection=yes;"
+#                     f"TrustServerCertificate=yes;"
+#                 )
+        
+#         logger.info(f"Connecting to SQL Server for backup...")
+        
+#         # Connect to SQL Server
+#         conn = pyodbc.connect(conn_str, timeout=600)
+#         cursor = conn.cursor()
+#         logger.info(f"Connecting to SQL Server for backup...")
+        
+#         # Connect to SQL Server
+#         conn = pyodbc.connect(conn_str, timeout=600)
+#         cursor = conn.cursor()
+        
+#         logger.info(f"Executing backup: {database_name} ({backup_type})")
+        
+#         # Call stored procedure with explicit parameter names
+#         sql = """
+#         EXEC [dbo].[sp_BackupDatabase] 
+#             @DatabaseName = ?,
+#             @BackupPath = ?,
+#             @BackupType = ?
+#         """
+#         cursor.execute(sql, (database_name, backup_path, backup_type))
+        
+#         # Get result - use index-based access instead of column names
+#         row = cursor.fetchone()
+        
+#         if row:
+#             # Access by index: 0=Status, 1=FileName, 2=FullPath, 3=BackupTime, 4=BackupType
+#             status = row[0]
+            
+#             if status == 'SUCCESS':
+#                 file_name = row[1]
+#                 full_path = row[2]
+#                 backup_time = row[3]
+#                 backup_type_result = row[4]
+                
+#                 logger.info(f"Backup successful: {file_name}")
+#                 return {
+#                     'success': True,
+#                     'message': 'Backup created successfully',
+#                     'file_name': file_name,
+#                     'full_path': full_path,
+#                     'backup_time': backup_time.isoformat() if backup_time else None,
+#                     'backup_type': backup_type_result
+#                 }
+#             else:
+#                 # ERROR status - access error details
+#                 error_msg = row[1] if len(row) > 1 else 'Unknown error'
+#                 logger.error(f"Backup failed: {error_msg}")
+#                 return {
+#                     'success': False,
+#                     'error': error_msg
+#                 }
+#         else:
+#             logger.error("No result returned from stored procedure")
+#             return {
+#                 'success': False,
+#                 'error': 'No result returned from stored procedure'
+#             }
+            
+#     except pyodbc.Error as e:
+#         logger.error(f"SQL Server error: {str(e)}")
+#         return {
+#             'success': False,
+#             'error': f'Database error: {str(e)}'
+#         }
+#     except Exception as e:
+#         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+#         return {
+#             'success': False,
+#             'error': f'Error: {str(e)}'
+#         }
+#     finally:
+#         if cursor:
+#             cursor.close()
+#         if conn:
+#             conn.close()
+
 def execute_backup(database_name, backup_type):
     """Execute SQL Server backup using stored procedure"""
     conn = None
     cursor = None
     
     try:
-        # Get backup path from settings
         backup_path = getattr(settings, 'BACKUP_PATH', r'C:\Backup\\')
-        
-        # Build connection string from DATABASES settings
         db_settings = settings.DATABASES['default']
         
-        # Try to get connection_string from OPTIONS first
-        conn_str = db_settings.get('OPTIONS', {}).get('connection_string')
+        conn_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={db_settings.get('HOST', '192.168.10.35')};"
+            f"DATABASE=SAMCDB_Dev;"
+            f"Trusted_Connection=yes;"
+            f"TrustServerCertificate=yes;"
+        )
         
-        # If no connection_string, build it manually
-        if not conn_str:
-            driver = db_settings.get('OPTIONS', {}).get('driver', 'ODBC Driver 17 for SQL Server')
-            server = db_settings.get('HOST', '192.168.10.35')
-            database = 'SAMCDB_Dev'  # Connect to master for backup operations
-            user = db_settings.get('USER', '')
-            password = db_settings.get('PASSWORD', '')
-            
-            if user and password:
-                conn_str = (
-                    f"DRIVER={{{driver}}};"
-                    f"SERVER={server};"
-                    f"DATABASE={database};"
-                    f"UID={user};"
-                    f"PWD={password};"
-                    f"TrustServerCertificate=yes;"
-                )
-            else:
-                # Use Windows Authentication
-                conn_str = (
-                    f"DRIVER={{{driver}}};"
-                    f"SERVER={server};"
-                    f"DATABASE={database};"
-                    f"Trusted_Connection=yes;"
-                    f"TrustServerCertificate=yes;"
-                )
-        
-        logger.info(f"Connecting to SQL Server for backup...")
-        
-        # Connect to SQL Server
-        conn = pyodbc.connect(conn_str, timeout=600)
-        cursor = conn.cursor()
-        logger.info(f"Connecting to SQL Server for backup...")
-        
-        # Connect to SQL Server
+        logger.info(f"Connection string: {conn_str}")
         conn = pyodbc.connect(conn_str, timeout=600)
         cursor = conn.cursor()
         
-        logger.info(f"Executing backup: {database_name} ({backup_type})")
+        cursor.execute("SELECT DB_NAME() AS CurrentDatabase")
+        db_name = cursor.fetchone()[0]
+        logger.info(f"Connected to database: {db_name}")
         
-        # Call stored procedure with explicit parameter names
         sql = """
         EXEC [dbo].[sp_BackupDatabase] 
             @DatabaseName = ?,
             @BackupPath = ?,
             @BackupType = ?
         """
+        logger.info(f"Executing backup: {database_name} ({backup_type}) to {backup_path}")
         cursor.execute(sql, (database_name, backup_path, backup_type))
         
-        # Get result - use index-based access instead of column names
         row = cursor.fetchone()
-        
         if row:
-            # Access by index: 0=Status, 1=FileName, 2=FullPath, 3=BackupTime, 4=BackupType
             status = row[0]
-            
             if status == 'SUCCESS':
                 file_name = row[1]
                 full_path = row[2]
                 backup_time = row[3]
                 backup_type_result = row[4]
-                
                 logger.info(f"Backup successful: {file_name}")
                 return {
                     'success': True,
@@ -36006,7 +36172,6 @@ def execute_backup(database_name, backup_type):
                     'backup_type': backup_type_result
                 }
             else:
-                # ERROR status - access error details
                 error_msg = row[1] if len(row) > 1 else 'Unknown error'
                 logger.error(f"Backup failed: {error_msg}")
                 return {
@@ -36021,10 +36186,12 @@ def execute_backup(database_name, backup_type):
             }
             
     except pyodbc.Error as e:
-        logger.error(f"SQL Server error: {str(e)}")
+        sqlstate = e.args[0] if e.args else 'Unknown'
+        error_msg = e.args[1] if len(e.args) > 1 else str(e)
+        logger.error(f"SQL Server error: SQLSTATE={sqlstate}, Message={error_msg}")
         return {
             'success': False,
-            'error': f'Database error: {str(e)}'
+            'error': f'Database error: {error_msg}'
         }
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
@@ -36037,7 +36204,6 @@ def execute_backup(database_name, backup_type):
             cursor.close()
         if conn:
             conn.close()
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -38041,3 +38207,14 @@ def get_credit_unauthorized(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+from django.shortcuts import get_list_or_404
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .models import MTTB_Users
+from .serializers import UserSerializers
+@api_view(['GET'])
+def get_all_users(request):
+    users = MTTB_Users.objects.all()
+    serializer =  UserSerializers(users ,many = True)
+    return Response(serializer.data)

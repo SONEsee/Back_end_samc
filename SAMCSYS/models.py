@@ -254,7 +254,7 @@ class MTTB_Users(AbstractBaseUser, PermissionsMixin):
     user_email = models.CharField(max_length=250, null=True, blank=True)
     user_mobile = models.CharField(max_length=15, null=True, blank=True)
 
-    # New field to upload a profile picture
+ 
     profile_picture = models.ImageField(
         upload_to='user_profile/', null=True, blank=True
     )
@@ -722,6 +722,7 @@ class DETB_JRNL_LOG(models.Model):
             models.Index(fields=['Auth_Status'], name='idx_jrnl_auth'),
         ]
 
+
 class ACTB_DAIRY_LOG(models.Model):
     ac_entry_sr_no = models.AutoField(primary_key=True)
     module = models.ForeignKey(STTB_ModulesInfo,null=True,blank=True,on_delete=models.CASCADE)
@@ -809,6 +810,7 @@ class ACTB_DAIRY_LOG_HISTORY(models.Model):
 
     class Meta:
         verbose_name_plural = 'DAILY_LOG_HISTORY'
+
 
 class DETB_JRNL_LOG_HIST(models.Model):
     JRNLLog_id_his = models.AutoField(primary_key=True)
