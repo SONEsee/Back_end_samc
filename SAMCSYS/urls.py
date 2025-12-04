@@ -293,8 +293,6 @@ urlpatterns = [
     path('api/balance-sheet/acc/dairy-report/', balance_sheet_dairy_acc_view, name='balance-sheet-acc-dairy-report'),
     path('api/balance-sheet/mfi/dairy-report/', balance_sheet_dairy_mfi_view, name='balance-sheet-mfi-dairy-report'),
 
-    
-    
     path('api/journal-report/', journal_report_view, name='journal_report_post'),
     path('api/journal-report-get/',journal_report_get_view, name='journal_report_get'),
 
@@ -313,8 +311,6 @@ urlpatterns = [
     path('api/backup/history/', BackupHistoryView, name='backup_history'),
     path('api/backup/test/', TestBackupConnection, name='test_backup_connection'),
 
-    
-
     # Store Procedure <---- Sub Trail Balance ------>
     path('api/trial-balance/consolidated/', 
          trial_balance_consolidated_view, 
@@ -322,7 +318,6 @@ urlpatterns = [
     path('api/trial-balance/fcy/', trial_balance_fcy_view, name='trial-balance-fcy-post'),
     path('api/trial-balance/fcy/get/', trial_balance_fcy_get_view, name='trial-balance-fcy-get'),
 
-   
     # Stroe Procedure <---- Balance Sheet ------>
     path('api/balance-sheet/acc/', balance_sheet_acc_view, name='balance-sheet-acc'),
     path('api/balance-sheet/mfi/', balance_sheet_mfi_view, name='balance-sheet-mfi'),
@@ -334,8 +329,7 @@ urlpatterns = [
     path('api/income-statement/acc/get/', income_statement_acc_get_view, name='income-statement-acc-get'),
     path('api/income-statement/mfi/', income_statement_mfi_view, name='income-statement-mfi-post'),
     path('api/income-statement/mfi/get/', income_statement_mfi_get_view, name='income-statement-mfi-get'),
-
-
+    
     #Store Procedure <------ CashFlow ------>
     path('api/bulk-insert-monthly-cashflow/', bulk_insert_monthly_cashflow, name='cash-flow-acc'),
 
