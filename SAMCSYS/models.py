@@ -1215,6 +1215,9 @@ class FA_Expense_Category (models.Model):
     class Meta:
         verbose_name_plural = 'ExpenseCategory'
 
+
+
+
 # class FA_Asset_List(models.Model):
 #     asset_list_id = models.AutoField(primary_key=True)
 #     asset_list_code = models.CharField(max_length=20, null=True, blank=True, unique=True)
